@@ -23,7 +23,11 @@ nothing persisted is the failure this skill exists to prevent.
 1. Reduce the request to a self-contained **check prompt**: what to look
    at (URL, mailbox query, calendar), what counts as a hit, and exactly
    what to do on a hit ("tell the owner the vinyl is back in stock at
-   <url> with the price"). The prompt fires as a fresh run each tick — it
+   <url> with the price"). Always end the prompt with the silence
+   contract: `If it is not a hit, reply with exactly "[SILENT]" and
+   nothing else` — the control plane drops any output containing
+   `[SILENT]`, so a plain "staying silent" sentence still texts the
+   owner every tick. The prompt fires as a fresh run each tick — it
    cannot see this chat, so it carries every fact it needs.
 2. Pick a cron that fits urgency: drops/restocks hourly (`0 * * * *`),
    slow-moving availability daily (`0 9 * * *`). Timezone is the owner's
@@ -35,7 +39,7 @@ curl -fsS -X POST \
   "${OPENAI_BASE_URL%/api/gateway/v1}/api/calendar/schedule" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "content-type: application/json" \
-  -d '{"name":"frank-ocean-vinyl","cron":"0 * * * *","timezone":"America/Los_Angeles","prompt":"Check https://store.example.com/frank-ocean — if the vinyl is in stock, tell the owner it is back with the current price and the link. If not, stay silent.","deliver":"imessage"}'
+  -d '{"name":"frank-ocean-vinyl","cron":"0 * * * *","timezone":"America/Los_Angeles","prompt":"Check https://store.example.com/frank-ocean — if the vinyl is in stock, tell the owner it is back with the current price and the link. If it is not a hit, reply with exactly \"[SILENT]\" and nothing else.","deliver":"imessage"}'
 # → {"id":"…"} — that row IS the watch; the check now fires on the cron.
 ```
 
@@ -47,6 +51,12 @@ curl -fsS -X POST \
 - `deliver` is how a hit reaches the owner: `imessage` by default,
   `email` if they asked for mail, `none` for a silent sweep whose result
   waits in their inbox.
+- `[SILENT]` is the only silence that stays silent. Output containing
+  the token is dropped before delivery; output *describing* silence
+  ("still checking", "nothing new", "staying silent") is delivered
+  verbatim — every non-hit tick becomes a bubble the owner has to read.
+  Repeat facts are also noise: if the last reported value (price, count,
+  status) is unchanged, that is not a hit — report `[SILENT]`.
 - The watch request is never answered with a one-time check alone. If
   the POST fails, say the watch did NOT get created — do not describe a
   watch that does not exist.

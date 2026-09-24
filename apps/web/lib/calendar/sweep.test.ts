@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { claimSchedule } from "./sweep";
+import { claimSchedule, classifyTickOutput } from "./sweep";
 import type { AgentSchedule } from "./schedule";
 
 const SCHEDULE: AgentSchedule = {
@@ -114,5 +114,37 @@ describe("claimSchedule", () => {
     );
     const claimed = await claimSchedule(client, SCHEDULE);
     expect(claimed?.duplicate).toBe(true);
+  });
+});
+
+describe("classifyTickOutput", () => {
+  it("suppresses empty output and the [SILENT] token", () => {
+    expect(classifyTickOutput("")).toBe("suppressed_silent");
+    expect(classifyTickOutput("[SILENT]")).toBe("suppressed_silent");
+    expect(classifyTickOutput("checked the page — [SILENT]")).toBe(
+      "suppressed_silent"
+    );
+  });
+
+  it("does not suppress prose that describes silence", () => {
+    expect(classifyTickOutput("Staying silent — nothing new.")).toBe("send");
+    expect(classifyTickOutput("Still at $1,124.99.")).toBe("send");
+  });
+
+  it("suppresses transient model-error output", () => {
+    expect(
+      classifyTickOutput(
+        "Operation interrupted: waiting for model response (5.7s elapsed)"
+      )
+    ).toBe("suppressed_transient");
+    expect(
+      classifyTickOutput("429 insufficient_quota — raise the usage cap")
+    ).toBe("suppressed_transient");
+  });
+
+  it("sends real hits", () => {
+    expect(
+      classifyTickOutput("Back in stock: $1,115.09 https://example.com/gpu")
+    ).toBe("send");
   });
 });
