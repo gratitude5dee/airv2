@@ -53,15 +53,17 @@ describe("create-miniapp skill", () => {
     expect(cli).toMatch(/\*\.png\|\*\.jpg/);
   });
 
-  it("supports the v3 subcommands plus the V12 intake loop (skill v4, §11.1)", () => {
+  it("supports the v3 subcommands plus the V12 intake loop and the V13 job lane (skill v5, §8)", () => {
     const subcommands = [...cli.matchAll(/^\s{2}(\w+)\) shift; cmd_\w+/gm)].map((m) => m[1]);
     expect(subcommands.sort()).toEqual([
       "build",
+      "compile",
       "confirm",
       "drop",
       "finalize",
       "fork",
       "functions",
+      "go",
       "new",
       "plan",
       "publish",
@@ -70,6 +72,13 @@ describe("create-miniapp skill", () => {
       "status",
       "test",
     ]);
+    // §8/F10: every call carries the skill version so the control plane can
+    // refuse a stale Box and the admin panel can meter the fleet.
+    expect(cli).toContain("x-air-skill:");
+    expect(cli).toMatch(/SKILL_VERSION=\"\$\{AIR_SKILL_VERSION:-5\}\"/);
+    expect(cli).toContain("/api/create/go");
+    expect(cli).toContain("/api/create/compile");
+    expect(cli).toContain("the job does this now");
   });
 
   it("drives the /create intake loop from the marker line and never pastes the plan (V12 §8.1, §11.1)", () => {
@@ -77,9 +86,9 @@ describe("create-miniapp skill", () => {
     expect(skill).toContain("reply in one message; say **you pick** for any");
     expect(skill).toContain("air-create plan <appname> --deliver");
     expect(skill).toMatch(/never paste the plan into chat/i);
-    expect(skill).toContain("air-create confirm <appname>");
-    expect(skill).toContain("air-create release <appname> dev");
-    expect(skill).toContain("dev build is live: <url>");
+    expect(skill).toContain("air-create go <appname> --change");
+    expect(skill).toContain("[card: create <slug> job=<id>]");
+    expect(skill).toContain("the job does this now");
     expect(skill).toContain("ship it");
     expect(cli).toContain("/api/create/intake");
     expect(cli).toContain("/api/create/plan/deliver");

@@ -33,8 +33,8 @@ export const TestSchema = z
       .string()
       .regex(/^[1-9][0-9]{2,3}x[1-9][0-9]{2,3}$/, "viewport must be WxH, e.g. 390x760")
       .optional(),
-    /** `owner` runs on the owner preview token, `guest` on a guest grant. */
-    role: z.enum(["owner", "guest"]).optional(),
+    // V13 §6.2: `role` is gone — checks run on Browser Run against the
+    // candidate URL, with no owner/guest preview-token distinction.
     // ---- actions (run in this order: type → tap → wait) ----
     /** `[selector, text]`. */
     type: z.tuple([selector, z.string().max(200)]).optional(),

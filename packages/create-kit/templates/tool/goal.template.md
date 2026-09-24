@@ -28,8 +28,8 @@ none (many writers → recipe 05 with Functions instead)
 # Tests   (this array is air.json.tests[]; locked tests are the Planner's)
 [
   { "id": "title-visible", "see": "<title>", "locked": true },
-  { "id": "add-item", "role": "owner", "type": ["[data-test=new]", "<sample row>"], "tap": "[data-test=add]", "see": "<sample row>", "locked": true },
-  { "id": "guest-readonly", "role": "guest", "type": ["[data-test=new]", "Nope"], "tap": "[data-test=add]", "see": "Guests are read-only." }
+  { "id": "add-item", "type": ["[data-test=new]", "<sample row>"], "tap": "[data-test=add]", "see": "<sample row>", "locked": true },
+  { "id": "guest-readonly", "type": ["[data-test=new]", "Nope"], "tap": "[data-test=add]", "see": "Guests are read-only." }
 ]
 
 # Acceptance

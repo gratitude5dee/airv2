@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # air-create — Vibe + Drop CLI for the create-miniapp skill (V11 §8, §9.5,
-# §11; V12 §8.3, §8.4, §11.1).
+# §11; V12 §8.3, §8.4, §11.1; V13 §8 — skill version 5).
 #
 #   air-create new <appname> [--lane vibe|drop|import] [--title <t>]
 #   air-create plan <appname> [--deliver] [--answers <file>]
-#   air-create confirm <appname>
-#   air-create build <appname>
-#   air-create qa <appname>
-#   air-create test <appname> [--guest-url <url>]
+#   air-create go <appname> [--change]            # V13: starts the job; the
+#                                               #   reply + card print; turn ends
+#   air-create compile <appname>                  # V13: syntax+lint pass,
+#                                               #   ≤5 per turn server-side
+#   air-create confirm <appname>                  # V12 lane — one release only
+#   air-create build <appname>                    # V12 lane — the job builds now
+#   air-create qa <appname>                       # V12 lane — Browser Run now
+#   air-create test <appname> [--guest-url <url>] # V12 lane — the job checks now
 #   air-create release <appname> dev [--renew|--revoke]
 #   air-create status <appname|slug>
 #   air-create drop <file.html|file.zip|dir> [--name <app-name>] [--title <t>]
@@ -103,16 +107,22 @@ url_encode() {
   python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$1"
 }
 
+# V13 §8 / F10: every call carries the skill version so the control plane
+# can refuse a stale Box (426 skill_update_queued) and meter the fleet.
+SKILL_VERSION="${AIR_SKILL_VERSION:-5}"
+
 api() {
   local method="$1" path="$2" body="${3:-}"
   if [ -n "$body" ]; then
     curl -sS -X "$method" "$BASE$path" \
       -H "Authorization: Bearer $API_KEY" \
+      -H "x-air-skill: $SKILL_VERSION" \
       -H "Content-Type: application/json" \
       -d "$body" -w '\n%{http_code}'
   else
     curl -sS -X "$method" "$BASE$path" \
-      -H "Authorization: Bearer $API_KEY" -w '\n%{http_code}'
+      -H "Authorization: Bearer $API_KEY" \
+      -H "x-air-skill: $SKILL_VERSION" -w '\n%{http_code}'
   fi
 }
 
@@ -235,6 +245,7 @@ EOF
 }
 
 cmd_build() {
+  note_v13
   local name
   name="$(resolve_appname "${1:-}")"
   [ -f "$CREATE_ROOT/$name/air.json" ] || {
@@ -283,6 +294,7 @@ sys.exit(0 if out["ok"] else 1)
 }
 
 cmd_qa() {
+  note_v13
   local name
   name="$(resolve_appname "${1:-}")"
   local dir="$CREATE_ROOT/$name"
@@ -507,7 +519,12 @@ print(len(tests), sum(1 for t in tests if t.get("locked") is True))
 EOF
 }
 
+note_v13() {
+  echo "air-create: the job does this now — air-create go <app> drives build, check and publish" >&2
+}
+
 cmd_confirm() {
+  note_v13
   local name
   name="$(resolve_appname "${1:-}")"
   local dir="$CREATE_ROOT/$name"
@@ -525,6 +542,7 @@ cmd_confirm() {
 }
 
 cmd_test() {
+  note_v13
   local name="" guest_url=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -583,6 +601,7 @@ print(json.dumps(out))
 }
 
 cmd_release() {
+  note_v13
   local name="" channel="" action="promote"
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -600,6 +619,67 @@ cmd_release() {
   # The body carries { version, url, expires_at }; the url is what the skill repeats to the owner.
   printf '%s\n' "$BODY"
   case "$STATUS" in 2*) return 0 ;; *) return 1 ;; esac
+}
+
+# V13 §8 `go` — POST /api/create/go starts the CreateJob; the reply prints
+# `reply` (the one line under the card) and `card` (the never-edited
+# `[card: create <slug> job=<id>]` marker) so the turn can end right after.
+# `--change` names the newest intake/changes/<n>.md the caller just wrote.
+cmd_go() {
+  local name="" change=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --change) change=1; shift ;;
+      -*) usage ;;
+      *) name="$1"; shift ;;
+    esac
+  done
+  name="$(resolve_appname "$name")"
+  set_active "$name"
+  local kind="initial" change_file=""
+  if [ "$change" -eq 1 ]; then
+    kind="change"
+    change_file="$(ls -1t "$CREATE_ROOT/$name/intake/changes" 2>/dev/null | head -n1 || true)"
+    [ -n "$change_file" ] || { echo "air-create: no intake/changes/<n>.md — write the change file first" >&2; exit 3; }
+    change_file="intake/changes/$change_file"
+  fi
+  local body
+  body="$(python3 -c '
+import json, sys
+out = {"appname": sys.argv[1], "kind": sys.argv[2]}
+if sys.argv[3]:
+    out["change_file"] = sys.argv[3]
+print(json.dumps(out))
+' "$name" "$kind" "$change_file")"
+  local response
+  response="$(api POST /api/create/go "$body")"
+  local status="${response##*$'\n'}" out="${response%$'\n'*}"
+  # 426 skill_update_queued — the fleet is upgrading; print the reply so the
+  # turn can still answer the owner once.
+  printf '%s\n' "$out"
+  case "$status" in 2*) return 0 ;; 426) return 0 ;; *) return 1 ;; esac
+}
+
+# V13 §8 `compile` — the fast syntax+lint pass code turns use for
+# self-checking (≤5 per turn, enforced server-side). Prints
+# {ok, findings, sizes}; ok:true means no hard findings.
+cmd_compile() {
+  local name
+  name="$(resolve_appname "${1:-}")"
+  [ -f "$CREATE_ROOT/$name/air.json" ] || {
+    echo "air-create: $CREATE_ROOT/$name/air.json missing — run air-create new $name first" >&2
+    exit 3
+  }
+  local response status body
+  response="$(api POST /api/create/compile "{"appname":$(json_string "$name")}")"
+  status="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  printf '%s\n' "$body"
+  case "$status" in
+    2*) return 0 ;;
+    429) echo "air-create: compile cap for this turn — fix by hand or let the job check" >&2; return 1 ;;
+    *) return 1 ;;
+  esac
 }
 
 cmd_finalize() {
@@ -685,6 +765,8 @@ EOF
 }
 
 case "${1:-}" in
+  go) shift; cmd_go "$@" ;;
+  compile) shift; cmd_compile "$@" ;;
   new) shift; cmd_new "$@" ;;
   plan) shift; cmd_plan "$@" ;;
   confirm) shift; cmd_confirm "$@" ;;

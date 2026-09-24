@@ -154,7 +154,11 @@ beforeEach(() => {
 describe("nextStage (§5.1)", () => {
   const legal: [IntakeStage, IntakeEvent, IntakeStage][] = [
     ["asking", "owner_reply", "planning"],
+    // F1 (V13 §9.2): a zero-question plan written while still asking moves
+    // straight to plan_sent, and a redelivery at plan_sent stays.
+    ["asking", "plan_written", "plan_sent"],
     ["planning", "plan_written", "plan_sent"],
+    ["plan_sent", "plan_written", "plan_sent"],
     ["plan_sent", "confirm", "confirmed"],
     ["plan_sent", "revise", "revising"],
     ["plan_sent", "cancel", "abandoned"],
@@ -204,11 +208,9 @@ describe("nextStage (§5.1)", () => {
 
   it.each<[IntakeStage, IntakeEvent]>([
     ["asking", "confirm"],
-    ["asking", "plan_written"],
     ["planning", "owner_reply"],
     ["planning", "confirm"],
     ["plan_sent", "build_started"],
-    ["plan_sent", "plan_written"],
     ["confirmed", "confirm"],
     ["confirmed", "ship"],
     ["building", "ship"],

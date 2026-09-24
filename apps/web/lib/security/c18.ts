@@ -201,6 +201,8 @@ export const V9_USER_TABLES: readonly { table: string; column: string }[] = [
   // V12 Create (0116, 0120)
   { table: "create_intakes", column: "user_id" },
   { table: "admin_audit", column: "user_id" },
+  // V13 Create jobs (0126)
+  { table: "create_jobs", column: "user_id" },
   // Identity / digital twin (0061, 0074, 0121)
   { table: "identity_assets", column: "user_id" },
   { table: "digital_twins", column: "user_id" },

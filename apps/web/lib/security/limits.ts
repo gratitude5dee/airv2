@@ -40,7 +40,12 @@ export type OpsEventKind =
   | "plan"
   | "dev_release"
   | "dev_revoke"
-  | "mirror";
+  | "mirror"
+  // V13 Create (docs/goal-create-v13.md §8 F10, §9.1 notify).
+  | "create.job"
+  | "create.notify"
+  | "create.compile"
+  | "create.skill_upgrade";
 
 /** Per-user launch mints (store session or plugin bearer), per hour. */
 export const LAUNCHES_PER_HOUR = 60;

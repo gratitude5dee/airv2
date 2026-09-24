@@ -119,6 +119,7 @@ describe("GET /api/create/progress", () => {
     expect(await response.json()).toEqual({
       slug: "alice-promo",
       percent: 28,
+      job: null,
       stage: "building",
       detail: "build running",
       updated_at: new Date(T0).toISOString(),
@@ -151,6 +152,7 @@ describe("GET /api/create/progress", () => {
       percent: 65,
       stage: "testing",
       detail: "tests 2/3",
+      job: null,
       updated_at: new Date(T0 + 1_000).toISOString(),
     });
     expect(versions.getVersion).toHaveBeenCalledWith(expect.anything(), app.id, "v1700000000001");

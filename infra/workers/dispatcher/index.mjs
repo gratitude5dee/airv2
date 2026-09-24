@@ -328,7 +328,9 @@ export default {
       return new Response(null, {
         status: 303,
         headers: {
-          location: url.pathname + url.search,
+          // F5 (V13 §9.2): land on `/` after redemption — replaying the
+          // enter path under the new cookie is what broke live origins.
+          location: "/",
           "set-cookie": setCookie(
             await mintCookie(env.APP_ORIGIN_SIGNING_KEY, claims, now)
           ),

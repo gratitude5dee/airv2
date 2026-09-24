@@ -25,6 +25,7 @@ import {
   type RegistryApp,
 } from "./registry";
 import { isReservedWord } from "./reserved";
+import { splitPublishedSlug } from "./nested";
 
 export class PublishError extends Error {
   readonly status: number;
@@ -217,6 +218,47 @@ export async function ownedApp(
   const parsed = parseRegistryApp(data);
   if (!parsed) throw new PublishError("app not found", 404);
   return parsed;
+}
+
+/**
+ * V13 §9.2 (F4): resolve a caller-supplied app reference — which may be a
+ * bare appname (`tour`) or the flat `<username>-<appname>` slug — to the
+ * owner's row. The appname wins: a hyphenated name like `october-tour` also
+ * parses as a slug, so trying the slug first would shadow the app. Only the
+ * not-found case falls through to the flat-slug lookup; any other error is
+ * rethrown. Returns null when neither resolves.
+ */
+export async function resolveOwnedAppRef(
+  supabase: SupabaseClient,
+  userId: string,
+  ref: string
+): Promise<RegistryApp | null> {
+  let appname: string | null = null;
+  try {
+    appname = validateAppName(ref);
+  } catch (error) {
+    // Not an appname shape (too long, bad characters) — only the flat-slug
+    // lookup below can still resolve it.
+    if (!(error instanceof PublishError)) throw error;
+  }
+  if (appname !== null) {
+    const slug = slugFor(await publisherUsername(supabase, userId), appname);
+    const { data } = await supabase
+      .from("mini_apps")
+      .select("id")
+      .eq("slug", slug)
+      .eq("owner_user_id", userId)
+      .maybeSingle();
+    if (data) return await ownedApp(supabase, userId, slug);
+  }
+  if (splitPublishedSlug(ref)) {
+    try {
+      return await ownedApp(supabase, userId, ref);
+    } catch (error) {
+      if (!(error instanceof PublishError && error.status === 404)) throw error;
+    }
+  }
+  return null;
 }
 
 /** Delisting = back to draft (status check constraint: draft|published|suspended). */

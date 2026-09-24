@@ -62,12 +62,15 @@ vi.mock("./intake", async (importOriginal) => ({
 const publish = vi.hoisted(() => ({
   ownedApp: vi.fn(),
   createDraft: vi.fn(),
+  resolveOwnedAppRef: vi.fn(),
 }));
 vi.mock("../miniapps/publish", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../miniapps/publish")>()),
   ownedApp: publish.ownedApp,
   createDraft: publish.createDraft,
   publisherUsername: async () => "alice",
+  // resolveOwnedSlug's appname-wins path — defer to the mocked ownedApp.
+  resolveOwnedAppRef: publish.resolveOwnedAppRef,
 }));
 
 const versions = vi.hoisted(() => ({ getVersion: vi.fn() }));
@@ -169,6 +172,10 @@ beforeEach(() => {
   db.calls = [];
   db.handlers.clear();
   publish.ownedApp.mockResolvedValue(app);
+  publish.resolveOwnedAppRef.mockImplementation(
+    async (_supabase: unknown, _userId: string, ref: string) =>
+      ref === "promo" || ref === "alice-promo" ? { slug: "alice-promo" } : null,
+  );
   publish.createDraft.mockResolvedValue({ id: app.id, slug: app.slug, name: "Promo", created: false });
   versions.getVersion.mockResolvedValue(version);
   intake.getIntake.mockResolvedValue(intakeRow("dev_ready"));

@@ -45,6 +45,7 @@ async function readJson<T>(res: Response): Promise<Reply<T>> {
 function CreateSurface() {
   const params = useSearchParams();
   const preselected = params.get("app");
+  const jobParam = params.get("job");
   const githubReturn = params.get("github");
   const [unauthorized, setUnauthorized] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -156,7 +157,7 @@ function CreateSurface() {
       ) : null}
 
       <div className="mb-8">
-        <CreateStudio slug={slug} />
+        <CreateStudio slug={slug} jobId={jobParam} />
       </div>
 
       <div className="mx-auto max-w-[720px]">

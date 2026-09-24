@@ -301,6 +301,18 @@ export const env = {
     ),
   createFunctionsEnabled: (): boolean =>
     optional("CREATE_FUNCTIONS_ENABLED", "false") === "true",
+  // V13 Create job lane (docs/goal-create-v13.md §11.2). The bridge secret
+  // signs every Vercel ↔ Cloudflare call (CF1); the live-token secret mints
+  // the 10-minute progress-socket tokens the OwnerRoom verifies (§5.3).
+  // Both are server-side only. A null means the V13 lane is unconfigured
+  // and /api/create/go reports it instead of failing mid-build (CF8).
+  createBridgeSecret: (): string | null =>
+    process.env["CREATE_BRIDGE_SECRET"] ?? null,
+  liveTokenSecret: (): string | null =>
+    process.env["LIVE_TOKEN_SECRET"] ?? null,
+  /** Origin of the air-create Worker the Workflow and OwnerRoom live behind. */
+  createJobsOrigin: (): string =>
+    optional("CREATE_JOBS_ORIGIN", "https://create.wzrd.tech"),
   operatorAllowlist: (): string[] =>
     optional("OPERATOR_ALLOWLIST", "")
       .split(",")

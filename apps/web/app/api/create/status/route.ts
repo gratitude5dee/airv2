@@ -26,6 +26,8 @@ import { getBuild, latestBuild, logTail } from "@/lib/create/build";
 import { budgetMeter, createSpendUsd } from "@/lib/create/budget";
 import { devReleaseActive, devUrl } from "@/lib/create/release";
 import { getIntake, IntakeError } from "@/lib/create/intake";
+import { jobView, latestJobForApp } from "@/lib/create/job";
+import { createConfig } from "@/lib/create/config";
 import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
@@ -74,7 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "invalid slug" }, { status: 400 });
     }
     const app = await ownedApp(supabase, userId, slug);
-    const [versions, build, spent, intake] = await Promise.all([
+    const [versions, build, spent, intake, job] = await Promise.all([
       listVersions(supabase, app.id),
       buildId ? getBuild(supabase, userId, app.id, buildId) : latestBuild(supabase, app.id),
       createSpendUsd(supabase, userId, app.slug),
@@ -86,6 +88,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             throw error;
           })
         : null,
+      // V13 §8 `status`: the app's newest job row for the skill's `job`
+      // field (null pre-V13, before the first job, or while the jobs
+      // table is unreadable — status never fails on it).
+      latestJobForApp(supabase, userId, app.id).catch(() => null),
     ]);
     const live = app.status === "published" ? app.bundle_version : null;
     const draft = app.draft_version ?? app.bundle_version;
@@ -115,6 +121,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             }
           : null,
       intake_stage: intake?.stage ?? null,
+      job: job === null ? null : jobView(job),
+      // V13 §13: whether the go/JobView lane is on for this owner.
+      v13: createConfig.v13ForUser(userId),
       build: build
         ? {
             id: build.id,

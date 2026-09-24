@@ -29,7 +29,7 @@ none
 [
   { "id": "title-visible", "see": "<title>", "locked": true },
   { "id": "game-runs", "tap": "[data-test=start]", "wait": 1100, "changed": "[data-test=score]", "locked": true },
-  { "id": "guest-plays", "role": "guest", "see": "<Play>" }
+  { "id": "guest-plays", "see": "<Play>" }
 ]
 
 # Acceptance

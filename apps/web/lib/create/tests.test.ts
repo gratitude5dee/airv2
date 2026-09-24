@@ -11,13 +11,13 @@ import {
   type Test,
 } from "./tests";
 
-/** The §8.4 examples, verbatim. */
+/** The §8.4 examples, `role` dropped per V13 §6.2. */
 const SPEC_TESTS: Test[] = [
   { id: "hero-visible", see: "October tour", locked: true },
   { id: "tickets-link", tap: "[data-test=tickets]", expectHref: "https://dice.fm/", locked: true },
   { id: "countdown-ticks", wait: 1100, changed: "[data-test=countdown]" },
-  { id: "rsvp-saves", type: ["[data-test=name]", "Ana"], tap: "[data-test=rsvp]", see: "Ana", role: "owner" },
-  { id: "guest-readonly", role: "guest", missing: "[data-test=rsvp]" },
+  { id: "rsvp-saves", type: ["[data-test=name]", "Ana"], tap: "[data-test=rsvp]", see: "Ana" },
+  { id: "guest-readonly", missing: "[data-test=rsvp]" },
 ];
 
 describe("air.json.tests[] schema (§8.4)", () => {
@@ -27,10 +27,11 @@ describe("air.json.tests[] schema (§8.4)", () => {
     expect(parsed.success && parsed.data.length).toBe(5);
   });
 
-  it("accepts viewport WxH and both roles", () => {
+  it("accepts viewport WxH; V13 dropped `role` (§6.2)", () => {
     expect(TestSchema.safeParse({ id: "a", viewport: "390x760", see: "x" }).success).toBe(true);
     expect(TestSchema.safeParse({ id: "a", viewport: "wide", see: "x" }).success).toBe(false);
-    expect(TestSchema.safeParse({ id: "a", role: "admin", see: "x" }).success).toBe(false);
+    expect(TestSchema.safeParse({ id: "a", role: "owner", see: "x" }).success).toBe(false);
+    expect(TestSchema.safeParse({ id: "a", role: "guest", see: "x" }).success).toBe(false);
   });
 
   it("requires a well-formed, unique id", () => {
@@ -49,7 +50,7 @@ describe("air.json.tests[] schema (§8.4)", () => {
   it("refuses unknown verbs and a test with nothing to do", () => {
     expect(TestSchema.safeParse({ id: "a", click: "[x]" }).success).toBe(false);
     expect(TestSchema.safeParse({ id: "a" }).success).toBe(false);
-    expect(TestSchema.safeParse({ id: "a", locked: true, role: "owner" }).success).toBe(false);
+    expect(TestSchema.safeParse({ id: "a", locked: true }).success).toBe(false);
     expect(TestSchema.safeParse({ id: "a", wait: 100 }).success).toBe(true);
   });
 
@@ -77,7 +78,9 @@ describe("air.json.tests[] schema (§8.4)", () => {
 describe("lockedTestsRemoved (CR22)", () => {
   it("names the locked ids a Builder dropped, and nothing else", () => {
     expect(lockedIds(SPEC_TESTS)).toEqual(["hero-visible", "tickets-link"]);
-    const next = SPEC_TESTS.filter((test) => test.id !== "tickets-link" && test.id !== "guest-readonly");
+    const next = SPEC_TESTS.filter(
+      (test) => test.id !== "tickets-link" && test.id !== "guest-readonly"
+    );
     expect(lockedTestsRemoved(SPEC_TESTS, next)).toEqual(["tickets-link"]);
   });
 

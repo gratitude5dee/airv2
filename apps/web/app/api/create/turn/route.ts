@@ -18,9 +18,12 @@ import {
   validateAppName,
 } from "@/lib/miniapps/publish";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
-import { CREATE_SESSION_RE, startCreateTurn } from "@/lib/create/turn";
+import { CREATE_SESSION_RE, normalizePrompt, startCreateTurn } from "@/lib/create/turn";
 import { budgetExhausted, projectBudget } from "@/lib/create/budget";
 import { createTurnRateLimited, recordOpsEvent } from "@/lib/security/limits";
+import { isCreateStage } from "@/lib/entitlements/models";
+import { createConfig } from "@/lib/create/config";
+import { getIntake, intakeHookInput, OPEN_STAGES } from "@/lib/create/intake";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     input?: unknown;
     tier?: unknown;
     session?: unknown;
+    stage?: unknown;
   } | null;
   if (body?.session !== undefined) {
     if (typeof body.session !== "string" || !CREATE_SESSION_RE.test(body.session)) {
@@ -60,14 +64,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 429 }
       );
     }
+    // F7 (V13 §9.2): while an intake for this app is open, the web turn
+    // carries the same `[create-intake …]` marker the iMessage hook
+    // prepends, so the Planner on the web surface sees it too.
+    let input = body?.input;
+    const intake = await getIntake(supabase, userId, appname).catch(() => null);
+    if (intake && (OPEN_STAGES as readonly string[]).includes(intake.stage)) {
+      const prompt = normalizePrompt(input);
+      input = `${intakeHookInput(appname, createConfig.intakeMaxQuestions())}\n${prompt}`;
+    }
     const turn = await startCreateTurn(
       supabase,
       userId,
       {
         appname,
-        input: body?.input,
+        input,
         tier: typeof body?.tier === "string" ? body.tier : undefined,
         trigger: "web",
+        stage: isCreateStage(body?.stage) ? body.stage : undefined,
       },
       { budget }
     );

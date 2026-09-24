@@ -44,29 +44,17 @@ describe("link host (LINK_HOST_ENABLED=true)", () => {
     expect(rewriteOf(link("/"))).toContain("/mini/link");
   });
 
-  it("rewrites /<u>/<a> to the flat loader slug with the three markers (CR17)", () => {
+  it("V13: /<u>/<a> is no longer a dev release — it rewrites as pay-link space", () => {
     const res = link("/alice/promo?x=1");
     expect(res.status).toBe(200);
-    expect(rewriteOf(res)).toContain("/mini/alice-promo?x=1");
-    expect(marker(res, "x-mini-host")).toBe("1");
-    expect(marker(res, "x-mini-nested")).toBe("1");
-    expect(marker(res, "x-mini-channel")).toBe("dev");
+    expect(rewriteOf(res)).toContain("/mini/link/alice/promo?x=1");
+    // The dev markers are gone: no channel, no flat-slug rewrite.
+    expect(marker(res, "x-mini-host")).toBeNull();
+    expect(marker(res, "x-mini-nested")).toBeNull();
+    expect(marker(res, "x-mini-channel")).toBeNull();
   });
 
-  it("keeps deeper dev asset paths under the flat slug", () => {
-    const res = link("/alice/promo/app.js");
-    expect(rewriteOf(res)).toContain("/mini/alice-promo/app.js");
-    expect(marker(res, "x-mini-channel")).toBe("dev");
-  });
-
-  it("404s everything that is neither a pay link nor a two-segment dev app (CR23)", () => {
-    expect(link("/alice/promo/store").status).toBe(404);
-    expect(link("/alice/My_App").status).toBe(404);
-    expect(link("/store/kanban").status).toBe(404);
-    expect(link("/a/b/c").status).toBe(404);
-  });
-
-  it("does not let a client pick the channel: a spoofed marker is replaced by the route's own", () => {
+  it("a client still cannot inject the retired channel marker", () => {
     const pay = link("/coffee", { "x-mini-channel": "dev", "x-mini-nested": "1" });
     expect(marker(pay, "x-mini-channel")).toBeNull();
     expect(marker(pay, "x-mini-nested")).toBeNull();
@@ -86,7 +74,8 @@ describe("link host (LINK_HOST_ENABLED=true)", () => {
         headers: { host: "links.example" },
       })
     );
-    expect(marker(res, "x-mini-channel")).toBe("dev");
+    expect(rewriteOf(res)).toContain("/mini/link/alice/promo");
+    expect(marker(res, "x-mini-channel")).toBeNull();
     // The default host is now just another main-origin host.
     expect(marker(link("/alice/promo"), "x-mini-channel")).toBeNull();
   });

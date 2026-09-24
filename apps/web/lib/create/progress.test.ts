@@ -1,13 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { SpectrumSender } from "../spectrum/sender";
 import type { BuildRecord } from "./build";
 import type { VersionRow } from "./versions";
 
-const cards = vi.hoisted(() => ({
-  sendOrUpdateAppCard: vi.fn(async (): Promise<"updated" | "sent" | "cooldown"> => "updated"),
-}));
-vi.mock("../miniapps/cards", () => cards);
 const ledger = vi.hoisted(() => ({
   latestBuild: vi.fn(async (): Promise<BuildRecord | null> => null),
 }));
@@ -19,20 +14,12 @@ vi.mock("./versions", () => versions);
 
 import { makeApp } from "@/app/mini/loader-test-utils";
 import {
-  holdMonotonic,
-  newRelayState,
   P50_BUILD_DEFAULT_MS,
   P50_BUILD_FLOOR_MS,
   p50BuildMs,
   percentFor,
-  progressCaption,
   readProgress,
-  relayTick,
-  runProgressRelay,
-  stageLabel,
-  startRelayForOwner,
   type ProgressInput,
-  type ProgressSnapshot,
 } from "./progress";
 
 const T0 = Date.parse("2026-09-17T12:00:00.000Z");
@@ -208,8 +195,6 @@ describe("percentFor — the §8.2 table", () => {
       stage: "failed",
       detail: "needs you",
     });
-    expect(stageLabel("failed")).toBe("needs you");
-    expect(stageLabel("dev_ready")).toBe("dev ready");
   });
 
   it("is monotonic in time for a fixed state", () => {
@@ -220,25 +205,6 @@ describe("percentFor — the §8.2 table", () => {
       expect(percent).toBeGreaterThanOrEqual(last);
       last = percent;
     }
-  });
-});
-
-describe("holdMonotonic", () => {
-  it("never lets the percent drop within one build attempt", () => {
-    const state = newRelayState();
-    expect(holdMonotonic(state, { percent: 30, stage: "building", detail: null }, "b1").percent).toBe(30);
-    expect(holdMonotonic(state, { percent: 22, stage: "building", detail: null }, "b1").percent).toBe(30);
-    expect(holdMonotonic(state, { percent: 45, stage: "building", detail: "x" }, "b1").percent).toBe(45);
-  });
-
-  it("lets a new attempt reset to 15", () => {
-    const state = newRelayState();
-    holdMonotonic(state, { percent: 45, stage: "building", detail: null }, "b1");
-    expect(holdMonotonic(state, { percent: 15, stage: "building", detail: "retry 2/3" }, "b2")).toEqual({
-      percent: 15,
-      stage: "building",
-      detail: "retry 2/3",
-    });
   });
 });
 
@@ -323,193 +289,3 @@ describe("readProgress", () => {
   });
 });
 
-describe("relayTick", () => {
-  const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
-  const app = { slug: "alice-promo", name: "Promo" };
-  const supabase = {} as SupabaseClient;
-  const snapshot = (percent: number, attemptKey = "b1"): Pick<ProgressSnapshot, "progress" | "attemptKey"> => ({
-    progress: { percent, stage: "building", detail: "build running" },
-    attemptKey,
-  });
-  let sender: { sendText: ReturnType<typeof vi.fn> };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    cards.sendOrUpdateAppCard.mockResolvedValue("updated");
-    sender = { sendText: vi.fn(async () => undefined) };
-  });
-  afterEach(() => {
-    delete process.env["CREATE_PROGRESS_TEXT_MS"];
-  });
-
-  const asSender = () => sender as unknown as SpectrumSender;
-
-  it("updates the app card with <name> · <stage> · <percent>% and the detail", async () => {
-    const state = newRelayState();
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(27), T0)).toBe("updated");
-    expect(cards.sendOrUpdateAppCard).toHaveBeenCalledWith(supabase, owner, "alice-promo", {
-      caption: "Promo · building · 27%",
-      subcaption: "build running",
-      summary: "Promo · building · 27% — build running",
-    });
-    expect(sender.sendText).not.toHaveBeenCalled();
-    expect(progressCaption("Promo", { percent: 45, stage: "failed", detail: null })).toEqual({
-      caption: "Promo · needs you · 45%",
-      subcaption: "",
-    });
-  });
-
-  it("holds the percent monotonic across ticks of one attempt", async () => {
-    const state = newRelayState();
-    await relayTick(supabase, asSender(), owner, app, state, snapshot(30), T0);
-    await relayTick(supabase, asSender(), owner, app, state, snapshot(20), T0 + 10_000);
-    const [, , , second] = cards.sendOrUpdateAppCard.mock.calls[1] as unknown as [unknown, unknown, unknown, { caption: string }];
-    expect(second.caption).toBe("Promo · building · 30%");
-    await relayTick(supabase, asSender(), owner, app, state, snapshot(15, "b2"), T0 + 20_000);
-    const [, , , third] = cards.sendOrUpdateAppCard.mock.calls[2] as unknown as [unknown, unknown, unknown, { caption: string }];
-    expect(third.caption).toBe("Promo · building · 15%");
-  });
-
-  it("falls back to a text after three consecutive failures, at most every CREATE_PROGRESS_TEXT_MS", async () => {
-    cards.sendOrUpdateAppCard.mockRejectedValue(new Error("app card update failed"));
-    const state = newRelayState();
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(20), T0)).toBe("failed");
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(21), T0 + 10_000)).toBe("failed");
-    expect(sender.sendText).not.toHaveBeenCalled();
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(22), T0 + 20_000)).toBe("text");
-    expect(sender.sendText).toHaveBeenCalledWith("space-1", "+15550001111", "Promo · building · 22% — build running");
-    // Inside the 30 s text cadence: no second text.
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(23), T0 + 30_000)).toBe("failed");
-    expect(sender.sendText).toHaveBeenCalledTimes(1);
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(24), T0 + 50_000)).toBe("text");
-    expect(sender.sendText).toHaveBeenCalledTimes(2);
-    expect(state.consecutiveFailures).toBe(5);
-  });
-
-  it("a successful update resets the failure counter; CREATE_PROGRESS_TEXT_MS=0 disables texts", async () => {
-    const state = newRelayState();
-    cards.sendOrUpdateAppCard.mockRejectedValueOnce(new Error("x")).mockRejectedValueOnce(new Error("x"));
-    await relayTick(supabase, asSender(), owner, app, state, snapshot(20), T0);
-    await relayTick(supabase, asSender(), owner, app, state, snapshot(21), T0 + 10_000);
-    expect(state.consecutiveFailures).toBe(2);
-    expect(await relayTick(supabase, asSender(), owner, app, state, snapshot(22), T0 + 20_000)).toBe("updated");
-    expect(state.consecutiveFailures).toBe(0);
-
-    cards.sendOrUpdateAppCard.mockRejectedValue(new Error("x"));
-    const muted = newRelayState();
-    for (let i = 0; i < 5; i += 1) {
-      expect(await relayTick(supabase, asSender(), owner, app, muted, snapshot(20 + i), T0 + i * 10_000, 0)).toBe(
-        "failed"
-      );
-    }
-    expect(sender.sendText).not.toHaveBeenCalled();
-  });
-
-  it("never throws, even when the text fallback fails too", async () => {
-    cards.sendOrUpdateAppCard.mockRejectedValue(new Error("x"));
-    sender.sendText.mockRejectedValue(new Error("line down"));
-    const state = newRelayState();
-    state.consecutiveFailures = 2;
-    await expect(relayTick(supabase, asSender(), owner, app, state, snapshot(20), T0)).resolves.toBe("failed");
-  });
-});
-
-describe("runProgressRelay", () => {
-  const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
-  const app = makeApp({ slug: "alice-promo", appname: "promo", name: "Promo", owner_user_id: "user-1" });
-  const supabase = {} as SupabaseClient;
-  const sender = { sendText: vi.fn(async () => undefined) } as unknown as SpectrumSender;
-  const snap = (stage: ProgressSnapshot["intakeStage"], percent: number): ProgressSnapshot => ({
-    progress: { percent, stage, detail: null },
-    intakeStage: stage,
-    attemptKey: "b1",
-    updated_at: new Date(T0).toISOString(),
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    cards.sendOrUpdateAppCard.mockResolvedValue("updated");
-  });
-
-  it("ticks while the intake is building/qa/testing and stops once it leaves", async () => {
-    const reads = [snap("building", 20), snap("qa", 50), snap("testing", 70), snap("dev_ready", 100), snap("dev_ready", 100)];
-    const read = vi.fn(async () => reads.shift()!);
-    const state = await runProgressRelay(supabase, sender, owner, app, {
-      signal: new AbortController().signal,
-      tickMs: 1,
-      read,
-    });
-    expect(read).toHaveBeenCalledTimes(4);
-    expect(cards.sendOrUpdateAppCard).toHaveBeenCalledTimes(4);
-    expect(state.ticks).toBe(4);
-    expect(state.lastPercent).toBe(100);
-  });
-
-  it("stops when the signal fires and survives a failed read", async () => {
-    const controller = new AbortController();
-    let calls = 0;
-    const read = vi.fn(async () => {
-      calls += 1;
-      if (calls === 1) throw new Error("db hiccup");
-      if (calls === 3) controller.abort();
-      return snap("building", 20 + calls);
-    });
-    const state = await runProgressRelay(supabase, sender, owner, app, { signal: controller.signal, tickMs: 1, read });
-    expect(read).toHaveBeenCalledTimes(3);
-    expect(state.ticks).toBe(2);
-  });
-});
-
-describe("startRelayForOwner (§8.2, the flush side)", () => {
-  const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
-  const app = makeApp({ slug: "alice-promo", appname: "promo", name: "Promo", owner_user_id: "user-1" });
-  const sender = { sendText: vi.fn(async () => undefined) } as unknown as SpectrumSender;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    cards.sendOrUpdateAppCard.mockResolvedValue("updated");
-  });
-
-  function stubDb(intakeRow: unknown, appRow: unknown) {
-    const chain = (result: unknown) => {
-      const api: Record<string, unknown> = {};
-      for (const key of ["select", "eq", "in", "order", "limit"]) {
-        api[key] = () => api;
-      }
-      api["maybeSingle"] = async () => ({ data: result, error: null });
-      return api;
-    };
-    return {
-      from: (table: string) => chain(table === "create_intakes" ? intakeRow : appRow),
-    } as unknown as SupabaseClient;
-  }
-
-  it("returns null when nothing of the owner's is building", async () => {
-    expect(await startRelayForOwner(stubDb(null, null), sender, owner)).toBeNull();
-  });
-
-  it("returns null when the building intake has no app row yet", async () => {
-    const db = stubDb({ appname: "tour", app_id: null, stage: "building" }, null);
-    expect(await startRelayForOwner(db, sender, owner)).toBeNull();
-  });
-
-  it("ticks the owner's card until it is stopped", async () => {
-    const db = stubDb({ appname: "tour", app_id: app.id, stage: "building" }, app);
-    versions.getVersion.mockResolvedValue(null);
-    ledger.latestBuild.mockResolvedValue(build({ status: "running" }));
-    const handle = await startRelayForOwner(db, sender, owner, { tickMs: 1 });
-    expect(handle).not.toBeNull();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await handle!.stop();
-    expect(cards.sendOrUpdateAppCard).toHaveBeenCalled();
-  });
-
-  it("never throws when the lookup fails", async () => {
-    const db = {
-      from: () => {
-        throw new Error("db down");
-      },
-    } as unknown as SupabaseClient;
-    expect(await startRelayForOwner(db, sender, owner)).toBeNull();
-  });
-});

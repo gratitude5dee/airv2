@@ -36,6 +36,8 @@ const V12_IDS = [
   "C30",
 ];
 
+const V13_IDS = ["C40", "C41", "C42", "C43"];
+
 function status(over: Partial<CreateStatus> = {}): CreateStatus {
   return {
     slug: "owner-countdown",
@@ -104,6 +106,8 @@ function v12Case(over: Partial<CreateCase> = {}): CreateCase {
     expect_locked_tests_min: null,
     expect_dev_url: null,
     skip_reason: null,
+    expect_job_state: null,
+    expect_card: null,
     ...over,
   };
 }
@@ -164,6 +168,7 @@ describe("create eval cases", () => {
       "C03",
       "C04",
       ...V12_IDS,
+      ...V13_IDS,
     ]);
     expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length);
     for (const c of cases) {
@@ -692,12 +697,36 @@ describe("create eval grader — V12 axes", () => {
       questions: "n/a",
       locked_tests: "n/a",
       dev_url: "pass",
+      job_state: "n/a",
+      card: "n/a",
     });
     const claimed = gradeCase(
       c24,
       result({ ...dev, output: "dev build is live and published on mini.wzrd.tech/a/tour26" }),
     );
     expect(claimed.must_not_do).toBe("fail");
+  });
+
+  it("grades the V13 axes: job state, the single card marker and two bubbles", () => {
+    const goCase = v12Case({ expect_job_state: "running", expect_card: true });
+    const jobStatus = status({ job: { id: "job-1", state: "running", step: "code", percent: 30, dev_url: null } });
+    const cardLine = "On it — building Gig poster. [card: create alice-gig-poster job=5f7a1c2e]";
+    expect(gradeCase(goCase, result({ output: cardLine, status_after: jobStatus }))).toMatchObject({
+      job_state: "pass",
+      card: "pass",
+    });
+    // A second card (or a missing marker) fails the two-bubbles rule.
+    expect(
+      gradeCase(goCase, result({ output: `${cardLine} [card: create alice-gig-poster job=9f7a1c2e]`, status_after: jobStatus })).card,
+    ).toBe("fail");
+    expect(gradeCase(goCase, result({ output: "building…", status_after: jobStatus })).card).toBe("fail");
+    // Wrong job state fails the job axis.
+    expect(
+      gradeCase(goCase, result({ output: cardLine, status_after: status({ job: { id: "job-1", state: "stuck", step: "check", percent: 70, dev_url: null } }) })).job_state,
+    ).toBe("fail");
+    expect(gradeCase(goCase, result({ output: cardLine, status_after: null })).job_state).toBe("fail");
+    // Unset axes stay n/a.
+    expect(gradeCase(v12Case(), result())).toMatchObject({ job_state: "n/a", card: "n/a" });
   });
 
   it("records a skipped case with every check n/a and never as a pass", () => {

@@ -21,6 +21,7 @@ import { splitPublishedSlug } from "../miniapps/nested";
 import {
   createDraft,
   ownedApp,
+  resolveOwnedAppRef,
   publisherUsername,
   slugFor,
   validateAppName,
@@ -271,10 +272,18 @@ export async function filePublishDecision(
 
 /* ----------------------------------------------------------- finalize */
 
-/** `app` may be the flat `<u>-<a>` slug or a bare appname; both resolve to the owner's row. */
+/**
+ * `app` may be the flat `<u>-<a>` slug or a bare appname; both resolve to
+ * the owner's row. F4 (V13 §9.2): the appname wins — a hyphenated name also
+ * parses as a slug, so slug-first would shadow the app.
+ */
 export async function resolveOwnedSlug(supabase: SupabaseClient, userId: string, app: string): Promise<string> {
-  if (splitPublishedSlug(app)) return app;
-  return slugFor(await publisherUsername(supabase, userId), validateAppName(app));
+  const resolved = await resolveOwnedAppRef(supabase, userId, app);
+  if (resolved) return resolved.slug;
+  // Keep the historical error shape: a bad appname is a 400, a good one that
+  // resolves to nothing is a 404 from ownedApp on the slug it made.
+  const slug = slugFor(await publisherUsername(supabase, userId), validateAppName(app));
+  return (await ownedApp(supabase, userId, slug)).slug;
 }
 
 export interface FinalizeResult {

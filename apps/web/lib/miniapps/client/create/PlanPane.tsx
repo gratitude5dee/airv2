@@ -29,6 +29,10 @@ export interface PlanPaneProps {
   onAdvanced: () => Promise<void>;
   /** Send free text to the Planner as a Create turn (the studio's `send`). */
   onAnswer?: (text: string) => void;
+  /** V13 §9.1: Build this starts a job instead of the V12 build chain. */
+  v13?: boolean;
+  /** After `go` lands — the studio switches to the job's progress view. */
+  onGo?: (jobId: string) => void;
 }
 
 const FIELD =
@@ -41,6 +45,8 @@ export function PlanPane({
   run,
   onAdvanced,
   onAnswer,
+  v13,
+  onGo,
 }: PlanPaneProps) {
   const [template, setTemplate] = useState<IntakeTemplate | "">("");
   const [content, setContent] = useState("");
@@ -73,7 +79,14 @@ export function PlanPane({
 
   function confirm() {
     run(async () => {
-      await post({ event: "confirm" });
+      if (v13) {
+        // GP3 (§0.1): same endpoint the Box's `air-create go` calls.
+        const data = await postJson<{ job_id: string }>("/api/create/go", { appname, kind: "initial" });
+        if (data.error) throw new Error(data.error);
+        if (typeof data.job_id === "string") onGo?.(data.job_id);
+      } else {
+        await post({ event: "confirm" });
+      }
       await onAdvanced();
     });
   }

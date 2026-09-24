@@ -14,7 +14,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { CREATE_SESSION_PREFIX } from "../chat/relay";
 import { createRun, ensureSession, stopRun } from "../hermes/client";
-import { createModelFor, isSpeedTier, type SpeedTier } from "../entitlements/models";
+import {
+  createModelFor,
+  isCreateStage,
+  isSpeedTier,
+  type SpeedTier,
+} from "../entitlements/models";
 import {
   PublishError,
   validateAppName,
@@ -107,13 +112,46 @@ export function createInstructions(ctx: ProjectContext): string {
   return `${createSystemPrompt().trimEnd()}\n\n${projectContext(ctx)}\n`;
 }
 
+/**
+ * V13 §8 — the contract a job-driven brief/code/fix turn carries as its
+ * instructions' last paragraph.
+ */
+export function jobTurnContract(role: "brief" | "code" | "fix", changeFile?: string): string {
+  const task =
+    role === "brief"
+      ? "Write goal.md from plan.md; copy `## Tests` into `air.json.tests`; mark at least 2 tests `locked`."
+      : role === "code"
+        ? changeFile
+          ? `Read goal.md and ${changeFile}, then apply the change.`
+          : "Read goal.md, then implement it."
+        : "Read goal.md and the findings below, then fix them.";
+  return (
+    `${task} Edit only src/ and public/ (and air.json fields other than \`tests\`). ` +
+    "You may run `air-create compile`. Do not run `go`, `build` or `release`. " +
+    "End with one line saying what you changed."
+  );
+}
+
 export interface TurnInput {
   appname: string;
   /** Raw prompt; validated by `normalizePrompt`. */
   input: unknown;
   /** Owner's requested tier; the gateway clamps it to the entitlement. */
   tier?: string | undefined;
-  trigger?: "web" | "imessage" | undefined;
+  trigger?: "web" | "imessage" | "job" | undefined;
+  /**
+   * V13 §8/F7 — which role this turn plays, appended as `#<stage>` on the
+   * model request (`create-<tier>:<slug>#<stage>`) so gateway completions
+   * meter under `agent_runs.create_stage`. The job's brief turns pass
+   * `plan`, its code and fix turns `build`.
+   */
+  stage?: string | undefined;
+  /**
+   * V13 §8 — extra instruction paragraph appended after the project
+   * context: the job's brief/code/fix contract lives here, not in the
+   * shared system prompt.
+   */
+  instructions?: string | undefined;
 }
 
 export interface TurnResult {
@@ -122,6 +160,10 @@ export interface TurnResult {
   slug: string;
   appname: string;
   tier: SpeedTier;
+  /** The app row id the run belongs to (V13: the job links by `app_id`). */
+  app_id: string;
+  /** The agent_runs row this run is linked to. */
+  row_id: string;
 }
 
 export function normalizePrompt(input: unknown): string {
@@ -190,17 +232,18 @@ export async function startCreateTurn(
       run = await createRun(box.target, {
         input: prompt,
         sessionId: session,
-        model: createModelFor(tier, app.slug),
-        instructions: createInstructions({
-          appname,
-          slug: app.slug,
-          lane: app.lane,
-          status: app.status,
-          draftVersion: app.draft_version,
-          liveVersion: app.status === "published" ? app.bundle_version : null,
-          kitVersion: kitVersion(),
-          budget: context.budget,
-        }),
+        model: createModelFor(tier, app.slug, isCreateStage(input.stage) ? input.stage : null),
+        instructions:
+          createInstructions({
+            appname,
+            slug: app.slug,
+            lane: app.lane,
+            status: app.status,
+            draftVersion: app.draft_version,
+            liveVersion: app.status === "published" ? app.bundle_version : null,
+            kitVersion: kitVersion(),
+            budget: context.budget,
+          }) + (input.instructions ? `\n${input.instructions}\n` : ""),
         metadata: { app: "create", resource: appname, surface: "miniapp" },
       });
     } catch (error) {
@@ -232,7 +275,7 @@ export async function startCreateTurn(
       await closeRow();
       throw new PublishError("could not open the Create run; try again", 503);
     }
-    return { run_id: run.run_id, session, slug: app.slug, appname, tier };
+    return { run_id: run.run_id, session, slug: app.slug, appname, tier, app_id: app.id, row_id: rowId };
   } finally {
     await armStopAfter(supabase, userId).catch(() => undefined);
   }
@@ -277,11 +320,11 @@ export async function stopCreateTurn(
 
 /** Close an open Create run row, retrying a failed write a bounded number
  * of times; false (after a content-free log line) when it stayed open. */
-async function closeCreateRunRow(
+export async function closeCreateRunRow(
   supabase: SupabaseClient,
   userId: string,
   rowId: string,
-  outcome: "failed" | "interrupted"
+  outcome: string
 ): Promise<boolean> {
   for (let attempt = 0; attempt < CLOSE_ROW_ATTEMPTS; attempt += 1) {
     const { error } = await supabase

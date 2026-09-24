@@ -1,7 +1,7 @@
 ---
 name: create-miniapp
-description: "Build or host a wzrd.tech mini-app for your human: a /create sentence (questions, plan, dev link at link.wzrd.tech/<username>/<app-name>) or an HTML file / zip / folder (Drop) becomes a version the owner previews. You plan, build, QA, test and stage; only the owner makes it live at mini.wzrd.tech/<username>/<app-name>."
-version: 4.0.0
+description: "Build or host a wzrd.tech mini-app for your human: a /create sentence (questions, plan, then `air-create go` starts the job — dev link at <username>-<appname>.dev.wzrd.tech) or an HTML file / zip / folder (Drop) becomes a version the owner previews. You plan and go; the job builds, checks and publishes the dev link; only the owner makes it live at mini.wzrd.tech/<username>/<app-name>."
+version: 5.0.0
 author: air
 license: MIT
 platforms: [linux]
@@ -57,11 +57,12 @@ Use tokens (`var(--canvas)`, `var(--ink)`, `var(--accent)` …) and the shell cl
 air-create new <appname> [--lane vibe|drop|import] [--title "<name>"]   # scaffold ~/.hermes/create/<appname>/
 air-create plan <appname> [--deliver]     # posts plan_written; --deliver attaches plan.md to the owner's thread
 air-create confirm <appname>              # checks goal.md + air.json.tests[] (a JSON array), posts confirm → stage confirmed
-air-create build <appname>                # Build Service → draft version + preview; prints findings
-air-create qa <appname>                   # Preview QA in this Box's browser; posts qa_score
-air-create test <appname>                 # runs air.json.tests[] in this Box's browser at 390×760; posts {total, passed, failed_ids}
-air-create release <appname> dev          # promotes the draft to the dev channel (CR22 checked server-side); prints the url
-air-create status <appname|slug>          # draft/dev/live versions, findings, build log, qa_score, tests, budget
+air-create go <appname> [--change]        # V13 §8: starts the job; prints the reply + the [card: create …] marker; the turn ends
+air-create compile <appname>              # fast syntax+lint pass for the turn you're in (≤5/turn)
+air-create build <appname>                # legacy V12 lane — the job builds now; kept for one release in flight
+air-create test <appname>                 # legacy V12 lane — the job's Browser Run checks now
+air-create release <appname> dev          # legacy V12 lane — the job publishes the dev link now
+air-create status <appname|slug>          # + `job` (state/step/percent/dev_url) — the V13 job the app belongs to
 air-create drop <path> [--name <appname>] [--title "<name>"]
 air-create finalize <appname> --name "<n>" --description "<d>" [--icon <path>|--generate-icon] [--no-mirror] [--unlisted]
 air-create publish <appname> [--title "<name>"]   # V11 path: files the owner's decision without finalize answers
@@ -76,7 +77,7 @@ Each is `curl` to `/api/create/*` on the control plane with this Box's gateway t
 ```text
 ~/.hermes/create/<appname>/
   air.json          manifest, schema air.app.v1 (below); tests[] is the §4 Tests array
-  intake/           prompt.md, attachments.json (written for you); questions.md, answers.v<n>.md, finalize.json (yours)
+  intake/           prompt.md (you write it on the first /create turn, §8 V13), attachments.json; questions.md, answers.v<n>.md, finalize.json (yours)
   plan.md           owner-facing plan (Appendix A skeleton, ≤ 60 lines); revisions also saved as plan.v<n>.md
   goal.md           Builder brief (Appendix B skeleton, ≤ 200 lines); append to ## Build log only
   create.plan.md    V11 scratch plan for turns without a marker; it never leaves the Box
@@ -121,8 +122,8 @@ Each is `curl` to `/api/create/*` on the control plane with this Box's gateway t
 { "id": "hero-visible", "see": "October tour", "locked": true }
 { "id": "tickets-link", "tap": "[data-test=tickets]", "expectHref": "https://dice.fm/", "locked": true }
 { "id": "countdown-ticks", "wait": 1100, "changed": "[data-test=countdown]" }
-{ "id": "rsvp-saves", "type": ["[data-test=name]", "Ana"], "tap": "[data-test=rsvp]", "see": "Ana", "role": "owner" }
-{ "id": "guest-readonly", "role": "guest", "missing": "[data-test=rsvp]" }
+{ "id": "rsvp-saves", "type": ["[data-test=name]", "Ana"], "tap": "[data-test=rsvp]", "see": "Ana" }
+{ "id": "guest-readonly", "missing": "[data-test=rsvp]" }
 ```
 
 `see` visible text · `missing` selector absent or hidden · `tap` click · `type` `[selector, text]` · `wait` ms (≤ 10 000) · `changed` the selector's text differs from before the wait · `expectHref` the tapped link's `href` starts with the value (the link is not followed) · `viewport` `"390x760"` · `role` `owner` (the preview link) or `guest` (a guest grant; without one the test is reported failed, not skipped). The reply is `{ "tests": { "total": n, "passed": m, "failed_ids": [...] } }` — ids only, never page text. The dev release needs `passed == total`. Write ≥ 2 `locked: true` tests in the plan turn; the Builder may add tests, never remove locked ones.
@@ -145,11 +146,11 @@ air-create drop ~/.hermes/inbox/1712345678-index.html --name promo --title "Tour
 
 The marker line names the intake: `[create-intake tour26 stage=asking questions_max=3]`. The owner never sees it. `<appname>` is the workspace; `stage` is where the intake is; `questions_max` caps the questions. Only the owner advances an intake — anyone else already got the owner-only line before you were called. Stage by stage:
 
-1. **`stage=asking`** — read `intake/prompt.md`, `intake/attachments.json`, DESIGN.md and the template scaffolds; pick the template. Write **zero to `questions_max`** questions to `intake/questions.md`, one per slot in this order and only about what the prompt does not settle: template (when two fit), content (the one fact the app cannot ship without), taste (one binary or "send a screenshot"). Reply with them in ONE message, numbered, ending exactly: `reply in one message; say **you pick** for any`. Nothing else in that message — no plan, no build. Zero questions → go straight to step 2 in the same turn.
+1. **`stage=asking`** — first write `intake/prompt.md` from the owner's message (V13: the skill files the prompt, the control plane never pushes content into the workspace), then read `intake/prompt.md`, `intake/attachments.json`, DESIGN.md and the template scaffolds; pick the template. Write **zero to `questions_max`** questions to `intake/questions.md`, one per slot in this order and only about what the prompt does not settle: template (when two fit), content (the one fact the app cannot ship without), taste (one binary or "send a screenshot"). Reply with them in ONE message, numbered, ending exactly: `reply in one message; say **you pick** for any`. Nothing else in that message — no plan, no build. Zero questions → go straight to step 2 in the same turn.
 2. **Owner reply** (answers, "you pick", "skip") — write `intake/answers.v<n>.md`; unanswered slots take the template's defaults. Write `plan.md` from the Appendix A skeleton (≤ 60 lines: name, dev and production URLs, template + theme, screens, copy, attachments, Kit ids, exclusions, the closing "Reply **yes** and I'll build this…" line). Run `air-create plan <appname> --deliver`. The control plane attaches the file to the owner's thread — **never paste the plan into chat**. Reply with three lines: `<name> → link.wzrd.tech/<u>/<a>`, template + theme, `reply **yes** to build, or tell me what to change`. A second question round is allowed only when an answer contradicts the prompt; a third never.
 3. **Edits** ("make it dark", "call it tour26") — rewrite `plan.md` (keep the previous as `plan.v<n>.md`), `air-create plan <appname> --deliver` again, one line on what changed. After five revisions say "let's finish this in the Create surface" and stop revising. "cancel" ends the intake: one line, no build.
-4. **"yes" / "go" / "build it"** — write `goal.md` from the Appendix B skeleton (frontmatter `schema: air.goal.v1`, screens with Kit ids, `useAirState` resources and `data-test` hooks, actions, functions, `## Tests` with ≥ 2 `locked: true` tests, acceptance, out of scope, an empty `## Build log`). Copy the `## Tests` array verbatim into `air.json.tests`. Run `air-create confirm <appname>` — it refuses when `tests` is missing or not an array. Then, in the same turn and without narrating (§7): edit `src/`, `air-create build`, fix hard findings, `air-create qa`, `air-create test`, fix what fails, repeat (at most six build turns), then `air-create release <appname> dev`. Say `dev build is live: <url>` **only after `release` has returned the url**, then: `share it with anyone. say **ship it** when you want it in production.` Nothing else — the card already shows the state.
-5. **More edits after dev** — edit → build → qa → test → `release <appname> dev`; the dev pointer moves on success; one line.
+4. **"yes" / "go" / "build it"** (V13) — run `air-create go <appname>`; it posts `confirm` for you, hands the job to the Cloudflare lane and prints two lines you send verbatim: the `reply` ("On it — building …") and the `card` marker (`[card: create <slug> job=<id>]`). The turn ENDS there — the job briefs itself (its own Box turn writes `goal.md` + `air.json.tests`), codes, builds, checks in Browser Run, fixes up to three rounds and publishes the dev link. You never run `build`/`qa`/`test`/`release` for it — they print "the job does this now". When the owner's next message is a change ("make it bigger"), write it to `intake/changes/<n>.md` (next number) and run `air-create go <appname> --change` — same two lines, same end-of-turn. `stuck` on `air-create status <appname>`'s `job` means the job wants you: read `job.error_rule`, fix the workspace by hand, then `go --change` again.
+5. **More edits after dev** — `intake/changes/<n>.md` → `air-create go <appname> --change`; the dev pointer moves when the job finishes; the job's notification carries the link.
 6. **"ship it" / "finalize" / "production"** — ask in one message: `before it ships: name? one-line description? icon — send an image or say **make one**.` ("keep it" accepts the plan's name and description; "unlisted" keeps it out of the App Store; "no mirror" skips the source mirror.) Write the answers to `intake/finalize.json`, then `air-create finalize <appname> --name "…" --description "…" [--icon ~/.hermes/inbox/<file> | --generate-icon] [--no-mirror] [--unlisted]`. Reply `ready for your approval — tap Needs-you to put it on mini.wzrd.tech/<u>/<a>.` Never say `published`, live, or "on mini" before the owner's decision resolves; `air-create status` shows `"status": "published"` when it has.
 7. **"stop"** at any stage — stop; leave the stage as it is. **"try again"** after a failure — rebuild from the last plan.
 
@@ -169,13 +170,14 @@ Countdown is staged as a draft — tap the card to preview it, then say "publish
 
 If a card went out in the last two minutes it is edited in place; do not send a second one. When the owner asks for a change, edit → build → (qa) → one line; the preview on their surface reloads by itself.
 
-## 7. Progress
+## 7. Progress (V13)
 
-While an intake builds, the control plane owns the progress card: it reads the build, QA and test state itself and updates the caption `<name> · <stage> · <percent>%` every few seconds. So:
+After `go` prints the reply and card, the job owns everything: the card is sent once and never edited, and the progress mini-app it opens fills live from Cloudflare. Two bubbles per build, total — the card and the result line the platform sends. So:
 
-- Never narrate progress in text while the card is live — no "building…", "running QA", "almost there", no percentages, no stage names. Work silently; the card and the typing indicator carry the state.
-- One message per stage transition, and only the ones §6 lists: the questions, the three plan lines, `dev build is live: <url>`, the finalize question, `ready for your approval`.
-- Findings and failing test ids go into the source, not the chat, until the loop ends. When it ends badly (three failed builds, a `429` `create_budget`, a loop that does not converge in six turns) say one line: `I'm stuck on <first finding rule or failing test id>. open the Create surface to look, or say **try again**.` and stop until the owner speaks.
+- Never narrate progress — no "building…", no percentages, no stage names, ever.
+- Never call `build`/`qa`/`test`/`release` for a job in flight.
+- `air-create compile <appname>` is the in-turn self-check (≤5 per turn — a 429 means fix by hand or let the job check).
+- The job's Box turns arrive with instructions — follow them exactly (brief → write `goal.md` + `air.json.tests`; code → apply `goal.md` or the named `intake/changes/<n>.md`; fix → resolve the listed rule ids).
 
 ## 8. Publish — the owner's decision
 
@@ -232,7 +234,7 @@ Until the owner approves, the live app has no backend and the draft runs against
 
 Bad: "Done — your countdown is live!" after `build` ✗ · "building… 40%" in chat ✗ · pasting the plan into the reply ✗ · "dev build is live" before `release` returned ✗ · "backend enabled, it can now call Stripe" after `functions` ✗ · opening `preview_url` in the browser ✗ · `npm install framer-motion` ✗ · summarizing three findings as "a few CSP things" ✗
 
-Good: questions (one message) → `plan --deliver` + three lines → **yes** → `confirm` → `build` → `qa` → `test` → `release dev` → `dev build is live: link.wzrd.tech/alice/countdown` → **ship it** → `finalize` → `ready for your approval`. ✓ Without a marker: `new` → plan → `build` → `qa` → one sentence + `[card: app alice-countdown]`, findings quoted, then wait for the owner's word before `publish`. ✓
+Good: questions (one message) → `plan --deliver` + three lines → **yes** → `air-create go` → reply + `[card: create …]` → turn ends → the platform's live line carries the dev link → **ship it** → `finalize` → `ready for your approval`. ✓ Without a marker: `new` → plan → `build` → `qa` → one sentence + `[card: app alice-countdown]`, findings quoted, then wait for the owner's word before `publish`. ✓
 
 ---
 

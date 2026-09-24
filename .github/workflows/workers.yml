@@ -1,0 +1,62 @@
+# Deploy the Cloudflare workers (V13 §11.3): air-create (Workflow + DO +
+# Browser Run), air-dev (dev-link router), air-dispatcher (app origin).
+# Secrets needed in repo settings: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+# Worker secrets (CREATE_BRIDGE_SECRET, CANDIDATE_SECRET, LIVE_TOKEN_SECRET,
+# CONTROL_PLANE_ORIGIN, APP_ORIGIN_SIGNING_KEY) are provisioned once per
+# environment with `wrangler secret put` — never in CI.
+name: workers
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/workers/**"
+      - ".github/workflows/workers.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: workers-deploy
+  cancel-in-progress: true
+jobs:
+  create:
+    name: air-create
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: infra/workers/create
+      - run: npx tsc --noEmit
+        working-directory: infra/workers/create
+      - run: npx vitest run
+        working-directory: infra/workers/create
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infra/workers/create
+          command: deploy
+  dev-router:
+    name: air-dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infra/workers/dev-router
+          command: deploy
+  dispatcher:
+    name: air-dispatcher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infra/workers
+          command: deploy

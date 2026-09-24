@@ -35,6 +35,7 @@ import {
   type CheckoutHandoff,
   type CheckoutHandoffStatus,
 } from "../checkout/handoffs";
+import { getJob } from "../create/job";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
@@ -84,10 +85,10 @@ const CARD_COPY: Partial<Record<string, { name: string; line: string }>> = {
  */
 const STORE_PAGE_KINDS: ReadonlySet<string> = new Set(["create", "app"]);
 
-export function createSurfacePath(kind: string, resourceId: string): string {
-  return kind === "app" && resourceId !== "default"
-    ? `/create?app=${encodeURIComponent(resourceId)}`
-    : "/create";
+export function createSurfacePath(kind: string, resourceId: string, jobId?: string): string {
+  const appScoped = (kind === "app" || kind === "create") && resourceId !== "default";
+  const job = jobId ? `&job=${encodeURIComponent(jobId)}` : "";
+  return appScoped ? `/create?app=${encodeURIComponent(resourceId)}${job}` : "/create";
 }
 
 export function cardLayout(appSlug: string): {
@@ -119,10 +120,11 @@ export function mintSignedLink(
   userId: string,
   appSlug: string,
   resourceId: string,
-  via?: "card" | undefined
+  via?: "card" | undefined,
+  jobId?: string
 ): string {
   if (STORE_PAGE_KINDS.has(appSlug)) {
-    const next = createSurfacePath(appSlug, resourceId);
+    const next = createSurfacePath(appSlug, resourceId, jobId);
     return `${env.miniappOrigin()}/api/mini/session?t=${mintToken(userId, STORE_APP, "store", CARD_LINK_TTL_MINUTES, { via })}&next=${encodeURIComponent(next)}`;
   }
   // First-party apps live at mini.wzrd.tech/<slug> (MA0), published apps at
@@ -198,6 +200,27 @@ export async function appCardLayout(
   return { caption: app.name, subcaption: line, summary: `${app.name} — ${line}` };
 }
 
+/**
+ * V13 §5.1 — the once-sent progress card's bubble copy: the app name and
+ * the job's motion word ("Building" for a first build, "Updating" for a
+ * change). The card itself is never edited (D3) so it says nothing live —
+ * the mini-app behind the tap carries the moving state.
+ */
+export async function createCardLayout(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string,
+  jobId?: string
+): Promise<CardLayoutOverride> {
+  const [app, job] = await Promise.all([
+    getRegistryApp(supabase, slug).catch(() => null),
+    jobId ? getJob(supabase, jobId).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (!app || app.owner_user_id !== userId || (job && job.user_id !== userId)) return {};
+  const line = job?.kind === "change" ? "Updating" : "Building";
+  return { caption: app.name, subcaption: line, summary: `${app.name} — ${line}` };
+}
+
 export async function sendMiniAppCard(
   supabase: SupabaseClient,
   spaceId: string,
@@ -205,14 +228,15 @@ export async function sendMiniAppCard(
   userId: string,
   appSlug: CardKind,
   resourceId: string,
-  layout?: CardLayoutOverride
+  layout?: CardLayoutOverride,
+  jobId?: string
 ): Promise<void> {
   const sender = await createSpectrumSender();
   try {
     const message = await sender.sendApp(
       spaceId,
       phone,
-      () => mintSignedLink(userId, appSlug, resourceId, "card"),
+      () => mintSignedLink(userId, appSlug, resourceId, "card", jobId),
       {
         ...cardLayout(appSlug),
         ...(appSlug === "app" ? await appCardLayout(supabase, userId, resourceId) : {}),
@@ -241,16 +265,29 @@ export async function sendMiniAppCard(
 /** Most cards one reply may fan out (the onboarding tour sends a few). */
 const MAX_MARKED_CARDS = 4;
 
-/** `[card: app <slug>]` carries a resource; every other marker is bare. */
+/**
+ * `[card: app <slug>]` carries a resource, `[card: create <slug> job=<id>]`
+ * a resource and a job (V13 §5.1); every other marker is bare.
+ */
 export function parseCardMarker(
   marker: string
-): { kind: CardKind; resourceId: string } | null {
-  const [kind = "", resource] = marker.trim().toLowerCase().split(/\s+/, 2);
+): { kind: CardKind; resourceId: string; jobId?: string } | null {
+  const tokens = marker.trim().toLowerCase().split(/\s+/);
+  const kind = tokens[0] ?? "";
+  const jobToken = tokens.find((token) => token.startsWith("job="));
+  const jobId = jobToken?.slice(4);
+  const resource = tokens.find(
+    (token, index) => index > 0 && !token.startsWith("job=")
+  );
   if (!isCardKind(kind)) return null;
   if (kind === "app" || kind === "checkout") {
     if (!resource || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(resource)) return null;
     if (kind === "checkout" && !isCheckoutHandoffId(resource)) return null;
     return { kind, resourceId: resource };
+  }
+  if (kind === "create" && resource) {
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(resource)) return null;
+    return { kind, resourceId: resource, ...(jobId ? { jobId } : {}) };
   }
   return { kind, resourceId: "default" };
 }
@@ -419,7 +456,7 @@ export async function sendMarkedCards(
   for (const marker of kinds.slice(0, MAX_MARKED_CARDS)) {
     const parsed = parseCardMarker(marker);
     if (!parsed) continue;
-    const { kind, resourceId } = parsed;
+    const { kind, resourceId, jobId } = parsed;
     let claim: CardClaim | undefined;
     try {
       if (kind === "app") {
@@ -436,13 +473,21 @@ export async function sendMarkedCards(
       } else {
         claim = await claimCardSend(supabase, owner.userId, kind);
         if (!claim) continue;
+        // A `create <slug>` marker (V13 §5.1) is the once-sent progress card:
+        // its bubble names the app and the job it tracks.
+        const layout =
+          kind === "create" && resourceId !== "default"
+            ? await createCardLayout(supabase, owner.userId, resourceId, jobId)
+            : undefined;
         await sendMiniAppCard(
           supabase,
           owner.spaceId,
           owner.phone,
           owner.userId,
           kind,
-          resourceId
+          resourceId,
+          layout,
+          jobId
         );
       }
       sent += 1;

@@ -62,9 +62,14 @@ export interface DevRelease {
   expires_at: string;
 }
 
-/** `https://link.wzrd.tech/<u>/<a>` — the dev URL for a registry slug (§6). */
+/** `https://link.wzrd.tech/<u>/<a>` — the V12 dev URL for a registry slug (§6). */
 export function devUrl(app: Pick<RegistryApp, "slug">): string {
   return `${env.linkappOrigin()}${nestedPathFor(app.slug)}`;
+}
+
+/** V13 CF3 — the per-app origin dev link: `https://<slug>.dev.wzrd.tech/`. */
+export function devOriginUrl(app: Pick<RegistryApp, "slug">): string {
+  return `https://${app.slug}.${createConfig.devOriginSuffix()}/`;
 }
 
 /** True while the dev pointer is set and its expiry is still ahead of `now`. */
@@ -137,11 +142,24 @@ function expiryFrom(now: Date): string {
  * `not_ready` with the CR22 reasons, 404 for an unknown version, 503 when
  * the app-origin lane is unconfigured (nothing can serve a dev release then).
  */
+export interface PromoteOptions {
+  /**
+   * V13 §4.2 step 8 — the job's own gate is the check step (smoke + locked
+   * tests, D5); the V12 CR22 gate (QA ≥ min + all declared tests) stays on
+   * for the owner-driven `air-create release` path. The adapter's
+   * publish-dev passes `gate: false`.
+   */
+  gate?: boolean;
+  /** V13 CF3 — the URL reported back; defaults to the V12 link host. */
+  url?: string;
+}
+
 export async function promoteToDev(
   supabase: SupabaseClient,
   app: RegistryApp,
   version: string,
-  now = new Date()
+  now = new Date(),
+  options: PromoteOptions = {}
 ): Promise<DevRelease> {
   if (!appOriginLaneReady() || !app.owner_user_id) {
     throw new ReleaseError("dev channel unavailable", 503);
@@ -149,8 +167,10 @@ export async function promoteToDev(
   if (!VERSION_RE.test(version)) throw new ReleaseError("invalid version", 400);
   const row = await getVersion(supabase, app.id, version);
   if (!row) throw new ReleaseError("version not found", 404);
-  const reasons = devGateReasons(row);
-  if (reasons.length > 0) throw new ReleaseError("not_ready", 409, reasons);
+  if (options.gate !== false) {
+    const reasons = devGateReasons(row);
+    if (reasons.length > 0) throw new ReleaseError("not_ready", 409, reasons);
+  }
 
   const { files, module } = await loadRelease(app.slug, version);
   if (files.length === 0) throw new ReleaseError("not_ready", 409, ["no_bundle"]);
@@ -180,7 +200,8 @@ export async function promoteToDev(
       expires_at: expiresAt,
     })
   );
-  return { channel: "dev", version, url: devUrl(app), expires_at: expiresAt };
+  const url = options.url ?? devUrl(app);
+  return { channel: "dev", version, url, expires_at: expiresAt };
 }
 
 /** Renewal is the same promotion of the current dev version with a fresh expiry (§6.3). */

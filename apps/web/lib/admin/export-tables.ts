@@ -102,6 +102,9 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // V12 operator actions on this owner's apps (0120): who did what and when,
   // never a reason anyone typed (§12, CR21). The owner may read their own.
   all("admin_audit"),
+  // V13 Create jobs (0126): state, step, percent, round, version, dev_url,
+  // rule/test ids and timestamps only (CF5) — never prompt or code text.
+  all("create_jobs"),
   all("miniapp_installs"),
   { table: "miniapp_guest_grants", column: "created_by", select: "*" },
   all("miniapp_gate_events"),

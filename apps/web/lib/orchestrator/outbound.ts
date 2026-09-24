@@ -18,7 +18,8 @@ import { command } from "../box/client";
 import type { SpectrumSender } from "../spectrum/sender";
 
 export const SEND_FILE_MARKER = /\[send-file:\s*([^\]\n]+)\]/g;
-export const CARD_MARKER = /\[card:\s*([a-z0-9-]+(?:\s+[a-z0-9_-]+)?)\s*\]/gi;
+// V13 §5.1: the create card may carry `job=<uuid>` after its slug.
+export const CARD_MARKER = /\[card:\s*([a-z0-9-]+(?:\s+[a-z0-9_-]+)?(?:\s+job=[0-9a-f-]{8,64})?)\s*\]/gi;
 export const MUSE_MARKER = /\[muse:\s*([^\]\n]{1,2000})\s*\]/gi;
 
 const MARKER_PREFIXES = ["[send-file:", "[card:", "[muse:"];
