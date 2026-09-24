@@ -317,3 +317,9 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 ### Devin Secrets Needed for Freeze testing
 - Approved synthetic client testing: none. It does not prove server after() execution, terminal event persistence, setup-error cleanup, auth/CSP, provider behavior, or iMessage delivery.
 - Live testing requires an explicitly authorized non-production Supabase target/credentials, local signing secrets, provider credentials (`FAL_KEY`, `GMI_CLOUD_API_KEY`) and an approved messaging destination. Do not seed/migrate a shared production project as a development substitute.
+
+### Create V13 lane
+- `*.air.localhost` serving: nss-myhostname resolves `air.localhost` to `::1` only, so `next start` on the default IPv4 bind 404s/refuses for `mini.air.localhost`. Start with `npx next start -p 3999 -H ::` (dual-stack) or keep 127.0.0.1 hosts.
+- Adapter gate testing needs two env vars in the `next start` env: `CREATE_BRIDGE_SECRET` (any value — the adapter routes sign/verify `x-air-sig` HMAC over `ts.method.path.sha256(body)`, ±300s) and `ADMIN_API_KEY` (Bearer for `/api/admin/create/*`). Unsigned adapter calls must 503 when the var is absent and 401 when present but wrong/stale — set it to probe the 400-payload branch (signature genuinely verified, not just presence).
+- `scripts/create-v13-m0.ts` exits 0 with 14 local + 8 credential-gated live probes and rewrites `docs/reports/create-v13-m0.md` (timestamped — expect diff noise if the tree is dirty).
+- create-kit regen: `infra/template/skills/create-miniapp/SKILL.md` is GENERATED — edit `packages/create-kit/prompts/src/skill.md` + `buildSkill` frontmatter in `scripts/lib/design.ts`, then `npx tsx packages/create-kit/scripts/harvest.ts` and confirm `scripts/verify.ts` ok. CI's `verify` job fails on any hand-edit.
