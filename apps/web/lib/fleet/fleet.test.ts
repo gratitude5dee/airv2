@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cutRelease, type TemplateRelease } from "./releases";
 import { isChannelName, setChannelRelease } from "./channels";
-import { hermesCommands, STALE_GIT_LOCK_MINUTES, syncCommand } from "./sync";
+import { hermesCommands, syncCommand } from "./sync";
 
 vi.mock("../storage/r2", () => ({
   putObject: vi.fn().mockResolvedValue(undefined),
@@ -188,18 +188,22 @@ describe("hermesCommands", () => {
 
   it("clears stale git locks before fetching without consulting the process table", () => {
     const checkout = hermesCommands("b".repeat(40))[0] ?? "";
-    const lockGuard = checkout.indexOf("find .git -maxdepth 1 -name '*.lock' -mmin +");
+    const lockGuard = checkout.indexOf("find .git -maxdepth 1 -name '*.lock'");
     expect(lockGuard).toBeGreaterThan(-1);
     expect(lockGuard).toBeLessThan(checkout.indexOf("git fetch"));
+    expect(checkout).toContain("rm -f .git/shallow.lock");
+    expect(checkout.indexOf("rm -f .git/shallow.lock")).toBeLessThan(lockGuard);
     expect(checkout).not.toContain("pgrep");
   });
 
-  it("removes only locks older than the stale threshold, so a lock taken after the check survives", () => {
+  it("clears shallow.lock unconditionally — a fetch killed by the command cap leaves one younger than any age threshold — while other fresh locks survive", () => {
     const checkout = hermesCommands("b".repeat(40))[0] ?? "";
     const guard = checkout
       .split(" && ")
-      .find((step) => step.startsWith("find .git"));
-    expect(guard).toBeDefined();
+      .slice(1, 3)
+      .join(" && ");
+    expect(guard).toContain("rm -f .git/shallow.lock");
+    expect(guard).toContain("find .git");
 
     const repo = mkdtempSync(join(tmpdir(), "hermes-lock-"));
     mkdirSync(join(repo, ".git", "refs"), { recursive: true });
@@ -207,11 +211,8 @@ describe("hermesCommands", () => {
     const live = join(repo, ".git", "index.lock");
     const nested = join(repo, ".git", "refs", "HEAD.lock");
     for (const path of [orphaned, live, nested]) writeFileSync(path, "");
-    const old = new Date(Date.now() - (STALE_GIT_LOCK_MINUTES + 5) * 60_000);
-    utimesSync(orphaned, old, old);
-    utimesSync(nested, old, old);
 
-    execFileSync("sh", ["-c", guard ?? ""], { cwd: repo });
+    execFileSync("sh", ["-c", guard], { cwd: repo });
 
     expect(existsSync(orphaned)).toBe(false);
     expect(existsSync(live)).toBe(true);
