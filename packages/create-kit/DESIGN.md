@@ -389,7 +389,7 @@ One line per component: `path` is the reference to open, `lite` whether it may b
 ### Layout, media, motion blocks
 
 <components>
-<air path="kit/air/ref.md" lite="true" weight="5.7kb" tier="A" touch="true" motion="n/a">Air shell, theme and hooks — Always: theme.css + shell.css give every screen its tokens and vocabulary; index.ts gives useLite(), useReducedMotion(), useTheme(), useAirState(). Tags: air, layout, hooks, state, theme</air>
+<air path="kit/air/ref.md" lite="true" weight="5.9kb" tier="A" touch="true" motion="n/a">Air shell, theme and hooks — Always: theme.css + shell.css give every screen its tokens and vocabulary; index.ts gives useLite(), useReducedMotion(), useTheme(), useAirState(). Tags: air, layout, hooks, state, theme</air>
 <arlan/ghosty-reveal path="kit/arlan/ghosty-reveal/ref.md" lite="true" weight="1.0kb" tier="A" touch="true" motion="static">Ghosty Reveal — A photo bleeds in through a soft, cloudy edge, as if forming out of fog. Pick it for the one hero image or a confirmation reveal; the owner bundles the cloud mask, and text takes fancy/vertical-cut-reveal. Tags: reveal, media, motion, hero, gallery</arlan/ghosty-reveal>
 <fancy/animated-gradient-with-svg path="kit/fancy/animated-gradient-with-svg/ref.md" lite="true" weight="0.9kb" tier="A" touch="true" motion="static">Animated Gradient (SVG) — Soft moving color blobs behind a panel. Uses blur; pixel theme and lite render it flat. Tags: background, motion, ambient</fancy/animated-gradient-with-svg>
 <fancy/circling-elements path="kit/fancy/circling-elements/ref.md" lite="true" weight="0.7kb" tier="A" touch="true" motion="static">Circling Elements — Small items orbiting a center: avatars around a host, badges around a logo. Tags: motion, ambient, decor, gallery</fancy/circling-elements>
@@ -692,4 +692,4 @@ The Build Service enforces these; `scripts/verify.ts` enforces them on the Kit i
 
 Weights in the catalog are gzipped KiB after esbuild with react/react-dom and the shared vendor packages external, so they add. `jsFull` in `meta.json` is the cost when the app has nothing but React.
 
-Measured for Kit 2026.09: the `lite` set (67 renderable components, bundled together with React) is 181.8 KiB JS and 19.9 KiB CSS gzipped against budgets of 300 KiB and 200 KiB.
+Measured for Kit 2026.09: the `lite` set (67 renderable components, bundled together with React) is 181.8 KiB JS and 19.8 KiB CSS gzipped against budgets of 300 KiB and 200 KiB.

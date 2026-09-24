@@ -4,7 +4,7 @@
 
 Always: theme.css + shell.css give every screen its tokens and vocabulary; index.ts gives useLite(), useReducedMotion(), useTheme(), useAirState().
 
-- **Weight**: 1.3 KiB JS (hooks), 4.4 KiB CSS (theme + shell), gzip.
+- **Weight**: 1.3 KiB JS (hooks), 4.6 KiB CSS (theme + shell), gzip.
 - **Files**: `kit/air/theme.css` (tokens for both themes, lite and reduced-motion variants, self-hosted fonts), `kit/air/shell.css` (`.app .panel .card .item .row .kicker .status` vocabulary), `kit/air/index.ts`.
 
 ## Usage

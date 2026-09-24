@@ -1,6 +1,6 @@
 # Air Create V13 — M0 Cloudflare proofs
 
-Run: `npx tsx scripts/create-v13-m0.ts` — 2026-09-24T12:01:29.858Z
+Run: `npx tsx scripts/create-v13-m0.ts` — 2026-09-24T12:46:57.592Z
 
 Local probes assert the shipped code; live probes call Cloudflare. "pending"
 means the env var or operator step in the evidence column is still open.

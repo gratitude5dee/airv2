@@ -157,8 +157,8 @@ export function buildSkill(inputs: DesignInputs): string {
   const frontmatter = [
     "---",
     "name: create-miniapp",
-    'description: "Build or host a wzrd.tech mini-app for your human: a /create sentence (questions, plan, dev link at link.wzrd.tech/<username>/<app-name>) or an HTML file / zip / folder (Drop) becomes a version the owner previews. You plan, build, QA, test and stage; only the owner makes it live at mini.wzrd.tech/<username>/<app-name>."',
-    "version: 4.0.0",
+    'description: "Build or host a wzrd.tech mini-app for your human: a /create sentence (questions, plan, then `air-create go` starts the job — dev link at <username>-<appname>.dev.wzrd.tech) or an HTML file / zip / folder (Drop) becomes a version the owner previews. You plan and go; the job builds, checks and publishes the dev link; only the owner makes it live at mini.wzrd.tech/<username>/<app-name>."',
+    "version: 5.0.0",
     "author: air",
     "license: MIT",
     "platforms: [linux]",
@@ -170,7 +170,7 @@ export function buildSkill(inputs: DesignInputs): string {
   return (
     frontmatter +
     "\n\n" +
-    GENERATED("Box skill body (goal-create-v11 §9.5, goal-create-v12 §11.1).") +
+    GENERATED("Box skill body (goal-create-v11 §9.5, goal-create-v12 §11.1, goal-create-v13 §8).") +
     readText(path.join(PROMPTS_SRC, "skill.md")).trim() +
     `\n\n---\n\nKit ${KIT_VERSION}: ${inputs.metas.length} components, ${liteCount} lite. DESIGN.md beside this file is the catalog.\n`
   );
