@@ -195,13 +195,14 @@ export function syncCommand(release: TemplateRelease): string {
  * Split into sequential commands so each fits the provider's 600s cap:
  * checkout, dependency install, then ref write + service restart.
  *
- * A fetch killed mid-flight (box stopped or archived under it) leaves
- * .git/shallow.lock behind and every later fetch fails with "File exists".
- * Git holds a lock for the life of one operation, and no operation on this
- * shallow checkout outlives the provider's 600s command cap, so a lock file
- * older than STALE_GIT_LOCK_MINUTES is orphaned. Judging by age keeps the
- * cleanup scoped to ~/hermes-agent and never touches a lock created after
- * the check, unlike a process-table probe.
+ * A fetch killed mid-flight (box stopped or archived under it, or the
+ * provider's 600s command cap cutting it off) leaves .git/shallow.lock
+ * behind and every later fetch fails with "File exists". The orphaned lock
+ * can be seconds old when the next repin attempt starts, so an age check
+ * cannot see it — and this command chain is the only legitimate git actor
+ * in ~/hermes-agent, so a shallow.lock already on disk is orphaned by
+ * definition. Other lock files still use the age test: a fresh index.lock
+ * could belong to a live operation and must survive.
  */
 export const STALE_GIT_LOCK_MINUTES = 15;
 
@@ -209,7 +210,8 @@ export function hermesCommands(hermesRef: string): string[] {
   return [
     [
       `cd ~/hermes-agent`,
-      `find .git -maxdepth 1 -name '*.lock' -mmin +${STALE_GIT_LOCK_MINUTES} -delete`,
+      `rm -f .git/shallow.lock`,
+      `find .git -maxdepth 1 -name '*.lock' ! -name 'shallow.lock' -mmin +${STALE_GIT_LOCK_MINUTES} -delete`,
       `git fetch --depth 1 origin ${shellQuote(hermesRef)}`,
       "git checkout --force FETCH_HEAD",
     ].join(" && "),
