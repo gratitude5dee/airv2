@@ -1,0 +1,23 @@
+[Unit]
+Description=AIR vault daemon — privileged vault custody (airvault uid)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/home/user/.hermes-venv/bin/python /usr/local/libexec/air-vaultd.py
+User=airvault
+Group=airv
+EnvironmentFile=/etc/air-vault/env
+StateDirectory=air-vaultd
+StateDirectoryMode=2750
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/user/.hermes/vault /var/lib/air-vaultd
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

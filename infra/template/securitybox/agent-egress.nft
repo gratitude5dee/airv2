@@ -1,0 +1,14 @@
+#!/usr/sbin/nft -f
+# securitybox agent-egress rules — uid airagent only (the terminal cell uid).
+# Blocks the cell from reaching box-local control planes and link-local
+# metadata; the platform lane (uid 1000) is unaffected.
+table inet aircell
+flush table inet aircell
+table inet aircell {
+  chain out {
+    type filter hook output priority 0; policy accept;
+    meta skuid airagent oifname "lo" tcp dport { 631, 1917, 1933, 4369, 8642, 8911, 9119, 9222, 9223, 47984-48010 } drop
+    meta skuid airagent ip daddr 169.254.169.254 drop
+    meta skuid airagent ip6 daddr fe80::/10 drop
+  }
+}

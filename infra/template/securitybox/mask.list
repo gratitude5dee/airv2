@@ -1,0 +1,11 @@
+# Paths masked inside the agent cell (dirs end with '/'; files get /dev/null).
+# ~/.hermes is already denied by ownership (0700 user) — EACCES, not silent
+# loss — so it's NOT masked here. This list covers paths outside ~.
+/etc/air-vault/
+/etc/aircell/
+# (type/totp --type); the daemon enforces per-verb policy.
+/home/user/.ssh/
+/home/user/.aws/
+/home/user/.docker/
+/home/user/.config/gh/
+/home/user/.gnupg/
