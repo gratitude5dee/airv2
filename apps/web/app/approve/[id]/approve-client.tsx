@@ -39,6 +39,13 @@ interface View {
     card_name: string;
     card_masked: string | null;
     link_supported: boolean;
+    cards?: {
+      id: string;
+      name: string;
+      masked: string | null;
+      selected: boolean;
+      is_default: boolean;
+    }[];
   };
   payment?: {
     amount_display: string;
@@ -138,6 +145,7 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [notice, setNotice] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  const [pickedCard, setPickedCard] = useState<string | null>(null);
   const elementsRef = useRef<StripeElementsLike | null>(null);
   const stripeRef = useRef<StripeLike | null>(null);
   const apiUrl = `/api/approvals/${decisionId}${token ? `?k=${encodeURIComponent(token)}` : ""}`;
@@ -188,7 +196,12 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
         const res = await fetch(`/api/approvals/${decisionId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, method, k: token || undefined }),
+          body: JSON.stringify({
+            action,
+            method,
+            k: token || undefined,
+            ...(pickedCard ? { card_item_id: pickedCard } : {}),
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as {
           checkoutUrl?: string;
@@ -212,7 +225,7 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
         setNotice("Something went wrong — try again.");
       }
     },
-    [decisionId, token]
+    [decisionId, token, pickedCard]
   );
 
   // Express Checkout Element — mounts only when the server offered it.
@@ -334,6 +347,11 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
         .visa-badge{width:44px;height:30px;border-radius:6px;background:#1a3c8b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;font-style:italic;letter-spacing:0.03em;flex-shrink:0}
         .pm-name{font-size:15px;font-weight:600}
         .pm-masked{font-size:13px;color:var(--muted)}
+        .card-row.pickable{width:100%;background:none;border:none;padding:8px 6px;cursor:pointer;text-align:left;color:inherit;font:inherit;border-radius:10px}
+        .card-row.pickable:hover{background:var(--surface)}
+        .card-row.pickable.picked{background:var(--surface)}
+        .pick-dot{margin-left:auto;color:var(--muted-2);font-size:14px}
+        .card-row.pickable.picked .pick-dot{color:var(--success)}
         .spacer{flex:1;min-height:16px}
         #express-checkout{width:100%;margin-bottom:12px}
         .legal{text-align:center;font-size:12px;color:var(--muted);line-height:1.5;margin:0 12px 14px}
@@ -390,7 +408,9 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
 
         {(phase === "ready" || phase === "working") && view && (
           <>
-            <div className="agent-chip">&lt;/&gt;</div>
+            <div className="agent-chip">
+              {(view.agent ?? "a").charAt(0).toUpperCase()}
+            </div>
             <h1 className="ask">
               {isTrade
                 ? `${agent} ${tradeAsk}`
@@ -447,7 +467,38 @@ export function ApproveClient({ decisionId }: { decisionId: string }) {
               ) : null}
             </section>
 
-            {cardName ? (
+            {purchase?.cards && purchase.cards.length > 0 ? (
+              <section className="card">
+                {purchase.cards.map((card) => {
+                  const picked =
+                    pickedCard !== null ? pickedCard === card.id : card.selected;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      className={`card-row pickable${picked ? " picked" : ""}`}
+                      onClick={() => setPickedCard(card.id)}
+                    >
+                      <div className="visa-badge">VISA</div>
+                      <div style={{ textAlign: "left" }}>
+                        <div className="pm-name">
+                          {card.name}
+                          {card.is_default ? (
+                            <span className="pm-masked"> · default</span>
+                          ) : null}
+                        </div>
+                        {card.masked ? (
+                          <div className="pm-masked">{card.masked}</div>
+                        ) : null}
+                      </div>
+                      <span className="pick-dot" aria-hidden>
+                        {picked ? "●" : "○"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </section>
+            ) : cardName ? (
               <section className="card">
                 <div className="card-row">
                   <div className="visa-badge">VISA</div>

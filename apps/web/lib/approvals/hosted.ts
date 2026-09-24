@@ -81,6 +81,14 @@ export interface HostedApprovalView {
     card_name: string;
     card_masked: string | null;
     link_supported: boolean;
+    /** Saved vault cards the owner can pick instead — metadata only (C18). */
+    cards?: {
+      id: string;
+      name: string;
+      masked: string | null;
+      selected: boolean;
+      is_default: boolean;
+    }[];
   };
   payment?: {
     amount_display: string;
@@ -157,6 +165,13 @@ export async function loadHostedApproval(
   }
 
   if (decision.kind === "purchase_review") {
+    const { data: vaultCards } = await supabase
+      .from("vault_items")
+      .select("id, name, masked, default_for_purchases")
+      .eq("user_id", userId)
+      .eq("kind", "card")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true });
     view.purchase = {
       host: str(payload["host"]),
       summary: str(payload["summary"]),
@@ -167,6 +182,13 @@ export async function loadHostedApproval(
           ? payload["card_masked"]
           : null,
       link_supported: payload["link_supported"] === true,
+      cards: (vaultCards ?? []).map((card) => ({
+        id: card.id as string,
+        name: card.name as string,
+        masked: (card.masked as string | null) ?? null,
+        selected: (card.id as string) === str(payload["item_id"]),
+        is_default: card.default_for_purchases === true,
+      })),
     };
     return view;
   }
@@ -219,7 +241,8 @@ export async function resolveHostedDecision(
   userId: string,
   decision: HostedDecision,
   action: "approve" | "dismiss",
-  method: "fill" | "link" = "fill"
+  method: "fill" | "link" = "fill",
+  cardItemId: string | null = null
 ): Promise<ApproveResult> {
   // ApproveResult comes from paymentRequests; `trade` rides on the
   // intersection returned to the two callers (needs-you + hosted page), and
@@ -281,6 +304,54 @@ export async function resolveHostedDecision(
       );
       result = { kernel: outcome };
     } else {
+      // Card picker (hosted page): the owner may approve with a different
+      // saved vault card than the one the agent proposed. The fill ticket
+      // binds to whatever item_id the payload names, so swap it — guarded
+      // by the still-pending row — before the normal resolution runs. The
+      // proposed card stays selected when no override arrives.
+      let resolved = decision;
+      if (action === "approve" && method !== "link" && cardItemId) {
+        const current =
+          ((decision.payload ?? {}) as Record<string, unknown>)["item_id"];
+        if (cardItemId !== current) {
+          const { data: card } = await supabase
+            .from("vault_items")
+            .select("id, name, masked")
+            .eq("user_id", userId)
+            .eq("id", cardItemId)
+            .eq("kind", "card")
+            .is("deleted_at", null)
+            .maybeSingle();
+          if (!card) {
+            throw new PurchaseError(
+              "no_card",
+              "the card is no longer in the vault",
+              409
+            );
+          }
+          const nextPayload = {
+            ...((decision.payload ?? {}) as Record<string, unknown>),
+            item_id: cardItemId,
+            card_name: card.name as string,
+            card_masked: (card.masked as string | null) ?? null,
+          };
+          const { data: swapped } = await supabase
+            .from("decisions")
+            .update({ payload: nextPayload })
+            .eq("id", decision.id)
+            .eq("user_id", userId)
+            .eq("status", "pending")
+            .select("id");
+          if (!swapped || swapped.length === 0) {
+            throw new PurchaseError(
+              "already_resolved",
+              "this purchase decision was already resolved",
+              409
+            );
+          }
+          resolved = { ...decision, payload: nextPayload };
+        }
+      }
       try {
         const box =
           action === "approve" && method !== "link"
@@ -289,7 +360,7 @@ export async function resolveHostedDecision(
         await resolvePurchaseReview(
           supabase,
           userId,
-          decision,
+          resolved,
           action === "approve",
           box,
           method
