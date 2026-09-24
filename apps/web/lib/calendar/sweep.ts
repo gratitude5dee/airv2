@@ -8,6 +8,7 @@
  * next_run_at/failure_count. 5 consecutive failures auto-pause + surface in
  * Needs you.
  */
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { completeOperation } from "../migration/admission";
 import { command, readFile } from "../box/client";
@@ -29,6 +30,83 @@ import {
 
 const MAX_FAILURES = 5;
 const SWEEP_BATCH = 10;
+const REPEAT_WINDOW_MS = 6 * 60 * 60 * 1000;
+const DELIVERY_EXCERPT_CHARS = 200;
+// Box/model hiccup text is operator telemetry — it lands in the delivery
+// ledger and the failure counter, never in the owner's thread.
+const TRANSIENT_OUTPUT_RE =
+  /operation interrupted|waiting for model response|insufficient_quota/i;
+
+/** Pure tick classification: what to do with this run's output. */
+export function classifyTickOutput(
+  trimmed: string
+): "suppressed_silent" | "suppressed_transient" | "send" {
+  if (!trimmed || trimmed.includes("[SILENT]")) return "suppressed_silent";
+  if (TRANSIENT_OUTPUT_RE.test(trimmed)) return "suppressed_transient";
+  return "send";
+}
+
+function deliveryHash(text: string): string {
+  return createHash("sha256")
+    .update(text.trim().toLowerCase().replace(/\s+/g, " "))
+    .digest("hex");
+}
+
+async function recordDelivery(
+  supabase: SupabaseClient,
+  schedule: AgentSchedule,
+  disposition: string,
+  contentHash: string | null,
+  excerpt: string | null
+): Promise<void> {
+  await supabase
+    .from("schedule_deliveries")
+    .insert({
+      user_id: schedule.user_id,
+      schedule_id: schedule.id,
+      channel: schedule.deliver,
+      disposition,
+      content_hash: contentHash,
+      excerpt,
+    })
+    .then(({ error }) => {
+      if (error) {
+        console.warn(
+          JSON.stringify({
+            msg: "schedule delivery ledger write failed",
+            schedule_id: schedule.id,
+            error: error.message,
+          })
+        );
+      }
+    })
+    // The ledger is observability — a failed write must not fail the tick.
+    .catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          msg: "schedule delivery ledger write failed",
+          schedule_id: schedule.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    });
+}
+
+async function isRepeatDelivery(
+  supabase: SupabaseClient,
+  scheduleId: string,
+  contentHash: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("schedule_deliveries")
+    .select("id")
+    .eq("schedule_id", scheduleId)
+    .eq("disposition", "delivered")
+    .eq("content_hash", contentHash)
+    .gte("created_at", new Date(Date.now() - REPEAT_WINDOW_MS).toISOString())
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
 
 export interface ScheduleClaim {
   schedule: AgentSchedule;
@@ -236,9 +314,22 @@ export async function runSchedule(
     }
     const endedAt = new Date();
 
-    // deliver: 'none' runs silently — output visible in History only.
+    // Every tick records its disposition in schedule_deliveries — what was
+    // sent, what was suppressed and why — so "why did I get this text" is
+    // answerable and verbatim repeats within REPEAT_WINDOW_MS dedupe.
     const trimmed = output.trim();
-    if (trimmed && !trimmed.includes("[SILENT]")) {
+    const hash = trimmed ? deliveryHash(trimmed) : null;
+    const excerpt = trimmed ? trimmed.slice(0, DELIVERY_EXCERPT_CHARS) : null;
+    const classified = classifyTickOutput(trimmed);
+    let disposition: string;
+    if (classified !== "send") {
+      disposition = classified;
+    } else if (schedule.deliver === "none") {
+      // deliver: 'none' runs silently — output visible in History only.
+      disposition = "skipped";
+    } else if (hash && (await isRepeatDelivery(supabase, schedule.id, hash))) {
+      disposition = "suppressed_repeat";
+    } else {
       let delivered = true;
       if (schedule.deliver === "imessage") {
         delivered = await deliverImessage(supabase, schedule.user_id, trimmed);
@@ -250,9 +341,14 @@ export async function runSchedule(
           trimmed
         );
       }
-      if (!delivered) {
-        throw new Error(`no ${schedule.deliver} destination for delivery`);
-      }
+      disposition = delivered ? "delivered" : "failed";
+    }
+    await recordDelivery(supabase, schedule, disposition, hash, excerpt);
+    if (disposition === "suppressed_transient") {
+      throw new Error("box run produced transient model output — suppressed");
+    }
+    if (disposition === "failed") {
+      throw new Error(`no ${schedule.deliver} destination for delivery`);
     }
 
     await supabase.from("agent_runs").insert({
