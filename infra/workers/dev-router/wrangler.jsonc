@@ -9,7 +9,7 @@
   "routes": [{ "pattern": "*.dev.wzrd.tech/*", "zone_name": "wzrd.tech" }],
   "dispatch_namespaces": [{ "binding": "APPS", "namespace": "air-apps" }],
   "kv_namespaces": [
-    { "binding": "AIR_MANIFEST", "id": "REPLACE_WITH_CF_MANIFEST_KV_ID" },
+    { "binding": "AIR_MANIFEST", "id": "b688d91c96f74206b28aaf2382ed5c44" },
   ],
   "vars": { "DEV_ORIGIN_SUFFIX": "dev.wzrd.tech" },
   "limits": { "cpu_ms": 50 },

@@ -27,7 +27,7 @@ CPU_MS = "50"
 # The live/draft/status pointer written by the control plane (lib/functions/manifest.ts).
 [[kv_namespaces]]
 binding = "AIR_MANIFEST"
-id = "REPLACE_WITH_CF_MANIFEST_KV_ID"
+id = "b688d91c96f74206b28aaf2382ed5c44"
 
 # Exactly-once token exchange: one Durable Object per jti (single-writer),
 # self-deleting after 2× the token TTL. KV cannot give this guarantee.
@@ -42,7 +42,7 @@ new_sqlite_classes = ["TokenReplay"]
 # Content-free CSP report counter per app per day (§17). Optional.
 [[kv_namespaces]]
 binding = "CSP_COUNTS"
-id = "REPLACE_WITH_CSP_COUNTS_KV_ID"
+id = "5d639a5616124c4ba3ca384363cd1b1b"
 
 # Every user-Worker fetch() is routed through the Outbound Worker (§11.3).
 # `params` is the one object the Dispatcher passes on `DISPATCHER.get()`:

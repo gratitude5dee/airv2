@@ -17,7 +17,7 @@ CONTROL_PLANE_ORIGIN = "https://app.wzrd.tech"
 
 [[kv_namespaces]]
 binding = "RUNTIME_TOKENS"
-id = "REPLACE_WITH_CF_RUNTIME_KV_ID"
+id = "fe0ab898e7db4896b69094f165e4c453"
 
 [observability]
 enabled = true
