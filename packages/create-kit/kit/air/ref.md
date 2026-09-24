@@ -33,7 +33,7 @@ function App() {
 
 ## API
 
-- `useAirState(resource?, initial?)` → `{ state, status, canWrite, error, save, update, reload }`
+- `useAirState(resource?, initial?)` → `{ state, status, canWrite, error, save, update, reload } — update accepts a doc or an updater fn`
 - `useLite()` → `boolean`
 - `useReducedMotion()` → `boolean`
 - `useTheme()` → `"atmosphere" | "pixel"`

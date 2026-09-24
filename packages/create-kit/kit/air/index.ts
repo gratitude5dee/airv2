@@ -90,8 +90,8 @@ export interface AirState<T> {
   readonly error: string | null;
   /** Replace the whole state. Resolves false when the write was rejected. */
   readonly save: (next: T) => Promise<boolean>;
-  /** Functional update over the last known state. */
-  readonly update: (fn: (prev: T) => T) => Promise<boolean>;
+  /** Update over the last known state; accepts a full doc or an updater function. */
+  readonly update: (next: T | ((prev: T) => T)) => Promise<boolean>;
   readonly reload: () => Promise<void>;
 }
 
@@ -109,8 +109,21 @@ function byteLength(text: string): number {
  * Owner-writable, guest-readable app state. One JSON document per
  * (owner, app, resource); the server enforces the 256 KiB cap and the
  * owner-only write rule — this client just mirrors them so the UI can say why.
+ *
+ * Call it as `useAirState(initial, options?)`. Generated apps often write
+ * `useAirState("items", { items: [] })` — a resource label as the first arg —
+ * so a string first argument is treated as a label and the second argument
+ * becomes the initial document instead of crashing on first render.
  */
-export function useAirState<T extends object>(initial: T, options: AirStateOptions = {}): AirState<T> {
+export function useAirState<T extends object>(initial: T, options?: AirStateOptions): AirState<T>;
+export function useAirState<T extends object>(resource: string, initial: T): AirState<T>;
+export function useAirState<T extends object>(
+  initialOrResource: T | string,
+  optionsOrInitial: AirStateOptions | T = {}
+): AirState<T> {
+  const labelled = typeof initialOrResource === "string";
+  const initial = (labelled ? (optionsOrInitial as T) : (initialOrResource as T)) ?? ({} as T);
+  const options = (labelled ? {} : optionsOrInitial) as AirStateOptions;
   const path = options.path ?? STATE_PATH;
   const fetchRef = useRef(options.fetch);
   fetchRef.current = options.fetch;
@@ -192,7 +205,10 @@ export function useAirState<T extends object>(initial: T, options: AirStateOptio
     [path]
   );
 
-  const update = useCallback((fn: (prev: T) => T) => save(fn(latest.current)), [save]);
+  const update = useCallback(
+    (next: T | ((prev: T) => T)) => save(typeof next === "function" ? (next as (prev: T) => T)(latest.current) : next),
+    [save]
+  );
 
   useEffect(() => {
     void reload();

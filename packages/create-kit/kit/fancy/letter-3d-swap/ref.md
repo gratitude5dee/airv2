@@ -4,7 +4,7 @@
 
 Letters flip on a 3D axis on hover. Hover-only; heavier than the 2D swaps.
 
-- **Weight**: 1.5 KiB JS + 0.1 KiB CSS (own, gzip); 32.9 KiB with vendor deps. **Lite**: true. **Touch**: false. **Reduced motion**: none.
+- **Weight**: 1.5 KiB JS + 0.1 KiB CSS (own, gzip); 32.8 KiB with vendor deps. **Lite**: true. **Touch**: false. **Reduced motion**: none.
 - **License**: MIT, tier A, from `danielpetho/fancy@f9f62c61207b` by daniel petho.
 - **Deps**: `motion`.
 
