@@ -55,6 +55,18 @@ vi.mock("@/lib/supabase", () => ({
         };
         return chain;
       }
+      if (table === "vault_items") {
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          is: () => chain,
+          order: () => chain,
+          maybeSingle: async () => ({ data: null }),
+          then: (resolve: (value: { data: unknown[] }) => unknown) =>
+            resolve({ data: [] }),
+        };
+        return chain;
+      }
       throw new Error(`fake supabase: unexpected table ${table}`);
     },
   }),

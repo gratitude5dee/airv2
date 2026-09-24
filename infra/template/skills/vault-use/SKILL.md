@@ -41,6 +41,35 @@ the focused input over the browser's debug channel. On success it prints only
 air-vault totp <item-id> --type
 ```
 
+## When the site texts/emails a code instead (no TOTP seed)
+
+Never ask for the code in chat. File a live code request — it sends the
+human a vault card where they paste it, then you pop it once:
+
+```bash
+OPENAI_BASE_URL="$(grep -m1 '^OPENAI_BASE_URL=' ~/.hermes/.env | cut -d= -f2-)"
+BASE="${OPENAI_BASE_URL%/api/gateway/v1}"
+curl -fsS -X POST "$BASE/api/browser/otp" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"action":"request","host":"<site.host>"}'
+# → {"request_id": "…", "expires_in_s": 240}
+```
+
+Poll every ~15 seconds until the state changes:
+
+```bash
+curl -fsS "$BASE/api/browser/otp?request_id=<request_id>" \
+  -H "Authorization: Bearer $OPENAI_API_KEY"
+# pending → keep polling    resolved → {"code":"…"} (exactly once)
+# denied  → the human declined; stop and say so
+# expired → file ONE new request, then stop if that one lapses too
+```
+
+The code is a live credential: type it into the focused field and never
+print, store, or repeat it. Cancel a request you no longer need with
+`{"action":"cancel","request_id":"…"}`.
+
 ## If — and only if — the human connected 1Password
 
 Most people have not. 1Password is optional: it exists only when the human

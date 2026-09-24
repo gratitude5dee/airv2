@@ -72,6 +72,7 @@ export async function POST(
     action?: string;
     method?: string;
     k?: string;
+    card_item_id?: string;
   };
   const auth = authenticate(
     request,
@@ -109,7 +110,10 @@ export async function POST(
       auth.userId,
       decision as HostedDecision,
       body.action === "approve" ? "approve" : "dismiss",
-      body.method === "link" ? "link" : "fill"
+      body.method === "link" ? "link" : "fill",
+      typeof body.card_item_id === "string" && body.card_item_id
+        ? body.card_item_id
+        : null
     );
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

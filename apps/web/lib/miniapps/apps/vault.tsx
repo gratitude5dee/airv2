@@ -46,6 +46,14 @@ interface PurchaseReviewRow {
   payload: unknown;
 }
 
+/** Live sign-in code request (MA6): the box asks, the owner pastes the code
+ * here; the row on otp_requests carries the value — never this page (C18). */
+interface OtpRequestRow {
+  id: string;
+  host: string;
+  expires_at: string;
+}
+
 /** Mirror row with the MA5 default-card flag (metadata only, never a value). */
 type VaultItemRow = VaultItemMetadata & { default_for_purchases?: boolean };
 
@@ -200,6 +208,69 @@ function renderPurchaseReviews(reviews: PurchaseReviewRow[]): string {
     .join("");
 }
 
+/** Live-code lane (MA6): renders like the purchase_review card — host,
+ * expiry, one code input. The pasted code is a live credential, so it only
+ * ever exists on the otp_requests row the box pops — never rendered back. */
+function renderOtpRequests(requests: OtpRequestRow[]): string {
+  return requests
+    .map((request) => {
+      const minsLeft = Math.max(
+        0,
+        Math.ceil(
+          (new Date(request.expires_at).getTime() - Date.now()) / 60000
+        )
+      );
+      return `<div class="card pending"><strong>${esc(request.host)} sent you a sign-in code</strong><div class="muted">Paste it and your agent types it into the page.</div><div class="when">Expires in ~${minsLeft} min</div><form method="post" class="stack"><input type="hidden" name="action" value="resolve_otp"><input type="hidden" name="request" value="${esc(request.id)}"><input type="text" name="code" placeholder="Sign-in code" inputmode="numeric" maxlength="12" autocomplete="one-time-code"><button>Send to agent</button></form><form method="post" class="inline"><input type="hidden" name="action" value="deny_otp"><input type="hidden" name="request" value="${esc(request.id)}"><button class="ghost">Not now</button></form></div>`;
+    })
+    .join("");
+}
+
+async function pendingOtpRequests(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<OtpRequestRow[]> {
+  const { data } = await supabase
+    .from("otp_requests")
+    .select("id, host, expires_at")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(5);
+  return (data ?? []) as OtpRequestRow[];
+}
+
+/** OTP input parsing: bare base32 seed or a full otpauth:// URI. */
+function parseTotpInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("otpauth://")) {
+    try {
+      const url = new URL(trimmed);
+      const secret = url.searchParams.get("secret");
+      return secret ? secret.replace(/\s+/g, "") : null;
+    } catch {
+      return null;
+    }
+  }
+  return trimmed.replace(/\s+/g, "");
+}
+
+/** Edit form for one item — never prefilled with values (C18): a blank
+ * input keeps the stored field, a typed one replaces it. */
+function renderEditForm(item: VaultItemRow): string {
+  const loginInputs =
+    item.kind === "login"
+      ? `<input type="text" name="username" placeholder="Username — blank keeps current" maxlength="200"><input type="text" name="password" placeholder="🔒 Password — blank keeps current" maxlength="500" autocomplete="off"><input type="text" name="site_url" placeholder="Site URL — blank keeps current" maxlength="300"><input type="text" name="otp" placeholder="OTP seed or otpauth:// link — blank keeps current" maxlength="512" autocomplete="off"><label class="muted"><input type="checkbox" name="remove_otp" value="1"> Remove saved OTP</label>`
+      : "";
+  const cardInputs =
+    item.kind === "card"
+      ? `<input type="text" name="number" placeholder="🔒 Card number — blank keeps current" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV — blank keeps current" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10">`
+      : "";
+  if (!loginInputs && !cardInputs) return "";
+  return `<form method="post" class="stack"><input type="hidden" name="action" value="update_item"><input type="hidden" name="id" value="${esc(item.id)}"><input type="text" name="name" placeholder="Name — blank keeps current" maxlength="120">${loginInputs}${cardInputs}<button>Update</button><p class="muted">Blank fields keep their stored values — nothing here is shown back.</p></form>`;
+}
+
 function renderVault(
   items: VaultItemRow[],
   revealed: { id: string; field: string; value: string } | null,
@@ -208,7 +279,9 @@ function renderVault(
   reviews: PurchaseReviewRow[] = [],
   managers: ManagerStatus[] = [],
   siteGrants: Map<string, string[]> = new Map(),
-  opLabels: Map<string, string> = new Map()
+  opLabels: Map<string, string> = new Map(),
+  editingId: string | null = null,
+  otpRequests: OtpRequestRow[] = []
 ): string {
   const sections: [string, string, string][] = [
     ["login", "LOGINS", "Add a login…"],
@@ -244,6 +317,20 @@ function renderVault(
             kind === "card"
               ? '<div class="muted">Card number and CVV reveal only in the full Vault tab.</div>'
               : "";
+          const otpChip =
+            kind === "login"
+              ? item.totp_enabled
+                ? ' <span class="chip on">OTP on</span>'
+                : ' <span class="chip">no OTP</span>'
+              : "";
+          const editButton =
+            kind === "login" || kind === "card"
+              ? editingId === item.id
+                ? ""
+                : `<form method="post" class="inline"><input type="hidden" name="action" value="edit_form"><input type="hidden" name="id" value="${esc(item.id)}"><button class="ghost">Edit</button></form>`
+              : "";
+          const editForm =
+            editingId === item.id ? renderEditForm(item) : "";
           const defaultChip =
             kind === "card"
               ? item.default_for_purchases
@@ -260,7 +347,7 @@ function renderVault(
                   )
                   .join("")}</div>`
               : "";
-          return `<div class="card"><strong>${esc(item.name)}</strong>${item.masked ? ` <span class="when">${esc(item.masked)}</span>` : ""}${defaultChip}${fieldRows}${grantRows}${cardNote}</div>`;
+          return `<div class="card"><strong>${esc(item.name)}</strong>${item.masked ? ` <span class="when">${esc(item.masked)}</span>` : ""}${defaultChip}${otpChip}${editButton}${fieldRows}${grantRows}${cardNote}${editForm}</div>`;
         })
         .join("");
       const empty =
@@ -270,9 +357,9 @@ function renderVault(
       return `<h2>${esc(header)}</h2>${rows}${empty}`;
     })
     .join("");
-  const addLogin = `<details><summary>Add login</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;, &quot;GitHub&quot;" maxlength="120"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="text" name="password" placeholder="🔒 Password" maxlength="500" autocomplete="off"><button>Save</button></form></details>`;
+  const addLogin = `<details><summary>Add login</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_login"><input type="text" name="name" placeholder="e.g. &quot;Gmail&quot;, &quot;GitHub&quot;" maxlength="120"><input type="text" name="site_url" placeholder="Site URL (for browser sign-ins)" maxlength="300"><input type="text" name="username" placeholder="Username" maxlength="200"><input type="text" name="password" placeholder="🔒 Password" maxlength="500" autocomplete="off"><input type="text" name="otp" placeholder="OTP seed or otpauth:// link (optional)" maxlength="512" autocomplete="off"><button>Save</button></form></details>`;
   const addCard = `<details><summary>Add card</summary><p class="muted">Values are encrypted in your vault.</p><form method="post" class="stack"><input type="hidden" name="action" value="add_card"><input type="text" name="name" placeholder="e.g. &quot;Amex&quot;, &quot;Chase&quot;" maxlength="120"><input type="text" name="number" placeholder="🔒 Card number" inputmode="numeric" maxlength="23" autocomplete="off"><input type="text" name="expiry_month" placeholder="Expiry month" inputmode="numeric" maxlength="2"><input type="text" name="expiry_year" placeholder="Expiry year" inputmode="numeric" maxlength="4"><input type="text" name="cvv" placeholder="🔒 CVV" inputmode="numeric" maxlength="4" autocomplete="off"><input type="text" name="zip" placeholder="Billing ZIP" inputmode="numeric" maxlength="10"><button>Save</button></form></details>`;
-  const content = `<section class="panel">${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers, siteGrants, opLabels)}
+  const content = `<section class="panel">${renderOtpRequests(otpRequests)}${renderPurchaseReviews(reviews)}${body}${addLogin}${addCard}${renderManagers(managers, siteGrants, opLabels)}
 ${promptBar("Ask your agent — e.g. which logins haven't I used in a while…")}</section>`;
   return renderShell({
     title: "Vault",
@@ -331,11 +418,13 @@ async function vaultPage(
   userId: string,
   revealed: { id: string; field: string; value: string } | null,
   notice: string | null,
-  lite: boolean
+  lite: boolean,
+  editingId: string | null = null
 ): Promise<NextResponse> {
-  const [items, context] = await Promise.all([
+  const [items, context, otpRequests] = await Promise.all([
     vaultItems(supabase, userId),
     vaultContext(supabase, userId),
+    pendingOtpRequests(supabase, userId),
   ]);
   return shellHtml(
     renderVault(
@@ -346,17 +435,17 @@ async function vaultPage(
       [],
       context.managers,
       context.siteGrants,
-      context.opLabels
+      context.opLabels,
+      editingId,
+      otpRequests
     )
   );
 }
 
 export const vault: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const [{ data }, { data: reviewRows }, context] = await timedFetch(
-      "vault",
-      "items+reviews+context",
-      () =>
+    const [{ data }, { data: reviewRows }, context, otpRequests] =
+      await timedFetch("vault", "items+reviews+context", () =>
         Promise.all([
           ctx.supabase
             .from("vault_items")
@@ -373,8 +462,9 @@ export const vault: MiniAppModule = {
             .order("created_at", { ascending: false })
             .limit(10),
           vaultContext(ctx.supabase, ctx.session.userId),
+          pendingOtpRequests(ctx.supabase, ctx.session.userId),
         ])
-    );
+      );
     return shellHtml(
       renderVault(
         (data ?? []) as VaultItemRow[],
@@ -384,7 +474,9 @@ export const vault: MiniAppModule = {
         (reviewRows ?? []) as PurchaseReviewRow[],
         context.managers,
         context.siteGrants,
-        context.opLabels
+        context.opLabels,
+        null,
+        otpRequests
       )
     );
   },
@@ -652,17 +744,91 @@ export const vault: MiniAppModule = {
       return vaultPage(supabase, userId, null, "Manager disabled.", lite);
     }
 
+    if (action === "edit_form") {
+      const id = String(form.get("id") ?? "");
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) return forbidden("invalid request");
+      const items = await vaultItems(supabase, userId);
+      if (!items.some((item) => item.id === id)) return forbidden("not found");
+      return vaultPage(supabase, userId, null, null, lite, id);
+    }
+
+    if (action === "update_item") {
+      const id = String(form.get("id") ?? "");
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) return forbidden("invalid request");
+      const items = await vaultItems(supabase, userId);
+      const item = items.find((candidate) => candidate.id === id);
+      if (!item) return forbidden("not found");
+      const patch: {
+        name?: string;
+        fields?: Record<string, string>;
+        totp_seed?: string | null;
+      } = {};
+      const name = String(form.get("name") ?? "").trim();
+      if (name) patch.name = name;
+      const fields: Record<string, string> = {};
+      if (item.kind === "login") {
+        for (const key of ["username", "password", "site_url"]) {
+          const value = String(form.get(key) ?? "").trim();
+          if (value) fields[key] = value;
+        }
+      } else if (item.kind === "card") {
+        for (const key of [
+          "number",
+          "expiry_month",
+          "expiry_year",
+          "cvv",
+          "zip",
+        ]) {
+          const digits = String(form.get(key) ?? "").replace(/\D/g, "");
+          if (digits) fields[key] = digits;
+        }
+      }
+      if (Object.keys(fields).length > 0) patch.fields = fields;
+      const otpInput = parseTotpInput(String(form.get("otp") ?? ""));
+      if (form.get("remove_otp")) {
+        patch.totp_seed = null;
+      } else if (otpInput) {
+        patch.totp_seed = otpInput;
+      }
+      if (!patch.name && !patch.fields && patch.totp_seed === undefined) {
+        return vaultPage(supabase, userId, null, "nothing to update", lite, id);
+      }
+      try {
+        const box = await ensureBoxAwake(supabase, userId);
+        try {
+          await applyBatch(box.boxId, userId, [
+            { op: "update", id, item: patch },
+          ]);
+        } finally {
+          await armStopAfter(supabase, userId).catch(() => undefined);
+        }
+      } catch (error) {
+        if (error instanceof StartLimitError) return busyPage();
+        return vaultPage(supabase, userId, null, "update failed", lite, id);
+      }
+      return withBaseHeaders(
+        NextResponse.redirect(
+          new URL(ctx.basePath, externalOrigin(ctx.request)),
+          303
+        )
+      );
+    }
+
     if (action === "add_login" || action === "add_card") {
       const name = String(form.get("name") ?? "").trim();
       if (name.length === 0 || name.length > 120) {
         return forbidden("name required");
       }
       const fields: Record<string, string> = {};
+      let totpSeed: string | null = null;
       if (action === "add_login") {
         const username = String(form.get("username") ?? "");
         const password = String(form.get("password") ?? "");
+        const siteUrl = String(form.get("site_url") ?? "").trim();
         if (username) fields["username"] = username;
         if (password) fields["password"] = password;
+        if (siteUrl) fields["site_url"] = siteUrl;
+        totpSeed = parseTotpInput(String(form.get("otp") ?? ""));
       } else {
         for (const key of [
           "number",
@@ -685,6 +851,7 @@ export const vault: MiniAppModule = {
                 kind: action === "add_login" ? "login" : "card",
                 name,
                 fields,
+                ...(totpSeed ? { totp_seed: totpSeed } : {}),
               },
             },
           ]);
@@ -701,6 +868,89 @@ export const vault: MiniAppModule = {
           303
         )
       );
+    }
+
+    if (action === "resolve_otp" || action === "deny_otp") {
+      // MA6 live-code lane: the owner's paste resolves the pending
+      // otp_requests row; the box pops the code exactly once. The code is
+      // written straight to the row — never logged, never re-rendered (C18).
+      const requestId = String(form.get("request") ?? "");
+      if (!/^[0-9a-f-]{36}$/i.test(requestId)) {
+        return forbidden("invalid request");
+      }
+      const { data: request } = await supabase
+        .from("otp_requests")
+        .select("id, decision_id, status, expires_at")
+        .eq("id", requestId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!request || request.status !== "pending") {
+        return forbidden("not found");
+      }
+      const now = new Date().toISOString();
+      const decisionId = request.decision_id as string | null;
+      if (action === "deny_otp") {
+        await supabase
+          .from("otp_requests")
+          .update({ status: "denied", resolved_at: now })
+          .eq("id", requestId)
+          .eq("status", "pending");
+        if (decisionId) {
+          await supabase
+            .from("decisions")
+            .update({ status: "dismissed", resolved_at: now })
+            .eq("id", decisionId)
+            .eq("user_id", userId);
+        }
+        return vaultPage(
+          supabase,
+          userId,
+          null,
+          "No problem — your agent will stop waiting.",
+          lite
+        );
+      }
+      if (new Date(request.expires_at as string).getTime() <= Date.now()) {
+        await supabase
+          .from("otp_requests")
+          .update({ status: "expired" })
+          .eq("id", requestId)
+          .eq("status", "pending");
+        return vaultPage(
+          supabase,
+          userId,
+          null,
+          "That request expired — your agent will ask again.",
+          lite
+        );
+      }
+      const code = String(form.get("code") ?? "").trim();
+      if (!/^[0-9]{4,10}$/.test(code)) {
+        return vaultPage(
+          supabase,
+          userId,
+          null,
+          "A sign-in code is digits only (4–10).",
+          lite
+        );
+      }
+      const { data: resolved } = await supabase
+        .from("otp_requests")
+        .update({ status: "resolved", code, resolved_at: now })
+        .eq("id", requestId)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+      if (!resolved) return forbidden("not found");
+      if (decisionId) {
+        await supabase
+          .from("decisions")
+          .update({ status: "approved", resolved_at: now })
+          .eq("id", decisionId)
+          .eq("user_id", userId);
+      }
+      await updateMiniAppCard(supabase, userId, "vault", "default");
+      return vaultPage(supabase, userId, null, "Code sent to your agent.", lite);
     }
 
     return forbidden("unknown action");

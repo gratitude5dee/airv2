@@ -13,7 +13,7 @@ const HOSTILE_NAME = '<script>alert("pwn")</script><img src=x onerror=alert(1)>'
 function thenable(rows: unknown) {
   const builder: Record<string, unknown> = {};
   const chain = () => builder;
-  for (const method of ["select", "eq", "is", "order", "limit"]) {
+  for (const method of ["select", "eq", "is", "gt", "order", "limit"]) {
     builder[method] = vi.fn(chain);
   }
   builder["then"] = (resolve: (value: { data: unknown }) => unknown) =>
