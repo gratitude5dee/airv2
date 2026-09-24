@@ -59,37 +59,34 @@ async function recordDelivery(
   contentHash: string | null,
   excerpt: string | null
 ): Promise<void> {
-  await supabase
-    .from("schedule_deliveries")
-    .insert({
+  // The ledger is observability — a failed write must not fail the tick.
+  try {
+    const { error } = await supabase.from("schedule_deliveries").insert({
       user_id: schedule.user_id,
       schedule_id: schedule.id,
       channel: schedule.deliver,
       disposition,
       content_hash: contentHash,
       excerpt,
-    })
-    .then(({ error }) => {
-      if (error) {
-        console.warn(
-          JSON.stringify({
-            msg: "schedule delivery ledger write failed",
-            schedule_id: schedule.id,
-            error: error.message,
-          })
-        );
-      }
-    })
-    // The ledger is observability — a failed write must not fail the tick.
-    .catch((error: unknown) => {
+    });
+    if (error) {
       console.warn(
         JSON.stringify({
           msg: "schedule delivery ledger write failed",
           schedule_id: schedule.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: error.message,
         })
       );
-    });
+    }
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        msg: "schedule delivery ledger write failed",
+        schedule_id: schedule.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
 }
 
 async function isRepeatDelivery(
