@@ -13,6 +13,9 @@ evals/agent-suite/
                    reservation, and a multi-source fan-out — the
                    web-split/fast-tier probes
   run.ts           executor — one case at a time, resumable
+  imessage.ts      iMessage-path executor — signed Spectrum webhooks in,
+                   recorded outbound bubbles out (TTFK timing)
+  imessage-lib.ts  webhook signing + timing math for imessage.ts
   score.ts         grader — writes report.md
   lib.ts           case parsing, SSE framing, PostgREST reads, redaction
   installed-skills.txt  the box's `~/.hermes/skills` inventory at run time
@@ -120,6 +123,45 @@ The runner is sequential and resumable: every case writes
 start errors, which are real results — and a rerun with the same
 `EVAL_RESULTS_STAMP` skips every id already on disk. That is what makes an
 overnight run survive box flaps, a restarted dev server, or a `SIGINT`.
+
+## iMessage path
+
+`run.ts` drives `POST /api/chat` — the web path. `imessage.ts` drives the
+path the product actually ships on: for each case it POSTs a signed Spectrum
+webhook to `/api/inbound/imessage`, waits out the debounce, and measures time
+to the first and final outbound bubble against the targets in
+`docs/operations/imessage-ttfk.md` (tapback <1s, first bubble <5s warm).
+
+Outbound bubbles are captured by a seam instead of a live Spectrum line: when
+the control plane is started with `EVAL_SPECTRUM_RECORD_URL` pointing at the
+harness listener (default `http://127.0.0.1:8787`), `createSpectrumSender()`
+returns the recording fake in `apps/web/lib/spectrum/recording.ts` — every
+send site reports an event, and `createFastReactionSender()` stays off so the
+tapback falls back to the same recorded `sender.react`. One env var covers
+all 17 construction sites, so the seam survives the per-turn sender threading
+that lands separately.
+
+```bash
+# control plane (started with the recording URL set)
+EVAL_SPECTRUM_RECORD_URL=http://127.0.0.1:8787 npm run dev
+
+# harness — same case file, same EVAL_ONLY / EVAL_RESULTS_STAMP semantics
+EVAL_IMS_SIGNING_SECRET=$SPECTRUM_WEBHOOK_SECRET \
+EVAL_IMS_SPACE_ID=<space guid> \
+EVAL_IMS_PHONE=<line phone, E.164> \
+EVAL_IMS_SENDER_ID=<sender handle id that resolves tier 0> \
+npx tsx evals/agent-suite/imessage.ts
+```
+
+The webhook routes like any real inbound iMessage, so the test user needs the
+same routing rows a real owner has: a `handles` row (`platform=imessage`, the
+sender id as `address`) and the line/space the webhook names. A rejected
+signature (400/401) is timed and recorded as a result, not skipped.
+
+Timing is measured from webhook POST to the listener's receive stamp on each
+recorded event — sender-side timestamps are never trusted for latency. Per
+case: `firstBubbleMs`, `finalBubbleMs`, `firstReactionMs`, the redacted event
+list; the report folds in p50/p95 vs the TTFK targets.
 
 ## Run history
 

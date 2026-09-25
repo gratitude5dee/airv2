@@ -157,6 +157,10 @@ export const env = {
   spectrumWebhookSecret: (): string => required("SPECTRUM_WEBHOOK_SECRET"),
   spectrumApiBase: (): string =>
     optional("SPECTRUM_API_BASE", "https://spectrum.photon.codes").replace(/\/+$/, ""),
+  // Eval harness listener: when set, createSpectrumSender returns the
+  // recording fake from lib/spectrum/recording.ts instead of a real client.
+  evalSpectrumRecordUrl: (): string | null =>
+    process.env["EVAL_SPECTRUM_RECORD_URL"] ?? null,
   // Mail provider: wzrdmail is the deployment default; AGENTMAIL_* stays for rollback (see lib/mail/provider.ts).
   mailProvider: (): "agentmail" | "wzrdmail" => {
     const value = optional("MAIL_PROVIDER", "wzrdmail");
