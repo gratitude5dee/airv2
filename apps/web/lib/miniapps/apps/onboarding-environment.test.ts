@@ -8,9 +8,9 @@
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const boxFiles = new Map<string, string>();
 
@@ -95,50 +95,43 @@ beforeAll(() => {
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
-function thenable(rows: unknown, single: unknown = null) {
-  const builder: Record<string, unknown> = {};
-  const chain = () => builder;
-  for (const method of ["select", "eq", "is", "order", "limit", "gte", "lt"]) {
-    builder[method] = vi.fn(chain);
-  }
-  builder["maybeSingle"] = async () => ({ data: single, error: null });
-  builder["then"] = (
-    resolve: (value: { data: unknown; count: number }) => unknown
-  ) => Promise.resolve({ data: rows, count: 0 }).then(resolve);
-  return builder;
-}
+const db = new FakeSupabase();
 
 function makeCtx(
   url = "https://mini.example/mini/setup?step=environment",
   options: { username?: string | null; userAgent?: string } = {}
 ) {
   const username = options.username === undefined ? "grat" : options.username;
-  const tables: Record<string, ReturnType<typeof thenable>> = {
-    users: thenable([], { username }),
-    agent_addresses: thenable(
-      [],
-      username ? { address: `${username}@wzrd.tech` } : null
-    ),
-    connections: thenable([]),
-    vault_items: thenable([]),
-    entitlements: thenable([], { speed_tier: "balanced" }),
-    plugin_tokens: thenable([]),
-    boxes: thenable([], {
+  db.tables["users"] = [{ id: "user-1", username }];
+  db.tables["agent_addresses"] = username
+    ? [
+        {
+          user_id: "user-1",
+          address: `${username}@wzrd.tech`,
+          is_primary: true,
+          retired_at: null,
+        },
+      ]
+    : [];
+  db.tables["entitlements"] = [
+    { user_id: "user-1", speed_tier: "balanced" },
+  ];
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
       provider_box_id: "box-1",
       environment: "ubuntu",
       control_url: null,
       control_token: null,
       state: "ready",
-    }),
-  };
+    },
+  ];
   return {
     request: new NextRequest(
       url,
       options.userAgent ? { headers: { "user-agent": options.userAgent } } : undefined
     ),
-    supabase: {
-      from: (table: string) => tables[table] ?? thenable([]),
-    } as unknown as SupabaseClient,
+    supabase: db.client(),
     app: makeApp({ slug: "setup", kind: "input" }),
     session: { userId: "user-1", resourceId: "default", role: "owner" },
     basePath: "/mini/setup",
@@ -146,6 +139,7 @@ function makeCtx(
 }
 
 afterEach(() => {
+  db.reset();
   replaceBox.mockClear();
   switchEnvironment.mockClear();
   boxFiles.clear();
@@ -153,20 +147,24 @@ afterEach(() => {
 
 /** A ctx whose boxes row is on omarchy, so choosing ubuntu is a real switch. */
 function switchingCtx() {
-  const ctx = makeCtx();
-  (ctx.supabase as unknown as { from: (t: string) => unknown }).from = (
-    table: string
-  ) =>
-    table === "boxes"
-      ? thenable([], {
-          provider_box_id: "box-1",
-          environment: "omarchy",
-          control_url: null,
-          control_token: null,
-          state: "ready",
-        })
-      : thenable([], null);
-  return ctx;
+  makeCtx();
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
+      provider_box_id: "box-1",
+      environment: "omarchy",
+      control_url: null,
+      control_token: null,
+      state: "ready",
+    },
+  ];
+  return {
+    request: new NextRequest("https://mini.example/mini/setup?step=environment"),
+    supabase: db.client(),
+    app: makeApp({ slug: "setup", kind: "input" }),
+    session: { userId: "user-1", resourceId: "default", role: "owner" },
+    basePath: "/mini/setup",
+  } as MiniAppContext;
 }
 
 function setEnvironmentForm(environment: string) {
@@ -427,28 +425,14 @@ describe("onboarding environment step", () => {
   it("a failed box lookup never falls through to an unleased switch", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const ctx = switchingCtx();
-    const from = (ctx.supabase as unknown as { from: (t: string) => unknown })
-      .from;
-    (ctx.supabase as unknown as { from: (t: string) => unknown }).from = (
-      table: string
-    ) => {
-      const builder = from(table) as Record<string, unknown>;
-      if (table === "boxes") {
-        // Only the lease's own `provider_box_id` lookup fails; the snapshot
-        // reads that precede it still see the omarchy row.
-        let columns = "";
-        builder["select"] = vi.fn((selected: string) => {
-          columns = selected;
-          return builder;
-        });
-        const snapshotRead = builder["maybeSingle"] as () => Promise<unknown>;
-        builder["maybeSingle"] = async () =>
-          columns === "provider_box_id"
-            ? { data: null, error: { message: "connection reset" } }
-            : snapshotRead();
-      }
-      return builder;
-    };
+    // Only the lease's own `provider_box_id` lookup fails; the snapshot
+    // reads that precede it still see the omarchy row.
+    db.resolve = (q) =>
+      q.table === "boxes" &&
+      q.mode === "select" &&
+      q.args?.[0] === "provider_box_id"
+        ? { error: { message: "connection reset" } }
+        : undefined;
     const response = await onboarding.action!(ctx, setEnvironmentForm("ubuntu"));
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("try again in a moment");
