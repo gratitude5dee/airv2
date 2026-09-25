@@ -1,0 +1,14 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "episode_collected",
+  "idempotency_key": "9a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
+  "occurred_at": "2026-09-20T04:15:10Z",
+  "trace_id": "tr_01h455vek1wv2t4pz9j2y7f5xd",
+  "status": "collected",
+  "backend": "native",
+  "air_release": "sha256:6f1d2c3b4a5e6d7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f",
+  "hermes_ref": "v0.21.4",
+  "os_class": "ubuntu",
+  "served_model": "zai-org/GLM-5.3-Flash",
+  "requested_tier": "balanced"
+}
