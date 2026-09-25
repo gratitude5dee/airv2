@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const { runCommand } = vi.hoisted(() => ({
   runCommand: vi.fn(),
@@ -19,26 +20,14 @@ vi.mock("../compute/runtime", async () => {
 
 import { writeConnectedToolsFile } from "./connectors";
 
-function fakeSupabase(rows: Array<{ toolkit: string }>): SupabaseClient {
-  type Query = {
-    select: () => Query;
-    eq: () => Query;
-    then: (
-      resolve: (value: {
-        data: Array<{ toolkit: string }>;
-        error: null;
-      }) => unknown,
-      reject: (reason: unknown) => unknown,
-    ) => Promise<unknown>;
-  };
-  const query = {} as Query;
-  query.select = () => query;
-  query.eq = () => query;
-  query.then = (resolve, reject) =>
-    Promise.resolve({ data: rows, error: null }).then(resolve, reject);
-  return {
-    from: vi.fn(() => query),
-  } as unknown as SupabaseClient;
+function fakeSupabase(toolkits: string[]): SupabaseClient {
+  const db = new FakeSupabase();
+  db.tables["connections"] = toolkits.map((toolkit) => ({
+    user_id: "user-1",
+    toolkit,
+    status: "active",
+  }));
+  return db.client();
 }
 
 const target = { instanceId: "box-1", environment: "ubuntu" as const };
@@ -51,7 +40,7 @@ beforeEach(() => {
 describe("writeConnectedToolsFile", () => {
   it("writes active toolkits to the command", async () => {
     await writeConnectedToolsFile(
-      fakeSupabase([{ toolkit: "notion" }, { toolkit: "gmail" }]),
+      fakeSupabase(["notion", "gmail"]),
       "user-1",
       target,
     );

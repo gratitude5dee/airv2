@@ -4,7 +4,6 @@
  * stopped→ready transition, never on a no-op wake of an awake box.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AGENT_BROWSER_RESET_CMD,
   ensureBoxAwake,
@@ -19,6 +18,7 @@ import {
   waitForBox,
 } from "../box/client";
 import { health } from "../hermes/client";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../box/client", () => ({
   command: vi.fn(),
@@ -39,29 +39,20 @@ vi.mock("../provisioning/connectors", () => ({
 }));
 
 function fakeSupabase(boxId: string) {
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () =>
-            Promise.resolve({
-              data: {
-                provider_box_id: boxId,
-                hosted_url: "https://box.example",
-                hosted_token: "",
-                api_server_key: "k",
-                dashboard_url: null,
-                dashboard_token: null,
-                dashboard_auth: null,
-              },
-              error: null,
-            }),
-        }),
-      }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
-  };
-  return supabase as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
+      provider_box_id: boxId,
+      hosted_url: "https://box.example",
+      hosted_token: "",
+      api_server_key: "k",
+      dashboard_url: null,
+      dashboard_token: null,
+      dashboard_auth: null,
+    },
+  ];
+  return db.client();
 }
 
 beforeEach(() => {
