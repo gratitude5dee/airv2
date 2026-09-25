@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 import { claimSchedule, classifyTickOutput } from "./sweep";
 import type { AgentSchedule } from "./schedule";
@@ -66,13 +65,15 @@ function makeSupabase(
       operation_id: "op-1",
     };
   };
-  const base = db.client();
-  const client = {
-    ...base,
-    from: () => {
+  // Tripwire: every table query throws — claimSchedule must go through the
+  // RPC; db.resolve sees table queries (mode !== "rpc") before they run.
+  db.resolve = (q) => {
+    if (q.mode !== "rpc") {
       throw new Error("claimSchedule must not touch tables directly — the RPC owns the claim");
-    },
-  } as unknown as SupabaseClient;
+    }
+    return undefined;
+  };
+  const client = db.client();
   return { client, claims, receipts };
 }
 describe("claimSchedule", () => {

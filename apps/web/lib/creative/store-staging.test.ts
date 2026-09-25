@@ -5,7 +5,6 @@
  * bytes behind a JPEG content type when the decode fails.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { FakeSupabase } from "../testing/fakeSupabase";
 import { heifToJpeg } from "../identity/heif";
 import { extractAudioTrack } from "./container";
@@ -227,20 +226,12 @@ describe("stageCreativeInput clips", () => {
 
     db.storageCalls = [];
     vi.mocked(extractAudioTrack).mockReturnValue(Buffer.from("remuxed-m4a"));
-    const bucket = supabase.storage.from("creative-assets");
-    const flaky = {
-      storage: {
-        from: () => ({
-          ...bucket,
-          upload: (...args: unknown[]) =>
-            uploads().length === 0
-              ? (bucket.upload as (...a: unknown[]) => Promise<unknown>)(...args)
-              : Promise.reject(new Error("network")),
-        }),
-      },
-    } as unknown as SupabaseClient;
+    db.storageResolve = ({ method }) =>
+      method === "upload" && uploads().length > 1
+        ? { data: null, error: { message: "network" }, count: null }
+        : undefined;
     staged = await stageCreativeInputs(
-      flaky,
+      supabase,
       "u1",
       Buffer.from("mov-bytes"),
       "video/quicktime",

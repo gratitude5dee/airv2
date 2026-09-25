@@ -87,6 +87,11 @@ export class FakeSupabase {
   storageObjects: Record<string, Blob | Uint8Array | string> = {};
   /** Overrides: return a partial result to answer a query without tables. */
   resolve: ((q: RecordedQuery) => Partial<FakeResult> | undefined) | undefined;
+  /** Storage hook: same shape as `resolve` but sees `{bucket, method, args}`;
+   * undefined falls through to the default storage behaviour. */
+  storageResolve:
+    | ((call: { bucket: string; method: string; args: unknown[] }) => FakeResult | undefined)
+    | undefined;
 
   rows(table: string): Row[] {
     return (this.tables[table] ??= []);
@@ -108,6 +113,7 @@ export class FakeSupabase {
     this.rpcCalls = [];
     this.storageCalls = [];
     this.storageObjects = {};
+    this.storageResolve = undefined;
     this.defaults = {};
     this.embeds = {};
     this.resolve = undefined;
@@ -147,11 +153,14 @@ export class FakeSupabase {
   }
 
   client(): SupabaseClient {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const db = this;
     const storage = {
       from: (bucket: string) => ({
         upload: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "upload", args });
+          const hooked = db.storageResolve?.({ bucket, method: "upload", args });
+          if (hooked !== undefined) return hooked;
           const body = args[1];
           if (body instanceof Blob || body instanceof Uint8Array || typeof body === "string") {
             db.storageObjects[`${bucket}/${String(args[0] ?? "file")}`] = body;
@@ -160,6 +169,8 @@ export class FakeSupabase {
         },
         download: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "download", args });
+          const hooked = db.storageResolve?.({ bucket, method: "download", args });
+          if (hooked !== undefined) return hooked;
           const stored = db.storageObjects[`${bucket}/${String(args[0] ?? "file")}`];
           const data =
             stored === undefined
@@ -171,6 +182,8 @@ export class FakeSupabase {
         },
         createSignedUrl: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "createSignedUrl", args });
+          const hooked = db.storageResolve?.({ bucket, method: "createSignedUrl", args });
+          if (hooked !== undefined) return hooked;
           return {
             data: { signedUrl: `https://storage.test/${bucket}/${String(args[0] ?? "file")}` },
             error: null,
@@ -178,12 +191,16 @@ export class FakeSupabase {
         },
         remove: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "remove", args });
+          const hooked = db.storageResolve?.({ bucket, method: "remove", args });
+          if (hooked !== undefined) return hooked;
           const keys = Array.isArray(args[0]) ? args[0] : [args[0]];
           for (const key of keys) delete db.storageObjects[`${bucket}/${String(key)}`];
           return { data: [], error: null };
         },
         list: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "list", args });
+          const hooked = db.storageResolve?.({ bucket, method: "list", args });
+          if (hooked !== undefined) return hooked;
           const prefix = String(args[0] ?? "");
           const search = (args[1] as { search?: string } | undefined)?.search;
           const dir = prefix ? `${bucket}/${prefix}/` : `${bucket}/`;
@@ -246,7 +263,7 @@ export class FakeSupabase {
           return { data: data ?? null, error: db.rpcErrors[`functions:${name}`] ?? null };
         },
       },
-      channel: (name: string) => {
+      channel: () => {
         const channel = {
           on: () => channel,
           subscribe: (cb?: (status: string) => void) => {
@@ -400,9 +417,43 @@ function makeBuilder(db: FakeSupabase, table: string) {
   let onConflict: string | undefined;
   let single: "single" | "maybeSingle" | null = null;
   let returning = false;
-  let orders: { column: string; ascending: boolean }[] = [];
+  const orders: { column: string; ascending: boolean }[] = [];
   let offset = 0;
   let limitCount: number | null = null;
+  let selectArgs: unknown[] = [];
+
+  /** PostgREST select list -> [{key, source}] or null (unprojected). */
+  const selectColumns = (): { key: string; source: string }[] | null => {
+    const spec = selectArgs[0];
+    if (typeof spec !== "string" || spec.trim() === "*" || spec.trim() === "") {
+      return null;
+    }
+    const cols: { key: string; source: string }[] = [];
+    for (const term of splitTopLevel(spec)) {
+      const embed = term.match(/^([a-zA-Z_][\w$]*)(!inner|!left)?\s*\(/);
+      if (embed) {
+        cols.push({ key: embed[1]!, source: embed[1]! });
+        continue;
+      }
+      const aliased = term.match(/^([a-zA-Z_][\w$]*)\s*:\s*([a-zA-Z_][\w$.:()]*)/);
+      if (aliased) {
+        cols.push({ key: aliased[1]!, source: aliased[2]!.split("::")[0]! });
+        continue;
+      }
+      const plain = term.match(/^([a-zA-Z_][\w$]*)(::[\w$]+)?/);
+      if (plain) cols.push({ key: plain[1]!, source: plain[1]! });
+    }
+    return cols.length ? cols : null;
+  };
+
+  const project = (row: Row, cols: { key: string; source: string }[] | null): Row => {
+    if (!cols) return row;
+    const out: Row = {};
+    for (const { key, source } of cols) {
+      if (source in row) out[key] = row[source];
+    }
+    return out;
+  };
 
   const record = (op: string, column: string, value: unknown) => {
     db.filters.push({ table, op, column, value });
@@ -535,7 +586,8 @@ function makeBuilder(db: FakeSupabase, table: string) {
     }
     const sliced = matched
       .slice(offset, limitCount === null ? undefined : offset + limitCount)
-      .map(withEmbeds);
+      .map(withEmbeds)
+      .map((row) => project(row, selectColumns()));
     if (single === "single" && sliced.length !== 1) {
       return {
         data: null,
@@ -555,6 +607,7 @@ function makeBuilder(db: FakeSupabase, table: string) {
 
   const api = {
     select(...args: unknown[]) {
+      selectArgs = args;
       if (WRITES.includes(mode)) returning = true;
       else modeArgs = args;
       return api;

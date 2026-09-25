@@ -170,8 +170,8 @@ describe("executeTransfer", () => {
     await expect(
       executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toBeInstanceOf(WalletSubmitUnknownError);
-    expect(transferRow().status).toBe("submit_unknown");
-    expect(transferRow().resolved_at).not.toBeNull();
+    expect(transferRow()["status"]).toBe("submit_unknown");
+    expect(transferRow()["resolved_at"]).not.toBeNull();
     // A second approval can no longer claim the row — no re-broadcast.
     await expect(
       executeTransfer(db.client(), "user-1", TRANSFER)
@@ -185,7 +185,7 @@ describe("executeTransfer", () => {
     await expect(
       executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toBeInstanceOf(WalletSubmitUnknownError);
-    expect(transferRow().status).toBe("submit_unknown");
+    expect(transferRow()["status"]).toBe("submit_unknown");
   });
 
   it("releases the claim to pending when no wallet is on file", async () => {
@@ -193,7 +193,7 @@ describe("executeTransfer", () => {
     await expect(
       executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toMatchObject({ status: 409, message: "no wallet on file" });
-    expect(transferRow().status).toBe("pending");
+    expect(transferRow()["status"]).toBe("pending");
     expect(sendMock).not.toHaveBeenCalled();
   });
 

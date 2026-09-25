@@ -145,7 +145,7 @@ describe("admitDrawGeneration", () => {
         f.value === "job-dead"
     );
     expect(release).toBeDefined();
-    expect(db.rows("draw_sessions")[0]?.active_job_id).toBe("job-new");
+    expect(db.rows("draw_sessions")[0]?.["active_job_id"]).toBe("job-new");
   });
 });
 
@@ -190,7 +190,7 @@ describe("animateDrawJob", () => {
         f.value === "job-new"
     );
     expect(releaseEq).toBeDefined();
-    expect(db.rows("draw_sessions")[0]?.active_job_id).toBeNull();
+    expect(db.rows("draw_sessions")[0]?.["active_job_id"]).toBeNull();
   });
 
   it("refuses when the slot is held — no paid render runs", async () => {

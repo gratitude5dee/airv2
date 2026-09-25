@@ -12,7 +12,7 @@ function makeDb(initial?: { kind: string; sent_at: string }) {
   db.uniques["card_sends"] = ["user_id,kind"];
   if (initial)
     db.tables["card_sends"] = [
-      { user_id: "u1", kind: initial.kind, sent_at: initial.sent_at },
+      { user_id: "u1", kind: initial.kind, sent_at: initial["sent_at"] },
     ];
   return db;
 }
@@ -52,9 +52,9 @@ describe("claimCardSend", () => {
     const db = makeDb();
     const claim = await claimCardSend(db.client(), "u1", "calendar");
     expect(claim).toBeDefined();
-    const before = db.rows("card_sends")[0]?.sent_at;
+    const before = db.rows("card_sends")[0]?.["sent_at"];
     await claim?.release();
-    const after = db.rows("card_sends")[0]?.sent_at;
+    const after = db.rows("card_sends")[0]?.["sent_at"];
     expect(after).toBeDefined();
     expect(String(after) < String(before)).toBe(true);
   });
