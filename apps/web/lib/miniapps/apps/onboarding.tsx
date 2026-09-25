@@ -3868,7 +3868,7 @@ export const onboarding: MiniAppModule = {
         result.shouldRouteNextMessage ? "pending" : "error"
       ).catch(() => undefined);
       if (result.reply) {
-        const sender = await createSpectrumSender().catch(() => undefined);
+        const sender = await createSpectrumSender("onboarding").catch(() => undefined);
         if (sender) {
           try {
             await sender

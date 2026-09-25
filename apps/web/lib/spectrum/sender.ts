@@ -194,13 +194,33 @@ export function advancedClientForLine(
   return selected?.client;
 }
 
-export async function createSpectrumSender(): Promise<SpectrumSender> {
+/**
+ * One init per iMessage turn is the target (the webhook's warm sender is
+ * shared through the flush job and card delivery). `site` names the
+ * construction point in the trace so a turn with a leaked second sender is
+ * attributable; `init_seq` counts inits per process.
+ */
+let spectrumSenderInitSeq = 0;
+
+export async function createSpectrumSender(
+  site?: string
+): Promise<SpectrumSender> {
+  const startedAt = Date.now();
   const app = await Spectrum({
     projectId: env.spectrumProjectId(),
     projectSecret: env.spectrumProjectSecret(),
     // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
     providers: [imessage.config()],
   });
+  spectrumSenderInitSeq += 1;
+  console.info(
+    JSON.stringify({
+      msg: "spectrum sender init",
+      site: site ?? "unknown",
+      init_seq: spectrumSenderInitSeq,
+      init_ms: Date.now() - startedAt,
+    })
+  );
   const im = imessage(app);
   const space = async (spaceId: string, phone: string) =>
     // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
