@@ -1,0 +1,4 @@
+{"comment": "A101 \u2014 schedule 'Nap' at 5pm tomorrow; sync.py upsert"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "python3 ~/.hermes/calendar/sync.py upsert eyJ0aXRsZSI6ICJOYXAiLCAic3RhcnRzX2F0IjogIjIwMjYtMDktMjZUMTc6MDA6MDAtMDc6MDAiLCAiZW5kc19hdCI6ICIyMDI2LTA5LTI2VDE4OjAwOjAwLTA3OjAwIn0="}}
+{"sse": {"event": "message.delta", "delta": "Added 'Nap' at 5 PM tomorrow."}}
+{"sse": {"event": "run.completed"}}

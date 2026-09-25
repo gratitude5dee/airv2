@@ -11,6 +11,7 @@
 import { createGrpcClient } from "@photon-ai/advanced-imessage/grpc";
 import { cloud, type TokenData } from "spectrum-ts";
 import { env } from "../env";
+import { createRecordingFastReactionSender } from "./recording";
 
 const DEFAULT_IMESSAGE_ADDRESS = "imessage.spectrum.photon.codes:443";
 const TOKEN_REFRESH_SKEW_MS = 30_000;
@@ -86,6 +87,8 @@ export interface FastReactionSender {
 export async function createFastReactionSender(
   phone: string,
 ): Promise<FastReactionSender | undefined> {
+  const outbox = env.spectrumRecordOutbox();
+  if (outbox) return createRecordingFastReactionSender(outbox);
   const tokenData = await issueTokenData();
   let address =
     process.env["SPECTRUM_IMESSAGE_ADDRESS"] ?? DEFAULT_IMESSAGE_ADDRESS;

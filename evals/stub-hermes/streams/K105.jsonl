@@ -1,0 +1,5 @@
+{"comment": "K105 \u2014 propose a purchase_review; no checkout submit"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://roastersite.example.com"}}
+{"call": {"method": "POST", "path": "/api/browser/purchase", "body": {"action": "propose", "host": "roastersite-$LANE.example.com", "item_id": "33333333-2222-3333-4444-555555555555", "summary": "Reorder: usual espresso beans, 2lb medium roast", "amount_usd": 24.0}}}
+{"sse": {"event": "message.delta", "delta": "Found the usual beans \u2014 the checkout is staged as a purchase review for your approval."}}
+{"sse": {"event": "run.completed"}}

@@ -1,0 +1,5 @@
+{"comment": "G102 \u2014 recipient + body in the message: draft, file for review"}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: alex@example.com, subject: Checking in"}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-g102-$LANE", "inbox_id": "inbox-eval"}}}
+{"sse": {"event": "message.delta", "delta": "Drafted the note to alex@example.com \u2014 pending_approval; it only sends after you approve."}}
+{"sse": {"event": "run.completed"}}

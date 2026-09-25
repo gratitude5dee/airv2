@@ -32,6 +32,7 @@ import {
   parseMiniAppCardSession,
   type MiniAppCardSession,
 } from "../miniapps/cardSessions";
+import { createRecordingSpectrumSender } from "./recording";
 
 export interface SpectrumSender {
   /** Fire a typing indicator at the chat — before the box resumes. */
@@ -195,6 +196,8 @@ export function advancedClientForLine(
 }
 
 export async function createSpectrumSender(): Promise<SpectrumSender> {
+  const outbox = env.spectrumRecordOutbox();
+  if (outbox) return createRecordingSpectrumSender(outbox);
   const app = await Spectrum({
     projectId: env.spectrumProjectId(),
     projectSecret: env.spectrumProjectSecret(),

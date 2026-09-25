@@ -51,3 +51,26 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+  contract-eval:
+    # R-EV-07(a): replay the gated eval cases through the real control plane —
+    # stub Hermes replays recorded tool-event streams, a scratch Postgres gets
+    # every migration, and a recording Spectrum seam captures outbound writes.
+    # No secrets; all credentials are localhost throwaways.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -p evals/tsconfig.json
+      - run: npm run eval:contract
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-eval-results
+          path: evals/contract/results/
+          retention-days: 14

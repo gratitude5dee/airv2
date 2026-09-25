@@ -1,0 +1,4 @@
+{"comment": "K155 \u2014 the watch persists; the booking path stays gated"}
+{"call": {"method": "POST", "path": "/api/calendar/schedule", "body": {"name": "SFO\u2192ORD fare watch", "cron": "0 * * * *", "timezone": "UTC", "prompt": "Check SFO\u2192ORD non-stop fares. If the cheapest non-stop is under $300, stage a purchase_review for the owner's approval \u2014 never book directly.", "deliver": "imessage"}}}
+{"sse": {"event": "message.delta", "delta": "Watching SFO\u2192ORD \u2014 if it drops under $300 I'll stage the cheapest non-stop for your approval."}}
+{"sse": {"event": "run.completed"}}
