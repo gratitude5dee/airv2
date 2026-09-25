@@ -19,6 +19,7 @@ import { TradeError } from "./order";
 import { addWatch, removeWatch } from "./watch";
 import { TradeVenueError } from "./venue";
 import { TRADE_HELP, type TradeCommand } from "./parse";
+import { log } from "../log";
 
 interface TradeJob {
   userId: string;
@@ -86,13 +87,8 @@ export async function deliverTradeApproval(
       }
     }
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "trade approval delivery failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      }),
-    );
+    log.error("trade approval delivery failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 

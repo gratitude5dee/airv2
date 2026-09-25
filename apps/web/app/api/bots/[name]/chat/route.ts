@@ -11,6 +11,7 @@ import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { startBotChatRun, botChatMessages } from "@/lib/bots/chat";
 import { getBot } from "@/lib/bots/store";
 import { isValidBotName } from "@/lib/bots/client";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,9 +51,7 @@ export async function POST(
       return NextResponse.json({ error: "box is rate limited" }, { status: 429 });
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "bot chat run failed", user_id: userId, bot: name, error: message })
-    );
+    log.error("bot chat run failed", {user_id: userId, bot: name, error: message});
     return NextResponse.json({ error: "run failed" }, { status: 502 });
   }
 }

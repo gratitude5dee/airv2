@@ -33,6 +33,7 @@ import {
   syncStaticLink,
   type PushEvent,
 } from "@/lib/create/import";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,9 +116,7 @@ async function completeDelivery(supabase: SupabaseClient, deliveryId: string): P
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
   }
-  console.error(
-    JSON.stringify({ msg: "github delivery complete failed", delivery: deliveryId, error: lastError })
-  );
+  log.error("github delivery complete failed", {delivery: deliveryId, error: lastError});
 }
 
 /**
@@ -131,9 +130,7 @@ async function releaseDelivery(supabase: SupabaseClient, deliveryId: string): Pr
     .delete()
     .eq("delivery_id", deliveryId);
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "github delivery release failed", delivery: deliveryId, error: error.message })
-    );
+    log.error("github delivery release failed", {delivery: deliveryId, error: error.message});
   }
 }
 
@@ -181,14 +178,9 @@ async function onPush(
       synced.push(result.slug);
     } catch (error) {
       failed.push(link.id);
-      console.error(
-        JSON.stringify({
-          msg: "github push sync failed",
-          link: link.id,
+      log.error("github push sync failed", {link: link.id,
           repo: body.repository.full_name,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+          error: error instanceof Error ? error.message : "unknown",});
     }
   }
   return { synced, failed };

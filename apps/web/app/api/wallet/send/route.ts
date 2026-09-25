@@ -11,6 +11,7 @@ import {
   WalletSendError,
   type WalletAsset,
 } from "@/lib/wallet/send";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,13 +52,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: error.status }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "wallet send request failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("wallet send request failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "send request failed" }, { status: 500 });
   }
 }

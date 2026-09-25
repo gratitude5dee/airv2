@@ -28,6 +28,7 @@ import { getRegistryApp, type CreateLane, type RegistryApp } from "../miniapps/r
 import { enforceCsp, type LintFinding } from "./lint";
 import { draftPreviewUrl } from "./preview";
 import { uploadVersion } from "./versions";
+import { log } from "../log";
 
 export type DropKind = "html" | "zip";
 
@@ -170,7 +171,7 @@ export async function discardEmptyDraft(
     p_owner_user_id: userId,
   });
   if (error) {
-    console.error(JSON.stringify({ msg: "empty draft discard failed", app_id: appId, error: error.message }));
+    log.error("empty draft discard failed", {app_id: appId, error: error.message});
     return false;
   }
   return data === true;

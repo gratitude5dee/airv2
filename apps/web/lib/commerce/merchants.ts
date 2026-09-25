@@ -11,6 +11,7 @@ import {
   createAccountLink,
   createConnectAccount,
 } from "../payments/stripe";
+import { log } from "../log";
 
 export class CommerceError extends Error {
   constructor(
@@ -105,14 +106,9 @@ async function replaceMerchantAccount(
   if (error || !data) {
     throw new CommerceError("could not update the merchant account", 500);
   }
-  console.log(
-    JSON.stringify({
-      msg: "merchant account replaced",
-      user_id: userId,
+  log.info("merchant account replaced", {user_id: userId,
       old_account: merchant.stripe_account_id,
-      new_account: accountId,
-    })
-  );
+      new_account: accountId,});
   return data as Merchant;
 }
 
@@ -193,12 +189,7 @@ export async function ensureStorefrontRow(
     listed_at: new Date().toISOString(),
   });
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "storefront row insert failed",
-        error: error.message,
-      })
-    );
+    log.error("storefront row insert failed", {error: error.message,});
     return null;
   }
   return slug;

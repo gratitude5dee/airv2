@@ -62,6 +62,7 @@ import {
   type ChannelName,
 } from "../fleet/channels";
 import { getRelease, type TemplateRelease } from "../fleet/releases";
+import { log } from "../log";
 
 /** Channel a brand-new user's box subscribes to. Existing boxes keep theirs. */
 export const DEFAULT_CHANNEL: ChannelName = "prod";
@@ -375,9 +376,8 @@ export async function provisionUser(
         .eq("phone", options.linePhone)
         .eq("assigned_user_id", userId);
     }
-    console.log(
-      JSON.stringify({ msg: "provision rolled back", user_id: userId })
-    );
+    log.info("provision rolled back", {box_id: built?.target.instanceId ?? null,
+        user_id: userId});
     throw error;
   }
 }
@@ -478,14 +478,10 @@ async function releaseClaim(
       .eq("replace_claimed_at", claimedAt);
     if (error) throw new Error(error.message);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "replace claim release failed",
+    log.error("replace claim release failed", {box_id: null,
         user_id: userId,
         claimed_at: claimedAt,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
@@ -582,14 +578,9 @@ async function teardown(target: ComputeTarget): Promise<void> {
     await stopCompute(target);
     await destroyCompute(target);
   } catch (error) {
-    console.log(
-      JSON.stringify({
-        msg: "compute teardown failed",
-        box_id: target.instanceId,
+    log.info("compute teardown failed", {box_id: target.instanceId,
         environment: target.environment,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+        error: error instanceof Error ? error.message : String(error),});
   }
 }
 
@@ -638,12 +629,8 @@ export async function defaultBoxProvider(): Promise<BoxProvider> {
   if (setting === "tenki") {
     const templateId = env.tenkiTemplateId();
     if (templateId && isTenkiSnapshotRef(templateId)) return "tenki";
-    console.error(
-      JSON.stringify({
-        msg: "box_default_provider=tenki but TENKI_TEMPLATE_ID is not a tenki snapshot ref; provisioning on ascii",
-        tenki_template_id: templateId ?? null,
-      })
-    );
+    log.error("box_default_provider=tenki but TENKI_TEMPLATE_ID is not a tenki snapshot ref; provisioning on ascii", {box_id: null,
+        tenki_template_id: templateId ?? null,});
   }
   return "ascii";
 }
@@ -985,12 +972,8 @@ async function persistBox(
 ): Promise<void> {
   const dashboardAuthKey = env.boxDashboardAuthKey();
   if (!dashboardAuthKey) {
-    console.log(
-      JSON.stringify({
-        msg: "BOX_DASHBOARD_AUTH_KEY unset — dashboard credential not persisted",
-        user_id: userId,
-      })
-    );
+    log.info("BOX_DASHBOARD_AUTH_KEY unset — dashboard credential not persisted", {box_id: built.target.instanceId,
+        user_id: userId,});
   }
   const { error } = await supabase.from("boxes").upsert(
     {
@@ -1054,16 +1037,11 @@ async function finishSetup(
   if (built.release) {
     const baked = new Set(built.templateSkills);
     const missing = baseSkillsFor().filter((skill) => !baked.has(skill));
-    console.log(
-      JSON.stringify({
-        msg: "fork verified against template release",
-        user_id: userId,
+    log.info("fork verified against template release", {user_id: userId,
         box_id: target.instanceId,
         release: built.release.version,
         baked_skills: baked.size,
-        missing_skills: missing,
-      })
-    );
+        missing_skills: missing,});
     if (missing.length > 0) await installBaseSkills(target, missing);
   } else {
     await installBaseSkills(target);
@@ -1072,30 +1050,24 @@ async function finishSetup(
     await installComposioMcp(supabase, userId, target);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "composio preinstall failed", user_id: userId, error: message })
-    );
+    log.error("composio preinstall failed", {box_id: target.instanceId,
+        user_id: userId, error: message});
   }
   try {
     await installMasterkeyMcp(supabase, userId, target);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "masterkey preinstall failed", user_id: userId, error: message })
-    );
+    log.error("masterkey preinstall failed", {box_id: target.instanceId,
+        user_id: userId, error: message});
   }
   if (kindFor(target.environment) === "box") {
     try {
       await ensureMailboxOnBox(supabase, userId, target.instanceId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
-      console.error(
-        JSON.stringify({
-          msg: "mail preinstall failed",
-          user_id: userId,
-          error: message,
-        }),
-      );
+      log.error("mail preinstall failed", {box_id: target.instanceId,
+        user_id: userId,
+          error: message,});
     }
   }
   // P1-11: per-user Daytona child key — the template carries no credential.
@@ -1103,8 +1075,7 @@ async function finishSetup(
     await provisionDaytona(target, userId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "daytona key injection failed", user_id: userId, error: message })
-    );
+    log.error("daytona key injection failed", {box_id: target.instanceId,
+        user_id: userId, error: message});
   }
 }

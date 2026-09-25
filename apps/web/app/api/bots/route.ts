@@ -19,6 +19,7 @@ import { listSessions } from "@/lib/hermes/client";
 import { botTarget, BOT_CHAT_SESSION, isValidBotName } from "@/lib/bots/client";
 import { provisionBot, deleteBot, applyModelTier } from "@/lib/bots/provision";
 import { getBot, listBots, toPublic, type BotPublic } from "@/lib/bots/store";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -159,9 +160,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "box is rate limited" }, { status: 429 });
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "bot provisioning failed", user_id: userId, error: message })
-    );
+    log.error("bot provisioning failed", {user_id: userId, error: message});
     return NextResponse.json({ error: "provisioning failed" }, { status: 502 });
   }
 }
@@ -211,9 +210,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: "box is rate limited" }, { status: 429 });
       }
       const message = error instanceof Error ? error.message : "unknown error";
-      console.error(
-        JSON.stringify({ msg: "bot tier re-pin failed", user_id: userId, error: message })
-      );
+      log.error("bot tier re-pin failed", {user_id: userId, error: message});
       return NextResponse.json({ error: "tier update failed" }, { status: 502 });
     } finally {
       // Re-arm the box's idle shut-off deadline (ensureBoxAwake cleared it).
@@ -263,9 +260,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "box is rate limited" }, { status: 429 });
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "bot delete failed", user_id: userId, error: message })
-    );
+    log.error("bot delete failed", {user_id: userId, error: message});
     return NextResponse.json({ error: "delete failed" }, { status: 502 });
   }
 }

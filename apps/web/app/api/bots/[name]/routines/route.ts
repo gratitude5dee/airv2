@@ -32,6 +32,7 @@ import {
   scanRoutineEscalations,
 } from "@/lib/bots/routines";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,7 +118,7 @@ function failure(error: unknown, what: string): NextResponse {
     return NextResponse.json({ error: "box is rate limited" }, { status: 429 });
   }
   const message = error instanceof Error ? error.message : "unknown error";
-  console.error(JSON.stringify({ msg: `routine ${what} failed`, error: message }));
+  log.error(`routine ${what} failed`, {error: message});
   return NextResponse.json({ error: `${what} failed` }, { status: 502 });
 }
 

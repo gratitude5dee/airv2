@@ -28,6 +28,7 @@ import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 // Chrome enforces form-action on the redirect that follows a form POST, so
 // the connect redirect into the Composio hosted page must be allowed on top
@@ -143,13 +144,8 @@ async function loadAndRender(
   if (connections.some((c) => c.status === "pending")) {
     connections = await syncConnections(ctx.supabase, userId).catch(
       (error: unknown) => {
-        console.error(
-          JSON.stringify({
-            msg: "connections sync failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("connections sync failed", {user_id: userId,
+            error: error instanceof Error ? error.message : String(error),});
         return connections;
       }
     );
@@ -195,13 +191,8 @@ export const connect: MiniAppModule = {
       try {
         await syncConnections(ctx.supabase, userId);
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "connections sync failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("connections sync failed", {user_id: userId,
+            error: error instanceof Error ? error.message : String(error),});
         return loadAndRender(
           ctx,
           "Couldn't refresh statuses just now — try again in a moment."
@@ -236,15 +227,10 @@ export const connect: MiniAppModule = {
         return withBaseHeaders(NextResponse.redirect(link.redirect_url, 303));
       } catch (error) {
         if (error instanceof ComposioApiError) {
-          console.error(
-            JSON.stringify({
-              msg: "connect link failed",
-              user_id: userId,
+          log.error("connect link failed", {user_id: userId,
               toolkit,
               status: error.status,
-              error: error.message,
-            })
-          );
+              error: error.message,});
           return loadAndRender(
             ctx,
             "That tool can't be connected right now \u2014 try another, or try again in a moment."

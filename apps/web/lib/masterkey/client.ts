@@ -12,6 +12,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { log } from "../log";
 
 export const MASTERKEY_PROVIDER = "masterkey";
 export const MASTERKEY_TOOLKIT = "mcp";
@@ -63,9 +64,7 @@ async function setConnectionStatus(
     .from("connections")
     .upsert(row, { onConflict: "user_id,provider,toolkit" });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "masterkey connection upsert failed", user_id: userId, error: error.message })
-    );
+    log.error("masterkey connection upsert failed", {user_id: userId, error: error.message});
   }
 }
 

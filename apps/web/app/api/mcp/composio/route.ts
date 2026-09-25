@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import { ensureComposioSession } from "@/lib/provisioning/connectors";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,13 +53,8 @@ async function proxy(request: NextRequest): Promise<Response> {
   try {
     ({ mcpUrl } = await ensureComposioSession(supabase, userId));
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "composio mcp proxy: session resolve failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      })
-    );
+    log.error("composio mcp proxy: session resolve failed", {user_id: userId,
+        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",});
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
   }
 

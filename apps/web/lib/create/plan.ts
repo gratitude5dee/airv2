@@ -14,6 +14,7 @@ import { loadTarget, readComputeFile } from "../compute/runtime";
 import { sendMarkedCards } from "../miniapps/cards";
 import { WORKSPACE_ROOT } from "./build";
 import { safeArchivePath } from "./kit";
+import { log } from "../log";
 
 /** §14.1: a plan attachment is at most this many bytes. */
 export const PLAN_MAX_BYTES = 64 * 1024;
@@ -126,15 +127,10 @@ export async function deliverPlan(
     });
     return { delivered: "attachment", bytes: bytes.length };
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "plan attachment failed; falling back to text",
-        user_id: userId,
+    log.error("plan attachment failed; falling back to text", {user_id: userId,
         appname: input.appname,
         bytes: bytes.length,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
   }
   await sender.sendText(thread.spaceId, thread.phone, planSummary(text));
   await sendMarkedCards(

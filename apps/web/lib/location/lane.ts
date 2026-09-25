@@ -32,6 +32,7 @@ import {
   supersedeLocationRequests,
   LOCATION_CONTEXT_PREFIX,
 } from "./requests";
+import { log } from "../log";
 
 const ASK_LINE =
   "share your location and i'll look around — tap the Find My card i just sent.";
@@ -135,13 +136,8 @@ export async function maybeRunLocationLane(
     .requestLocation(job.spaceId, job.phone, senderAddress, request.id)
     .catch(() => undefined);
   if (!receipt) {
-    console.error(
-      JSON.stringify({
-        msg: "find my request card unavailable",
-        user_id: job.userId,
-        request_id: request.id,
-      })
-    );
+    log.error("find my request card unavailable", {user_id: job.userId,
+        request_id: request.id,});
     // No card went out — close the request so the sweep never follows with a
     // later expiry line. Crucially, do not consume the user's search: route
     // it through the agent with a short control note so its resulting question

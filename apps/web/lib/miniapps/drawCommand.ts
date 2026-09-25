@@ -32,6 +32,7 @@ import {
   OWNER_ONLY_CARD_LINE,
 } from "./imessageCommand";
 import { getRegistryApp } from "./registry";
+import { log } from "../log";
 
 // sketch/paint are draw aliases — they can't live in imessageCommand's
 // ALIASES map because that path has no draw session to bind the card to.
@@ -167,13 +168,8 @@ export async function maybeRunDrawLane(
           .catch(() => undefined);
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "draw auto-start failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("draw auto-start failed", {user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(
           job.spaceId,

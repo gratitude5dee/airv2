@@ -9,6 +9,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { log } from "../log";
 
 export const DEVICE_CODE_TTL_MINUTES = 10;
 export const POLL_INTERVAL_SECONDS = 5;
@@ -159,9 +160,7 @@ export async function pollDeviceToken(
   if (insertError) {
     throw new Error(`plugin token mint failed: ${insertError.message}`);
   }
-  console.log(
-    JSON.stringify({ msg: "plugin token minted", user_id: row.user_id, tool: row.tool })
-  );
+  log.info("plugin token minted", {user_id: row.user_id, tool: row.tool});
   return { status: "ok", token, tool: row.tool };
 }
 

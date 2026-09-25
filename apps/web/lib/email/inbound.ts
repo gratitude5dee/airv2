@@ -34,6 +34,7 @@ import { extractInviteSummary, inviteLabel, looksLikeIcs } from "../calendar/ics
 import { materializeIcs, nudgeSync } from "../calendar/store";
 import { sendMiniAppCard } from "../miniapps/cards";
 import { claimCardSend } from "../miniapps/cardSends";
+import { log } from "../log";
 
 /**
  * Strip quoted history before it reaches the model (M5 task 4) — it is
@@ -117,13 +118,8 @@ async function handleCalendarInvites(
   // card; the cooldown claim bounds the flood rate). Best-effort: a failed
   // card must not fail invite processing — the decision already exists.
   await sendCalendarCard(supabase, userId).catch((error) => {
-    console.error(
-      JSON.stringify({
-        msg: "calendar card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("calendar card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
   });
   return true;
 }

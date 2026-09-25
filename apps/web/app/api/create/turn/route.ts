@@ -24,6 +24,7 @@ import { createTurnRateLimited, recordOpsEvent } from "@/lib/security/limits";
 import { isCreateStage } from "@/lib/entitlements/models";
 import { createConfig } from "@/lib/create/config";
 import { getIntake, intakeHookInput, OPEN_STAGES } from "@/lib/create/intake";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,13 +101,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof StartLimitError) {
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
-    console.error(
-      JSON.stringify({
-        msg: "create turn failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("create turn failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ error: "run failed" }, { status: 500 });
   }
 }

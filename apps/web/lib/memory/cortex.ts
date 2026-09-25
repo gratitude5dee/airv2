@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command } from "@/lib/box/client";
 import { asRecord } from "@/lib/records";
+import { log } from "../log";
 
 export interface CortexRecentItem {
   title: string;
@@ -244,12 +245,7 @@ export async function logCortexCalls(
     }))
   );
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "cortex_calls insert failed",
-        user_id: userId,
-        error: error.message,
-      })
-    );
+    log.error("cortex_calls insert failed", {user_id: userId,
+        error: error.message,});
   }
 }

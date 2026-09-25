@@ -11,6 +11,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../env";
 import { deleteKvValue, getKvValue, putKvValue } from "./cloudflare";
+import { log } from "../log";
 
 export type ManifestStatus = "draft" | "published" | "suspended";
 
@@ -99,16 +100,11 @@ export async function writeManifest(manifest: AppManifest): Promise<void> {
     manifestKey(manifest.slug),
     JSON.stringify(signManifest(manifest))
   );
-  console.log(
-    JSON.stringify({
-      msg: "app manifest written",
-      app: manifest.slug,
+  log.info("app manifest written", {app: manifest.slug,
       status: manifest.status,
       live: manifest.live,
       draft: manifest.draft,
-      dev: manifest.dev,
-    })
-  );
+      dev: manifest.dev,});
 }
 
 /**

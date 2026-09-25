@@ -8,6 +8,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { log } from "../log";
 
 export const heygenAvailable = (): boolean => env.heygenApiKey() !== null;
 
@@ -48,12 +49,7 @@ export async function createHeygenPhotoAvatar(opts: {
     return { ok: false, error: "Couldn't reach HeyGen — try again." };
   }
   if (!response.ok) {
-    console.log(
-      JSON.stringify({
-        msg: "heygen avatar create failed",
-        status: response.status,
-      })
-    );
+    log.info("heygen avatar create failed", {status: response.status,});
     return { ok: false, error: "Avatar creation failed — try again." };
   }
   let body: unknown;

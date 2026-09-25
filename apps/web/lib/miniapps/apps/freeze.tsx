@@ -52,6 +52,7 @@ import {
 } from "../freeze";
 import { PRESETS, validateTrajectory } from "../freezeRecipe";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 /** The studio needs script + connect + media beyond the media-shell CSP.
  * connect-src reaches the storage origin too — clip uploads travel on a
@@ -323,14 +324,9 @@ export const freeze: MiniAppModule = {
                 mode,
                 sketchAssetId,
               }).catch((error: unknown) =>
-                console.error(
-                  JSON.stringify({
-                    msg: "freeze sketch run failed",
-                    session_id: session.id,
+                log.error("freeze sketch run failed", {session_id: session.id,
                     error:
-                      error instanceof Error ? error.message : String(error),
-                  })
-                )
+                      error instanceof Error ? error.message : String(error),})
               )
             );
             return json({
@@ -462,14 +458,9 @@ export const freeze: MiniAppModule = {
           after(() =>
             executeFreezeRender(supabase, session, job, resolved).catch(
               (error: unknown) =>
-                console.error(
-                  JSON.stringify({
-                    msg: "freeze render run failed",
-                    session_id: session.id,
+                log.error("freeze render run failed", {session_id: session.id,
                     error:
-                      error instanceof Error ? error.message : String(error),
-                  })
-                )
+                      error instanceof Error ? error.message : String(error),})
             )
           );
           return json({

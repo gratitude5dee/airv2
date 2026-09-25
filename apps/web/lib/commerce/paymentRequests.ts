@@ -23,6 +23,7 @@ import {
   getMerchant,
   markMerchantAccountInvalid,
 } from "./merchants";
+import { log } from "../log";
 
 export interface PaymentRequest {
   id: string;
@@ -153,14 +154,9 @@ export async function createPaymentRequest(
     .update({ decision_id: decision.id })
     .eq("id", request.id);
   if (linkError) {
-    console.error(
-      JSON.stringify({
-        msg: "payment request decision link failed",
-        request_id: request.id,
+    log.error("payment request decision link failed", {request_id: request.id,
         decision_id: decision.id,
-        error: linkError.message,
-      })
-    );
+        error: linkError.message,});
   }
   return {
     requestId: request.id as string,

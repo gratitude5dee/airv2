@@ -32,6 +32,7 @@ import {
 import { recordOpsEvent, type OpsEventKind } from "../security/limits";
 import { createConfig } from "./config";
 import { getVersion, VERSION_RE, type VersionRow } from "./versions";
+import { log } from "../log";
 
 // 0117 admits these kinds in ops_events; the OpsEventKind union lives in
 // lib/security/limits.ts (another lane's file — see the lane's open issues).
@@ -191,15 +192,10 @@ export async function promoteToDev(
   });
   await syncManifest(supabase, fresh);
   await recordOpsEvent(supabase, DEV_RELEASE_KIND, app.owner_user_id, app.slug);
-  console.log(
-    JSON.stringify({
-      msg: "dev release promoted",
-      user_id: app.owner_user_id,
+  log.info("dev release promoted", {user_id: app.owner_user_id,
       app: app.slug,
       version,
-      expires_at: expiresAt,
-    })
-  );
+      expires_at: expiresAt,});
   const url = options.url ?? devUrl(app);
   return { channel: "dev", version, url, expires_at: expiresAt };
 }
@@ -236,14 +232,9 @@ export async function revokeDev(
   if (previous === null) return null;
   await syncManifest(supabase, fresh);
   await recordOpsEvent(supabase, DEV_REVOKE_KIND, app.owner_user_id, app.slug);
-  console.log(
-    JSON.stringify({
-      msg: "dev release revoked",
-      user_id: app.owner_user_id,
+  log.info("dev release revoked", {user_id: app.owner_user_id,
       app: app.slug,
-      version: previous,
-    })
-  );
+      version: previous,});
   return { version: previous };
 }
 
@@ -272,15 +263,10 @@ export async function expireDevReleases(
     try {
       if (await revokeDev(supabase, app)) revoked += 1;
     } catch (err) {
-      console.error(
-        JSON.stringify({
-          msg: "dev release expiry failed",
-          app: app.slug,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      );
+      log.error("dev release expiry failed", {app: app.slug,
+          error: err instanceof Error ? err.message : String(err),});
     }
   }
-  if (revoked > 0) console.log(JSON.stringify({ msg: "dev releases expired", revoked }));
+  if (revoked > 0) log.info("dev releases expired", {revoked});
   return { revoked };
 }

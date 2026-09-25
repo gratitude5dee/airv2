@@ -16,6 +16,7 @@ import {
 } from "./openai";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
 import { createRun } from "../hermes/client";
+import { log } from "../log";
 
 export const MAX_PUSH_ROWS = 200;
 export const MAX_METRIC_AGE_DAYS = 90;
@@ -310,13 +311,8 @@ export async function ingestOpenAiMetrics(
       pulled += 1;
     } catch (error) {
       // One account's failure must not starve the rest of the sweep.
-      console.error(
-        JSON.stringify({
-          msg: "openai metrics pull failed",
-          account_id: account.id,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+      log.error("openai metrics pull failed", {account_id: account.id,
+          error: error instanceof Error ? error.message : "unknown",});
     }
   }
   return { accounts: pulled, rows: totalRows };
@@ -369,13 +365,8 @@ export async function enqueueMetaReporting(
       await armStopAfter(supabase, userId);
       enqueued += 1;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "ads-reporting enqueue failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+      log.error("ads-reporting enqueue failed", {user_id: userId,
+          error: error instanceof Error ? error.message : "unknown",});
     }
   }
   return { enqueued };

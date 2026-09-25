@@ -29,6 +29,7 @@ import {
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { promptBar, runPrompt } from "../promptBar";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 const PAGE_SIZE = 60;
 
@@ -169,12 +170,7 @@ export const masterkey: MiniAppModule = {
     }
     const [catalog, runs, wallet] = await Promise.all([
       fetchCatalog().catch((error: unknown) => {
-        console.error(
-          JSON.stringify({
-            msg: "masterkey catalog fetch failed",
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+        log.error("masterkey catalog fetch failed", {error: error instanceof Error ? error.message : "unknown",});
         return null;
       }),
       listMasterkeyRuns(ctx.supabase, ctx.session.userId),

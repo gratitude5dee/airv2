@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command } from "../box/client";
 import { shellQuote } from "../box/shell";
+import { log } from "../log";
 
 /** An operator must enqueue one request for this exact box. It is consumed
  * atomically before running; a failed recovery never loops on every message. */
@@ -24,10 +25,10 @@ export async function maybeRecoverStateDatabase(
     if (error || !claimed?.length) return;
     const result = await command(boxId,
       `/home/user/.hermes-venv/bin/python - ${shellQuote(operation)} ${shellQuote(typeof restoreOperation === "string" ? restoreOperation : "")} <<'PY'\n${STATE_RECOVERY_SCRIPT}\nPY`, 300);
-    console.error(JSON.stringify({msg: "hermes state recovery", box_id: boxId,
-      exit_code: result.exitCode, report: result.stdout.slice(-12000)}));
+    log.error("hermes state recovery", {box_id: boxId,
+      exit_code: result.exitCode, report: result.stdout.slice(-12000)});
   } catch {
-    console.error(JSON.stringify({msg: "hermes state recovery unavailable", box_id: boxId}));
+    log.error("hermes state recovery unavailable", {box_id: boxId});
   }
 }
 

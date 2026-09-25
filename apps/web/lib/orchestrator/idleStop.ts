@@ -9,6 +9,7 @@ import { recordBoxStateEvent } from "@/lib/box/events";
 import { claimIdleStop, releaseIdleStop, type DeferReason } from "@/lib/orchestrator/indexIdle";
 import { activeMigrationFor } from "@/lib/migration/exclusion";
 import type { SweepableBox } from "@/lib/orchestrator/sweep";
+import { log } from "../log";
 
 export interface IdleStopReport {
   processed: number;
@@ -67,13 +68,8 @@ export async function stopIdleBoxes(
       report.indexingDeferred += 1;
       report.deferred[decision.reason] += 1;
       if (decision.reason === "probe_failed") {
-        console.error(
-          JSON.stringify({
-            msg: "sweeper idle probe failed",
-            box_id: box.provider_box_id,
-            user_id: box.user_id,
-          })
-        );
+        log.error("sweeper idle probe failed", {box_id: box.provider_box_id,
+            user_id: box.user_id,});
       }
       continue;
     }
@@ -111,14 +107,9 @@ export async function stopIdleBoxes(
         .from("boxes")
         .update({ state: "ready" })
         .eq("provider_box_id", box.provider_box_id);
-      console.error(
-        JSON.stringify({
-          msg: "sweeper stop failed",
-          box_id: box.provider_box_id,
+      log.error("sweeper stop failed", {box_id: box.provider_box_id,
           user_id: box.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   return report;

@@ -12,6 +12,7 @@ import { serviceClient } from "@/lib/supabase";
 import { requestSession } from "@/lib/auth/surface";
 import { armStopAfter, StartLimitError } from "@/lib/orchestrator/boxes";
 import { desktopStreamUrl, DesktopUnavailableError } from "@/lib/box/desktop";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,13 +55,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return failure(503, "Your agent's screen isn't available yet — try again in a moment.");
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({
-        msg: "desktop relay failed",
+    log.error("desktop relay failed", {box_id: null,
         user_id: session.userId,
-        error: message,
-      })
-    );
+        error: message,});
     return failure(502, "Couldn't reach your agent's computer.");
   }
 }

@@ -10,6 +10,7 @@ import {
 } from "@/lib/checkout/handoffs";
 import { refreshCheckoutCard } from "@/lib/miniapps/cards";
 import { serviceClient } from "@/lib/supabase";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,14 +129,9 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     // only the durable Spectrum session that already exists.
     await refreshCheckoutCard(supabase, String(box.user_id), handoff).catch(
       (error: unknown) => {
-        console.error(
-          JSON.stringify({
-            msg: "checkout card refresh failed",
-            user_id: String(box.user_id),
+        log.error("checkout card refresh failed", {user_id: String(box.user_id),
             handoff_id: handoff.id,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+            error: error instanceof Error ? error.message : "unknown",});
       }
     );
     return NextResponse.json({ ok: true, handoff_id: handoff.id, status: handoff.status, version: handoff.version });

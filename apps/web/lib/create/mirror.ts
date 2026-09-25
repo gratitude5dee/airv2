@@ -35,6 +35,7 @@ import { createConfig } from "./config";
 import { RESTRICTED_SPECIFIER_RE } from "./kit";
 import { devUrl } from "./release";
 import type { VersionRow } from "./versions";
+import { log } from "../log";
 
 /* ---------------------------------------------------------------- types */
 
@@ -526,7 +527,7 @@ async function recordFailure(supabase: SupabaseClient, app: RegistryApp, error: 
       /* the receipt is best-effort; the caller already has the error */
     }
   }
-  console.error(JSON.stringify({ msg: "mirror failed", user_id: app.owner_user_id, slug: app.slug, reason }));
+  log.error("mirror failed", {user_id: app.owner_user_id, slug: app.slug, reason});
 }
 
 /**
@@ -576,16 +577,11 @@ export async function mirrorVersion(
       .eq("id", version.id);
     if (error) throw new MirrorError("receipt_write", 502);
     await recordOpsEvent(supabase, MIRROR_KIND, app.owner_user_id, app.slug, assembled.files.length);
-    console.log(
-      JSON.stringify({
-        msg: "mirror committed",
-        user_id: app.owner_user_id,
+    log.info("mirror committed", {user_id: app.owner_user_id,
         slug: app.slug,
         version: version.version,
         files: assembled.files.length,
-        omitted: assembled.omitted.length,
-      })
-    );
+        omitted: assembled.omitted.length,});
     return { commit, folder, files: assembled.files.length, omitted: assembled.omitted, mirrored_at: mirroredAt };
   } catch (error) {
     await recordFailure(supabase, app, error);

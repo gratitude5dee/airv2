@@ -21,6 +21,7 @@ import { openSecret } from "@/lib/crypto/secretbox";
 import { env } from "@/lib/env";
 import { resolveUpstream } from "@/lib/box/allowlist";
 import { getBot } from "@/lib/bots/store";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,8 +58,9 @@ async function handle(
     profileKey = bot.api_server_key;
   }
 
+  let box: Awaited<ReturnType<typeof ensureBoxAwake>> | null = null;
   try {
-    const box = await ensureBoxAwake(supabase, userId);
+    box = await ensureBoxAwake(supabase, userId);
     const search = request.nextUrl.search;
     const hasBody =
       request.method === "POST" ||
@@ -130,9 +132,8 @@ async function handle(
       );
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "box proxy failed", user_id: userId, error: message })
-    );
+    log.error("box proxy failed", {box_id: box?.boxId ?? null,
+        user_id: userId, error: message});
     return NextResponse.json({ error: "proxy failed" }, { status: 502 });
   }
 }

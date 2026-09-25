@@ -21,6 +21,7 @@ import { VaultCliError, appendVaultEvent } from "@/lib/vault/client";
 import { typeVaultField, typeVaultTotp } from "@/lib/vault/fill";
 import { readSiteGrants } from "@/lib/browser/grants";
 import { probeBrowser } from "@/lib/browser/probe";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -148,14 +149,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "vault fill failed",
-        user_id: userId,
+    log.error("vault fill failed", {user_id: userId,
         item_id: itemId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "fill failed" }, { status: 502 });
   }
 }

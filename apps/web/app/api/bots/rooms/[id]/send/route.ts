@@ -9,6 +9,7 @@ import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { listBots, type BotRow } from "@/lib/bots/store";
 import { orchestrateRoomTurn, type RoomRow } from "@/lib/bots/rooms";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,13 +66,8 @@ export async function POST(
     );
     return NextResponse.json(result);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "room turn failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("room turn failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ error: "room turn failed" }, { status: 502 });
   }
 }

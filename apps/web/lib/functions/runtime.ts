@@ -29,6 +29,7 @@ import {
 } from "./cloudflare";
 import { hashRuntimeToken, mintRuntimeToken } from "./tokens";
 import { BackendError, loadFunctions, type FunctionsRow } from "./backend";
+import { log } from "../log";
 
 export const RUNTIME_KV_PREFIX = "rt:";
 /** Models a Functions Worker may name; anything else is refused (§11.3). */
@@ -136,7 +137,7 @@ export async function rotateRuntimeToken(
     supabase,
     ((older ?? []) as Array<{ id: string }>).map((r) => r.id)
   );
-  console.log(JSON.stringify({ msg: "runtime token rotated", app_id: appId }));
+  log.info("runtime token rotated", {app_id: appId});
   return { tokenId };
 }
 
@@ -294,9 +295,7 @@ export async function reserveAppSpend(
     p_cap: appDailyCapUsd(row),
   });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "fn reserve failed", app_id: row.app_id, error: error.message })
-    );
+    log.error("fn reserve failed", {app_id: row.app_id, error: error.message});
     return { status: "unavailable" };
   }
   return typeof data === "string" && data.length > 0
@@ -321,9 +320,7 @@ export async function settleAppSpend(
     p_day: hold.day,
   });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "fn settle failed", app_id: hold.appId, error: error.message })
-    );
+    log.error("fn settle failed", {app_id: hold.appId, error: error.message});
   }
 }
 

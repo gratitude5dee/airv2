@@ -9,6 +9,7 @@
 import { command } from "@/lib/box/client";
 import { asRecord } from "@/lib/records";
 import { shellQuote } from "@/lib/box/shell";
+import { log } from "../log";
 
 /** Stable viking:// targets — re-ingest replaces, never duplicates. */
 export const OV_IMESSAGE_URI = "viking://resources/context/imessage-history";
@@ -86,14 +87,10 @@ export async function deepMemoryIndex(
       OVCTL_ENQUEUE_TIMEOUT_SECONDS
     );
     const ok = result.exitCode === 0;
-    console.log(
-      JSON.stringify({ msg: "deep memory index", box_id: boxId, uri, ok })
-    );
+    log.info("deep memory index", {box_id: boxId, uri, ok});
     return ok;
   } catch {
-    console.log(
-      JSON.stringify({ msg: "deep memory index", box_id: boxId, uri, ok: false })
-    );
+    log.info("deep memory index", {box_id: boxId, uri, ok: false});
     return false;
   }
 }
@@ -110,14 +107,10 @@ export async function deepMemoryForget(
       OVCTL_TIMEOUT_SECONDS
     );
     const ok = result.exitCode === 0;
-    console.log(
-      JSON.stringify({ msg: "deep memory forget", box_id: boxId, uri, ok })
-    );
+    log.info("deep memory forget", {box_id: boxId, uri, ok});
     return ok;
   } catch {
-    console.log(
-      JSON.stringify({ msg: "deep memory forget", box_id: boxId, uri, ok: false })
-    );
+    log.info("deep memory forget", {box_id: boxId, uri, ok: false});
     return false;
   }
 }
@@ -136,9 +129,7 @@ export async function deepMemoryClear(
   try {
     const ensure = await command(boxId, "ovctl ensure", 180);
     if (ensure.exitCode !== 0) {
-      console.log(
-        JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false, stage: "ensure" })
-      );
+      log.info("deep memory clear", {box_id: boxId, scope, ok: false, stage: "ensure"});
       return false;
     }
     const result = await command(
@@ -147,14 +138,10 @@ export async function deepMemoryClear(
       OVCTL_TIMEOUT_SECONDS
     );
     const ok = result.exitCode === 0;
-    console.log(
-      JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok })
-    );
+    log.info("deep memory clear", {box_id: boxId, scope, ok});
     return ok;
   } catch {
-    console.log(
-      JSON.stringify({ msg: "deep memory clear", box_id: boxId, scope, ok: false })
-    );
+    log.info("deep memory clear", {box_id: boxId, scope, ok: false});
     return false;
   }
 }
