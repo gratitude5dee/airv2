@@ -23,7 +23,11 @@ async function mount(): Promise<void> {
     payload = {};
   }
   const [{ createRoot }, { CreateStudio }] = await Promise.all([
-    import("react-dom/client"),
+    // The code-split react-dom chunk is CJS — esbuild puts the real
+    // exports on `default`, so unwrap that interop shape.
+    import("react-dom/client").then((m) =>
+      "default" in m ? (m.default as typeof m) : m
+    ),
     import("./CreateStudio"),
   ]);
   createRoot(el).render(<CreateStudio slug={payload.slug ?? null} />);
