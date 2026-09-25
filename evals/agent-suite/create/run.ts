@@ -30,7 +30,7 @@
  * content-free by construction (log tail, counts, scores, stage names), so
  * the result files are too.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createSseParser,
@@ -382,7 +382,7 @@ export function matchesInOrder(
       }
     }
     if (found < 0) return false;
-    cursor = found;
+    cursor = found + 1;
   }
   return true;
 }
@@ -580,8 +580,14 @@ export function gradeCase(
         ? "pass"
         : "fail"
       : "n/a",
+    // An unreachable status route means there was nothing to grade — that
+    // is a fail, not "0 findings pass".
     hard_findings:
-      hardFindings(r.status_after) <= c.expect_hard_findings ? "pass" : "fail",
+      r.status_after === null
+        ? "fail"
+        : hardFindings(r.status_after) <= c.expect_hard_findings
+          ? "pass"
+          : "fail",
     ...v12,
   };
 }
@@ -905,6 +911,87 @@ async function main(): Promise<void> {
       `  → ${result.status} in ${Math.round(result.elapsed_ms / 1000)}s  ${verdict}`,
     );
   }
+  const report = writeReport(cfg.resultsDir);
+  if (report !== null) console.log(`[create] wrote ${report}`);
+}
+
+/**
+ * report.md writer — the same shape as the main suite's: a per-check
+ * pass-rate table over every check a case carries, then the per-case
+ * appendix. Aggregates every case JSON on disk so a resumed run reports
+ * the whole dir, not just the cases this invocation ran. Returns null when
+ * there is nothing to report (empty dir).
+ */
+export function writeReport(dir: string): string | null {
+  const results = readdirSync(dir)
+    .filter((f) => f.endsWith(".json") && f !== "suite.json")
+    .sort()
+    .map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")) as CreateCaseResult);
+  if (results.length === 0) return null;
+
+  const byCheck = new Map<CheckName, { pass: number; fail: number; na: number }>();
+  for (const name of CHECK_NAMES) byCheck.set(name, { pass: 0, fail: 0, na: 0 });
+  const statuses = new Map<string, number>();
+  for (const r of results) {
+    statuses.set(r.status, (statuses.get(r.status) ?? 0) + 1);
+    for (const name of CHECK_NAMES) {
+      const t = byCheck.get(name)!;
+      const v = r.checks[name];
+      if (v === "pass") t.pass += 1;
+      else if (v === "fail") t.fail += 1;
+      else t.na += 1;
+    }
+  }
+  const totalSeconds = results.reduce((s, r) => s + r.elapsed_ms, 0) / 1000;
+
+  const lines: string[] = [];
+  lines.push("# Create suite — report", "");
+  lines.push(
+    `Cases: **${results.length}**  ·  results: \`${dir.split("/").slice(-1)[0]}\`  ·  ` +
+      `outcomes: ${[...statuses.entries()].map(([k, v]) => `${k} ${v}`).join(", ")}  ·  ` +
+      `elapsed: **${Math.round(totalSeconds)}s**`,
+    ""
+  );
+  lines.push("| Check | Pass rate | pass | fail | n/a |");
+  lines.push("| --- | --- | --- | --- | --- |");
+  for (const name of CHECK_NAMES) {
+    const t = byCheck.get(name)!;
+    const scored = t.pass + t.fail;
+    lines.push(
+      `| ${name} | ${scored === 0 ? "—" : `${Math.round((t.pass / scored) * 100)}%`} | ${t.pass} | ${t.fail} | ${t.na} |`
+    );
+  }
+  lines.push("");
+
+  const failing = results.filter((r) =>
+    CHECK_NAMES.some((name) => r.checks[name] === "fail")
+  );
+  if (failing.length > 0) {
+    lines.push("## Failures", "");
+    for (const r of failing) {
+      const fails = CHECK_NAMES.filter((name) => r.checks[name] === "fail").join(", ");
+      lines.push(`- **${r.id}** [${r.step}/${r.tier}] ${r.status}: ${fails}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Per-case detail", "");
+  lines.push(
+    `| id | step | tier | status | ${CHECK_NAMES.join(" | ")} | tools |`
+  );
+  lines.push(`| --- | --- | --- | --- | ${CHECK_NAMES.map(() => "---").join(" | ")} | --- |`);
+  for (const r of results) {
+    lines.push(
+      `| ${r.id} | ${r.step} | ${r.tier} | ${r.status} | ` +
+        `${CHECK_NAMES.map((name) => r.checks[name]).join(" | ")} | ` +
+        `${r.tools.join(", ") || "—"} |`
+    );
+  }
+  lines.push("");
+
+  const report = join(dir, "report.md");
+  writeFileSync(report, `${lines.join("\n")}`);
+  return report;
 }
 
 if (
