@@ -2,6 +2,7 @@
  * Server-side environment access (goal.md §5). Nothing here is ever
  * NEXT_PUBLIC_; importing this module from client code is a bug.
  */
+import { z } from "zod";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -13,6 +14,265 @@ function required(name: string): string {
 
 function optional(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
+}
+
+/**
+ * R-ARCH-02: the env manifest — every variable the server knows, split by
+ * whether a production boot may proceed without it. `required` here is
+ * deliberately conservative: a variable is required only where a lazy
+ * accessor below already throws when it is missing.
+ */
+export const REQUIRED_ENV = [
+  "ADMIN_API_KEY",
+  "AGENTMAIL_API_KEY",
+  "AGENTMAIL_WEBHOOK_SECRET",
+  "BOX_API_KEY",
+  "BOX_TEMPLATE_ID",
+  "COMPOSIO_API_KEY",
+  "MASTERKEY_PARTNER_SECRET",
+  "MINIAPP_SIGNING_KEY",
+  "SESSION_SECRET",
+  "SPECTRUM_PROJECT_ID",
+  "SPECTRUM_PROJECT_SECRET",
+  "SPECTRUM_WEBHOOK_SECRET",
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_URL",
+  "TENKI_API_KEY",
+  "THIRDWEB_SECRET_KEY",
+  "WZRDMAIL_API_KEY",
+  "WZRDMAIL_WEBHOOK_SECRET",
+] as const;
+
+/** Accessors that fall back across a small set of names are satisfied by
+ * ANY member — e.g. STT_API_KEY and OPENROUTER_API_KEY both fall back to
+ * MODEL_PROVIDER_API_KEY, so requiring each member would over-ask. */
+export const REQUIRED_GROUPS: readonly (readonly [string, ...string[]])[] = [
+  ["MODEL_PROVIDER_API_KEY", "OPENROUTER_API_KEY", "STT_API_KEY"],
+  ["MODEL_PROVIDER_BASE_URL", "OPENROUTER_BASE_URL", "STT_BASE_URL"],
+];
+
+/** Recognized but optional at boot everywhere — the lazy accessor supplies
+ * its own default or failure mode. NEXT_PUBLIC_ vars are deliberately not
+ * here: they are build-time client values, not server env. */
+export const OPTIONAL_ENV = [
+  "ADS_VAULT_KEY",
+  "AI_GATEWAY_API_KEY",
+  "AI_GATEWAY_BASE",
+  "APPS_ORIGIN_SUFFIX",
+  "APP_ORIGIN",
+  "APP_ORIGIN_SIGNING_KEY",
+  "BOX_API_BASE",
+  "BOX_DASHBOARD_AUTH_KEY",
+  "BOX_READY_TIMEOUT_MS",
+  "CDP_API_KEY_ID",
+  "CDP_API_KEY_SECRET",
+  "CF_DISPATCH_NAMESPACE",
+  "CF_MANIFEST_KV_ID",
+  "CF_RUNTIME_KV_ID",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "CLOUDFLARE_API_TOKEN",
+  "COMMAND_LANE_KEY",
+  "CREATE_BRIDGE_SECRET",
+  "CREATE_FUNCTIONS_ENABLED",
+  "CREATE_JOBS_ORIGIN",
+  "CREATE_V13_USER_IDS",
+  "CREATIVE_COST_CENTS_IMAGE",
+  "CREATIVE_COST_CENTS_VIDEO",
+  "CREATIVE_DAILY_LIMIT",
+  "CREATIVE_MAX_CONCURRENCY",
+  "CREATIVE_UNLIMITED_USER_IDS",
+  "CRON_SECRET",
+  "DAYTONA_API_URL",
+  "DAYTONA_MANAGER_KEY",
+  "DAYTONA_ORGANIZATION_ID",
+  "DESKTOP_SIGNING_KEY",
+  "ELEVENLABS_API_KEY",
+  "ELEVENLABS_API_URL",
+  "ELEVENLABS_TTS_MODEL",
+  "FAL_KEY",
+  "FAL_TWIN_LIPSYNC_MODEL",
+  "GATEWAY_MODEL_FAMILY_OVERRIDE",
+  "GITHUB_API_BASE",
+  "GITHUB_APP_ID",
+  "GITHUB_APP_PRIVATE_KEY",
+  "GITHUB_APP_SLUG",
+  "GITHUB_APP_WEBHOOK_SECRET",
+  "GITHUB_OIDC_AUDIENCE",
+  "GITHUB_STATE_SIGNING_KEY",
+  "GMI_BALANCED_MODEL",
+  "GMI_CLOUD_API_KEY",
+  "GMI_DEEP_MODEL",
+  "GMI_FAST_MODEL",
+  "GMI_GLM_EFFORT",
+  "GMI_INFERENCE_BASE_URL",
+  "GMI_MEDIA_HOSTS",
+  "GMI_ORGANIZATION_ID",
+  "GMI_ROUTINE_FAST",
+  "GROQ_API_KEY",
+  "HEYGEN_API_KEY",
+  "HEYGEN_API_URL",
+  "IMESSAGE_APP_NAME",
+  "IMESSAGE_APP_STORE_ID",
+  "IMESSAGE_TEAM_ID",
+  "KERNEL_API_BASE",
+  "KERNEL_API_KEY",
+  "KERNEL_ENABLED",
+  "KERNEL_VAULTS_ENABLED",
+  "KIT_DIR",
+  "KIT_RESTRICTED_SHA256",
+  "KIT_RESTRICTED_VERSION",
+  "KIT_SCRATCH_DIR",
+  "LINKAPP_ORIGIN",
+  "LINK_AGENT_PAYMENTS_ENABLED",
+  "LINK_HOST_ENABLED",
+  "LIVE_TOKEN_SECRET",
+  "MAC_BOOTSTRAP_IMAGE",
+  "MAC_BOOTSTRAP_URL",
+  "MAIL_PROVIDER",
+  "MASTERKEY_ORIGIN",
+  "MASTERKEY_PER_CALL_MAX_USD",
+  "MIGRATION_CUTOVER_DEADLINE_MS",
+  "MIGRATION_DRAIN_BUDGET_MS",
+  "MIGRATION_DRIVE_LEASE_SECONDS",
+  "MIGRATION_ENABLED",
+  "MIGRATION_OBSERVE_MS",
+  "MIGRATION_PRECOPY_PASSES",
+  "MIGRATION_RETAIN_MS",
+  "MIGRATION_SEAL_KEY",
+  "MINIAPP_ORIGIN",
+  "MODEL_BALANCED",
+  "MODEL_CREATE_BALANCED",
+  "MODEL_CREATE_DEEP",
+  "MODEL_CREATE_FAST",
+  "MODEL_DEEP",
+  "MODEL_FAST",
+  "MODEL_LABEL_BALANCED",
+  "MODEL_LABEL_DEEP",
+  "MODEL_LABEL_FAST",
+  "MODEL_PROVIDER_API_KEY",
+  "MODEL_PROVIDER_BASE_URL",
+  "MODEL_REASONING_BALANCED",
+  "MODEL_REASONING_DEEP",
+  "MODEL_REASONING_FAST",
+  "MODEL_SERVICE_TIER_BALANCED",
+  "MODEL_SERVICE_TIER_DEEP",
+  "MODEL_SERVICE_TIER_FAST",
+  "MUSE_ENABLED",
+  "MUSE_INTERNAL_TOKEN",
+  "MUSE_MODE_TTL_MINUTES",
+  "MUSE_ORIGIN",
+  "MUSE_RUN_DAILY_USD",
+  "MUSE_RUN_MAX_USD",
+  "MUSE_UPDATES_ALERT_CAP",
+  "MUSE_UPDATES_DAILY_CAP",
+  "MUSE_WORKER_TOKEN",
+  "NAMESPACE_IAM_API",
+  "NAMESPACE_REGION",
+  "NAMESPACE_TOKEN",
+  "OMARCHY_TEMPLATE_ID",
+  "ONAIROS_API_KEY",
+  "ONAIROS_GOOGLE_CLIENT_ID",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  "OPERATOR_ALLOWLIST",
+  "PLUGIN_TOKEN_SIGNING_KEY",
+  "PROVIDER_VAULT_KEY",
+  "PUBLISH_KILL_SWITCH",
+  "PUBLISH_TIKTOK",
+  "R2_ACCESS_KEY_ID",
+  "R2_ACCOUNT_ID",
+  "R2_BUCKET",
+  "R2_PUBLIC_BASE_URL",
+  "R2_SECRET_ACCESS_KEY",
+  "SHOPPING_DRY_RUN_HOSTS",
+  "SPECTRUM_API_BASE",
+  "SPECTRUM_IMESSAGE_ADDRESS",
+  "STRIPE_LINK_ENABLED",
+  "STRIPE_LINK_HOSTS",
+  "STRIPE_PUBLISHABLE_KEY",
+  "STT_API_KEY",
+  "STT_BASE_URL",
+  "STT_COST_CENTS_PER_MIN",
+  "STT_MODEL",
+  "TENKI_API_ENDPOINT",
+  "TENKI_API_URL",
+  "TENKI_TEMPLATE_ID",
+  "TRADE_ALLOWLIST",
+  "TRADE_LIVE_ENABLED",
+  "TRADE_PREVIEW_SIGNING_KEY",
+  "TYPESAFE_API_BASE",
+  "TYPESAFE_API_KEY",
+  "VENICE_API_KEY",
+  "VENICE_BASE_URL",
+  "VERCEL_DEPLOYMENT_CREATED_AT",
+  "VERCEL_GIT_COMMIT_SHA",
+  "VERCEL_OIDC_TOKEN",
+  "VERCEL_REGION",
+  "WALLET_CHAIN_ID",
+  "WANDB_API_KEY",
+  "WANDB_PROJECT",
+  "WZRDMAIL_BASE_URL",
+  "WZRDMAIL_MCP_URL",
+  "WZRD_CREATE_INSTALLATION_ID",
+  "X402_FACILITATOR_URL",
+  "X402_NETWORK",
+] as const;
+
+export type EnvName =
+  | (typeof REQUIRED_ENV)[number]
+  | (typeof OPTIONAL_ENV)[number];
+
+/**
+ * The one env schema — every variable with its requiredness for a
+ * production boot. Unknown process vars pass through; `""` on a required
+ * name counts as missing, matching `required()`.
+ */
+export const envSchema = z
+  .object(
+    Object.fromEntries([
+      ...REQUIRED_ENV.map((name) => [name, z.string().min(1)]),
+      ...OPTIONAL_ENV.map((name) => [name, z.string().optional()]),
+    ])
+  )
+  .passthrough()
+  .superRefine((value, ctx) => {
+    for (const group of REQUIRED_GROUPS) {
+      if (!group.some((name) => value[name])) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `one of ${group.join(" / ")} required`,
+          path: [group[0]],
+        });
+      }
+    }
+  });
+
+/**
+ * Boot-time check, invoked once from instrumentation.ts: a production boot
+ * refuses to come up when a required variable is missing — the alternative
+ * is discovering it at request time. Development and test warn but boot —
+ * an optional-secret dev box must still start.
+ */
+export function validateEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  environment: string = source["NODE_ENV"] ?? "development"
+): void {
+  const parsed = envSchema.safeParse(source);
+  if (parsed.success) return;
+  const problems = [
+    ...new Set(
+      parsed.error.issues.map((issue) =>
+        issue.code === z.ZodIssueCode.custom
+          ? issue.message
+          : String(issue.path[0] ?? "")
+      )
+    ),
+  ];
+  const message = `Missing required env var(s): ${problems.join(", ")}`;
+  if (environment === "production") throw new Error(message);
+  console.warn(`[env] ${message} — continuing (${environment})`);
 }
 
 export const env = {
@@ -506,4 +766,75 @@ export const env = {
     );
     return parsed >= 0 ? parsed : 25;
   },
+
+  // R-ARCH-02: accessors for the reads that bypassed this module. Same
+  // lazy-accessor contract — tests stub process.env per test.
+  // The scheduler's bearer secret. Optional like the other worker tokens:
+  // a deployment without cron jobs has nothing to protect, and an unset
+  // secret fails closed (no token can equal it).
+  cronSecret: (): string | null => process.env["CRON_SECRET"] ?? null,
+  // Vercel platform metadata for the deployments report.
+  vercelGitCommitSha: (): string | null =>
+    process.env["VERCEL_GIT_COMMIT_SHA"] ?? null,
+  vercelDeploymentCreatedAt: (): string | null =>
+    process.env["VERCEL_DEPLOYMENT_CREATED_AT"] ?? null,
+  vercelRegion: (): string | null => process.env["VERCEL_REGION"] ?? null,
+  // GMI "routine" fast lane can be pinned off at the gateway.
+  gmiRoutineFast: (): string | null => process.env["GMI_ROUTINE_FAST"] ?? null,
+  gatewayModelFamilyOverride: (): string | null =>
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] ?? null,
+  // Tenki's API origin — TENKI_API_ENDPOINT wins over the older TENKI_API_URL.
+  tenkiApiBase: (): string =>
+    process.env["TENKI_API_ENDPOINT"] ||
+    process.env["TENKI_API_URL"] ||
+    "https://api.tenki.cloud",
+  // Create Kit location + restricted-build pins.
+  kitDir: (): string | null => process.env["KIT_DIR"] ?? null,
+  kitScratchDir: (): string | null => process.env["KIT_SCRATCH_DIR"] ?? null,
+  kitRestrictedVersion: (): string | null =>
+    process.env["KIT_RESTRICTED_VERSION"] ?? null,
+  kitRestrictedSha256: (): string | null =>
+    process.env["KIT_RESTRICTED_SHA256"] ?? null,
+  // The box's shared command-lane key. Optional: the lane degrades to
+  // unauthenticated-local behavior without it (R-SEC-09 tracks hardening).
+  commandLaneKey: (): string | null => process.env["COMMAND_LANE_KEY"] ?? null,
+  stripeLinkEnabled: (): boolean =>
+    process.env["STRIPE_LINK_ENABLED"] === "1",
+  stripeLinkHosts: (): string => optional("STRIPE_LINK_HOSTS", ""),
+  linkAgentPaymentsEnabled: (): boolean =>
+    process.env["LINK_AGENT_PAYMENTS_ENABLED"] === "true",
+  publishTiktokEnabled: (): boolean => process.env["PUBLISH_TIKTOK"] === "1",
+  publishKillSwitch: (): boolean => process.env["PUBLISH_KILL_SWITCH"] === "1",
+  spectrumImessageAddress: (): string | null =>
+    process.env["SPECTRUM_IMESSAGE_ADDRESS"] ?? null,
+  shoppingDryRunHosts: (): string => optional("SHOPPING_DRY_RUN_HOSTS", ""),
+  // Per-tier model pins (lib/entitlements/models.ts): ops re-pins without a
+  // deploy; unset means the compiled default.
+  gmiFastModel: (): string | undefined => process.env["GMI_FAST_MODEL"],
+  gmiBalancedModel: (): string | undefined => process.env["GMI_BALANCED_MODEL"],
+  gmiDeepModel: (): string | undefined => process.env["GMI_DEEP_MODEL"],
+  gmiGlmEffort: (): string => optional("GMI_GLM_EFFORT", "low"),
+  modelFast: (): string | undefined => process.env["MODEL_FAST"],
+  modelBalanced: (): string | undefined => process.env["MODEL_BALANCED"],
+  modelDeep: (): string | undefined => process.env["MODEL_DEEP"],
+  modelReasoningFast: (): string =>
+    optional("MODEL_REASONING_FAST", "xhigh"),
+  modelReasoningBalanced: (): string | undefined =>
+    process.env["MODEL_REASONING_BALANCED"],
+  modelReasoningDeep: (): string | undefined =>
+    process.env["MODEL_REASONING_DEEP"],
+  modelServiceTierFast: (): string | undefined =>
+    process.env["MODEL_SERVICE_TIER_FAST"],
+  modelServiceTierBalanced: (): string | undefined =>
+    process.env["MODEL_SERVICE_TIER_BALANCED"],
+  modelServiceTierDeep: (): string | undefined =>
+    process.env["MODEL_SERVICE_TIER_DEEP"],
+  modelCreateFast: (): string | undefined => process.env["MODEL_CREATE_FAST"],
+  modelCreateBalanced: (): string | undefined =>
+    process.env["MODEL_CREATE_BALANCED"],
+  modelCreateDeep: (): string | undefined => process.env["MODEL_CREATE_DEEP"],
+  modelLabelFast: (): string | undefined => process.env["MODEL_LABEL_FAST"],
+  modelLabelBalanced: (): string | undefined =>
+    process.env["MODEL_LABEL_BALANCED"],
+  modelLabelDeep: (): string | undefined => process.env["MODEL_LABEL_DEEP"],
 };

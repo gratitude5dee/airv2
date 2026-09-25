@@ -88,7 +88,7 @@ export async function createFastReactionSender(
 ): Promise<FastReactionSender | undefined> {
   const tokenData = await issueTokenData();
   let address =
-    process.env["SPECTRUM_IMESSAGE_ADDRESS"] ?? DEFAULT_IMESSAGE_ADDRESS;
+    env.spectrumImessageAddress() ?? DEFAULT_IMESSAGE_ADDRESS;
   let token: string;
   if (tokenData.type === "shared") {
     token = tokenData.token;

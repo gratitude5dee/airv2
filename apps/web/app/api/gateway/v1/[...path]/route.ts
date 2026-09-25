@@ -149,7 +149,7 @@ function openingUserTurnText(body: Json): string | null {
 
 /** True when a gmi request's opening user turn reads as routine work. */
 function gmiRoutineTurn(body: Json): boolean {
-  if (process.env["GMI_ROUTINE_FAST"] === "off") return false;
+  if (env.gmiRoutineFast() === "off") return false;
   const text = openingUserTurnText(body)?.trim();
   if (!text || text.length > GMI_ROUTINE_MAX_CHARS) return false;
   return !GMI_DEEP_TURN_RE.test(text) && !GMI_RISK_TURN_RE.test(text);
@@ -187,7 +187,7 @@ function gmiFastToolContinuation(body: Json): boolean {
  * key so operations can move spend between platform credit pools.
  */
 function gatewayModelFamilyOverride(): ModelFamily | null {
-  const value = process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] ?? "";
+  const value = env.gatewayModelFamilyOverride() ?? "";
   return isModelFamily(value) ? value : null;
 }
 

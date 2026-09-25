@@ -194,8 +194,7 @@ let client: TenkiSandbox | null = null;
 function sandbox(): TenkiSandbox {
   if (!client) {
     const authToken = env.tenkiApiKey().trim();
-    const baseUrl = process.env["TENKI_API_ENDPOINT"] ||
-      process.env["TENKI_API_URL"] || "https://api.tenki.cloud";
+    const baseUrl = env.tenkiApiBase();
     client = new TenkiSandbox({
       authToken,
       baseUrl,

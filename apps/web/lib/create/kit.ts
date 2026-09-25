@@ -14,6 +14,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { getObject, r2Configured } from "../storage/r2";
+import { env } from "../env";
 
 export const KIT_SPECIFIER_RE =
   /^@kit\/(air|restricted\/[a-z0-9-]+|[a-z0-9-]+\/[a-z0-9-]+)(\/[A-Za-z0-9._/-]+)?$/;
@@ -32,7 +33,7 @@ export class KitError extends Error {
 /** `KIT_DIR` points at a checked-out packages/create-kit; the default is the
  * monorepo location relative to apps/web. */
 export function kitRoot(): string {
-  const configured = process.env["KIT_DIR"]?.trim();
+  const configured = env.kitDir()?.trim();
   if (configured) return path.resolve(configured);
   return path.resolve(process.cwd(), "..", "..", "packages", "create-kit");
 }
@@ -276,7 +277,7 @@ function destinationUnder(root: string, safe: string): string | null {
 }
 
 function scratchRoot(): string {
-  const configured = process.env["KIT_SCRATCH_DIR"]?.trim();
+  const configured = env.kitScratchDir()?.trim();
   return configured ? path.resolve(configured) : path.join(os.tmpdir(), "air-create-kit");
 }
 
@@ -373,8 +374,8 @@ export interface RestrictedConfig {
  * (restricted/README.md). Absent means Tier B is refused with a finding.
  */
 export function restrictedConfig(): RestrictedConfig | null {
-  const version = process.env["KIT_RESTRICTED_VERSION"]?.trim();
-  const sha256 = process.env["KIT_RESTRICTED_SHA256"]?.trim().toLowerCase();
+  const version = env.kitRestrictedVersion()?.trim();
+  const sha256 = env.kitRestrictedSha256()?.trim().toLowerCase();
   if (!version || !sha256) return null;
   if (!/^[0-9A-Za-z.+-]{1,80}$/.test(version) || !/^[0-9a-f]{64}$/.test(sha256)) {
     return null;

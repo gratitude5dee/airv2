@@ -10,12 +10,13 @@ import {
   reconcileTradeOrders,
 } from "@/lib/trade/service";
 import { tickWatchlists } from "@/lib/trade/watch";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function authorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
+  const secret = env.cronSecret() ?? "";
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";

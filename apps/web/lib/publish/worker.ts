@@ -22,6 +22,7 @@ import {
 import type { Draft, DraftKind, DraftMedia } from "./adapter";
 import { PublishError } from "./adapter";
 import { makePublishCtx } from "./context";
+import { env } from "../env";
 import { adapterFor } from "./registry";
 import {
   capHeadroom,
@@ -68,7 +69,7 @@ export async function publishDueSlots(
 ): Promise<PublishSweepResult> {
   // CM8 kill switch: halt scheduled publishing within one sweep without
   // touching a single slot — flipping back resumes the calendar as-is.
-  if (process.env["PUBLISH_KILL_SWITCH"] === "1") {
+  if (env.publishKillSwitch()) {
     return { usersWoken: 0, published: 0, parked: 0, deferred: 0, retried: 0 };
   }
   const nowIso = new Date().toISOString();

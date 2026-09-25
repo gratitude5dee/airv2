@@ -27,10 +27,11 @@
  * redirects to the external /<slug> path.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { env } from "./lib/env";
 import { parseNestedPath, splitPublishedSlug } from "./lib/miniapps/nested";
 
 function miniHost(): string {
-  const origin = process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech";
+  const origin = env.miniappOrigin();
   try {
     return new URL(origin).host;
   } catch {
@@ -42,8 +43,8 @@ function miniHost(): string {
  * public route — not a registry mini_app — so pay links are shareable URLs
  * on their own origin, behind LINK_HOST_ENABLED. */
 function linkHost(): string | null {
-  if (process.env["LINK_HOST_ENABLED"] !== "true") return null;
-  const origin = process.env["LINKAPP_ORIGIN"] ?? "https://link.wzrd.tech";
+  if (!env.linkHostEnabled()) return null;
+  const origin = env.linkappOrigin();
   try {
     return new URL(origin).host;
   } catch {
@@ -100,7 +101,7 @@ export function middleware(request: NextRequest): NextResponse {
     if (pathname === "/api/store/index.json") {
       const target = new URL(
         pathname + search,
-        process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech"
+        env.miniappOrigin()
       );
       return NextResponse.redirect(target, 308);
     }
@@ -141,7 +142,7 @@ export function middleware(request: NextRequest): NextResponse {
       }
       const target = new URL(
         `/${rest}` + search,
-        process.env["MINIAPP_ORIGIN"] ?? "https://mini.wzrd.tech"
+        env.miniappOrigin()
       );
       return NextResponse.redirect(target, 308);
     }

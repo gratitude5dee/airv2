@@ -10,13 +10,14 @@ import { serviceClient } from "@/lib/supabase";
 import { probeConnectionHealth } from "@/lib/publish/health";
 import { reconcileSpend } from "@/lib/ads/reconcile";
 import { creativePreflight } from "@/lib/creative/preflight";
+import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function authorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
+  const secret = env.cronSecret() ?? "";
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
