@@ -17,7 +17,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "review.md"
+SOURCE = ROOT / "docs/review-2026-09/astra-ultra-review.md"
 LEDGER = ROOT / "docs/review-findings.json"
 
 ALIASES = {
@@ -130,7 +130,7 @@ def parse_review() -> list[dict]:
         rows.append({
             "id": key, "severity": severity, "effort": effort, "area": area,
             "finding": finding, "review_verification": columns[-1],
-            "source": {"path": "review.md", "line": line_number},
+            "source": {"path": "docs/review-2026-09/astra-ultra-review.md", "line": line_number},
             "workstream": OVERRIDES.get(key, WORKSTREAMS[key.split("-")[0]]),
             "phase": phase, "kind": kind,
             "canonical_ids": UMBRELLAS.get(key, canonical),
@@ -181,7 +181,7 @@ def main() -> int:
         for row in source_rows:
             for field in ("implementation_status", "evidence", "notes"):
                 row[field] = old_rows.get(row["id"], {}).get(field, row[field])
-        old = {"schema_version": 1, "review": "review.md", "reviewed_commit": "bb82c05", "acceptance_document": "docs/review-implementation-plan.md", "product_acceptance": {"status": "not_measured", "target_percent": 95, "evidence": []}, "findings": source_rows, **({"product_acceptance": old["product_acceptance"]} if "product_acceptance" in old else {})}
+        old = {"schema_version": 1, "review": "docs/review-2026-09/astra-ultra-review.md", "reviewed_commit": "bb82c05", "acceptance_document": "docs/review-implementation-plan.md", "product_acceptance": {"status": "not_measured", "target_percent": 95, "evidence": []}, "findings": source_rows, **({"product_acceptance": old["product_acceptance"]} if "product_acceptance" in old else {})}
         LEDGER.parent.mkdir(parents=True, exist_ok=True)
         LEDGER.write_text(json.dumps(old, indent=2, ensure_ascii=False) + "\n")
     errors = check(old, source_rows)
