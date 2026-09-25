@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   parseMiniAppCardSession,
   readMiniAppCardSession,
@@ -34,23 +34,17 @@ describe("parseMiniAppCardSession", () => {
 
 describe("readMiniAppCardSession", () => {
   it("returns undefined for a row with drifted session data", async () => {
-    const builder = {
-      eq: () => builder,
-      maybeSingle: async () => ({
-        data: { session: { ...VALID, sessionId: null } },
-        error: null,
-      }),
-    };
-    const client = {
-      from: (table: string) => {
-        expect(table).toBe("miniapp_card_sessions");
-        return {
-          select: () => builder,
-        };
+    const db = new FakeSupabase();
+    db.tables["miniapp_card_sessions"] = [
+      {
+        user_id: "user-1",
+        kind: "vault",
+        resource_id: "default",
+        session: { ...VALID, sessionId: null },
       },
-    } as unknown as SupabaseClient;
+    ];
     await expect(
-      readMiniAppCardSession(client, "user-1", "vault", "default")
+      readMiniAppCardSession(db.client(), "user-1", "vault", "default")
     ).resolves.toBeUndefined();
   });
 });

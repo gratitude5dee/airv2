@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { runFlush } from "./flush";
 import { createRun } from "../hermes/client";
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
 import { mintSignedLink } from "../miniapps/cards";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
@@ -69,78 +69,24 @@ const registryApp = {
 };
 
 function fakeSupabase(options: { registryError?: string } = {}) {
-  const deleted: string[] = [];
-  const updates: Array<{ table: string; values: Record<string, unknown> }> = [];
-  const inserts: Array<{ table: string; rows: unknown }> = [];
-  const supabase = {
-    deleted,
-    updates,
-    inserts,
-    from: (table: string) => ({
-      select: () => {
-        if (table === "mini_apps") {
-          return {
-            eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve(
-                  options.registryError
-                    ? {
-                        data: null,
-                        error: { message: options.registryError },
-                      }
-                    : { data: registryApp, error: null }
-                ),
-            }),
-          };
-        }
-        if (table === "flush_jobs") {
-          return {
-            eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve({
-                  data: { cancelled_at: null },
-                  error: null,
-                }),
-            }),
-          };
-        }
-        const rows =
-          table === "batch_queue"
-            ? [{ id: "q1", message_id: "m1", body: "/image-editor" }]
-            : [];
-        return {
-          eq: () => ({
-            order: () => Promise.resolve({ data: rows, error: null }),
-          }),
-        };
-      },
-      delete: () => {
-        deleted.push(table);
-        const chain = {
-          eq: () => chain,
-          in: () => Promise.resolve({ error: null }),
-          then: (resolve: (value: { error: null }) => void) =>
-            resolve({ error: null }),
-        };
-        return chain;
-      },
-      update: (values: Record<string, unknown>) => {
-        updates.push({ table, values });
-        return {
-          eq: () => Promise.resolve({ error: null }),
-        };
-      },
-      insert: (rows: unknown) => {
-        inserts.push({ table, rows });
-        return Promise.resolve({ error: null });
-      },
-    }),
-  };
-  return supabase as unknown as SupabaseClient & {
-    deleted: string[];
-    updates: Array<{ table: string; values: Record<string, unknown> }>;
-    inserts: Array<{ table: string; rows: unknown }>;
-  };
+  const db = new FakeSupabase();
+  db.tables["batch_queue"] = [
+    {
+      id: "q1",
+      user_id: "user-1",
+      space_id: "space-1",
+      sender_id: null,
+      message_id: "m1",
+      body: "/image-editor",
+      received_at: "2026-08-24T00:00:00.000Z",
+    },
+  ];
+  if (options.registryError) {
+    db.errors["mini_apps"] = { message: options.registryError };
+  } else {
+    db.tables["mini_apps"] = [{ ...registryApp }];
+  }
+  return { supabase: db.client(), db };
 }
 
 beforeEach(() => {
@@ -161,7 +107,7 @@ describe("runFlush mini-app commands", () => {
       new Error("the mini-app command must not wake the box")
     );
 
-    const supabase = fakeSupabase();
+    const { supabase, db } = fakeSupabase();
     const job = {
       spaceId: "space-1",
       userId: "user-1",
@@ -186,7 +132,7 @@ describe("runFlush mini-app commands", () => {
     expect(sendRichLink).not.toHaveBeenCalled();
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(createRun).not.toHaveBeenCalled();
-    expect(supabase.deleted).toContain("flush_jobs");
+    expect(db.deletes.map((d) => d.table)).toContain("flush_jobs");
   });
 
   it("falls back to a rich link when the app card send fails", async () => {
@@ -199,7 +145,7 @@ describe("runFlush mini-app commands", () => {
       close: vi.fn().mockResolvedValue(undefined),
     } as never);
 
-    const supabase = fakeSupabase();
+    const { supabase, db } = fakeSupabase();
     const job = {
       spaceId: "space-1",
       userId: "user-1",
@@ -218,7 +164,7 @@ describe("runFlush mini-app commands", () => {
       "+15551234567",
       "https://mini.wzrd.tech/image?t=signed"
     );
-    expect(supabase.deleted).toContain("flush_jobs");
+    expect(db.deletes.map((d) => d.table)).toContain("flush_jobs");
   });
 
   it("does not mint an owner link for a non-owner sender", async () => {
@@ -232,7 +178,7 @@ describe("runFlush mini-app commands", () => {
       close: vi.fn().mockResolvedValue(undefined),
     } as never);
 
-    const supabase = fakeSupabase();
+    const { supabase, db } = fakeSupabase();
     const job = {
       spaceId: "space-1",
       userId: "user-1",
@@ -256,7 +202,7 @@ describe("runFlush mini-app commands", () => {
     );
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(createRun).not.toHaveBeenCalled();
-    expect(supabase.deleted).toContain("flush_jobs");
+    expect(db.deletes.map((d) => d.table)).toContain("flush_jobs");
   });
 
   it("requeues and reschedules a slash command when the registry lookup fails", async () => {
@@ -268,7 +214,7 @@ describe("runFlush mini-app commands", () => {
       close: vi.fn().mockResolvedValue(undefined),
     } as never);
 
-    const supabase = fakeSupabase({ registryError: "database unavailable" });
+    const { supabase, db } = fakeSupabase({ registryError: "database unavailable" });
     const job = {
       spaceId: "space-1",
       userId: "user-1",
@@ -283,23 +229,22 @@ describe("runFlush mini-app commands", () => {
     );
 
     expect(
-      supabase.inserts.find((insert) => insert.table === "batch_queue")?.rows
-    ).toEqual([
-      {
-        user_id: "user-1",
-        space_id: "space-1",
-        phone: "+15551234567",
-        sender_id: null,
-        message_id: "m1",
-        body: "/image-editor",
-      },
-    ]);
+      db.inserts.find((insert) => insert.table === "batch_queue")?.row
+    ).toMatchObject({
+      user_id: "user-1",
+      space_id: "space-1",
+      phone: "+15551234567",
+      sender_id: null,
+      message_id: "m1",
+      body: "/image-editor",
+    });
     expect(
-      supabase.updates.find((update) => update.table === "flush_jobs")?.values
-        ["attempts"]
+      db.updates.find((update) => update.table === "flush_jobs")?.patch[
+        "attempts"
+      ]
     ).toBe(1);
     expect(sendText).not.toHaveBeenCalled();
-    expect(supabase.deleted).not.toContain("flush_jobs");
+    expect(db.deletes.map((d) => d.table)).not.toContain("flush_jobs");
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(createRun).not.toHaveBeenCalled();
   });
