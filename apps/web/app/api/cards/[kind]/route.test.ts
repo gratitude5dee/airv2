@@ -32,6 +32,7 @@ vi.mock("@/lib/miniapps/cardSends", async (importOriginal) => ({
 
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 function post(kind: string, token?: string, body?: unknown): [NextRequest, { params: Promise<{ kind: string }> }] {
   return [
     new NextRequest(`https://air.example/api/cards/${kind}`, {
@@ -147,6 +148,7 @@ describe("POST /api/cards/[kind]", () => {
     const response = await POST(...post("kanban", "good-token"));
     expect(response.status).toBe(502);
     expect(release).toHaveBeenCalled();
+    expectLog(/card\ send\ failed/, { level: "error" });
   });
 
   it("routes checkout cards through the owner-scoped handoff updater", async () => {

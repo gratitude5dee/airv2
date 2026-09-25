@@ -10,6 +10,7 @@ import {
 } from "./cards";
 import { verifyToken } from "./tokens";
 
+import { expectLog } from "../testing/expectLog";
 vi.mock("../spectrum/sender", () => ({
   createSpectrumSender: vi.fn(),
 }));
@@ -122,6 +123,7 @@ describe("mini-app card session lifecycle", () => {
       )
     ).resolves.toBeUndefined();
     expect(senderMock.sendApp).toHaveBeenCalledOnce();
+    expectLog(/mini\-app\ card\ session\ persistence\ failed/, { level: "error" });
   });
 });
 

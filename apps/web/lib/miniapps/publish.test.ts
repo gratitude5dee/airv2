@@ -43,6 +43,7 @@ import {
 } from "./publish";
 import { parseRegistryApp } from "./registry";
 
+import { expectLog } from "../testing/expectLog";
 describe("createDraft refresh keeps existing metadata", () => {
   function draftSupabase(
     existing: Record<string, unknown> | null,
@@ -591,6 +592,7 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
     ]);
     expect(deploy.syncManifest).toHaveBeenCalledTimes(1);
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(expect.anything(), moved);
+    expectLog(/miniapp\ release\ restore\ failed/, { level: "error" });
   });
 
   it("a flip that lost to a write since the commit does not swap the pointer back; the origin follows the row", async () => {

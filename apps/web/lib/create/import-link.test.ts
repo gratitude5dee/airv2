@@ -242,6 +242,7 @@ vi.mock("@/lib/security/limits", async (importOriginal) => ({
 import { GitHubError } from "@/lib/github/app";
 import { WORKFLOW_PATH, linkRepository } from "./import";
 
+import { expectLog } from "../testing/expectLog";
 function zipball(files: Record<string, string>): Buffer {
   return makeZip(
     Object.entries(files).map(([name, data]) => ({ name: `alice-site-${SHA.slice(0, 7)}/${name}`, data }))
@@ -513,6 +514,7 @@ describe("linkRepository — re-import", () => {
       status: 502,
       message: expect.stringMatching(/previous link \(alice\/site@main\/site\) could not be restored/),
     });
+    expectLog(/repo\ link\ restore\ failed/, { level: "error" });
   });
 
   it("puts the working link back when switching to build mode fails to commit the workflow", async () => {

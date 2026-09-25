@@ -108,6 +108,7 @@ vi.mock("@/lib/create/import", async (importOriginal) => ({
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 const SECRET = "whsec-test";
 let deliveryCounter = 0;
 
@@ -486,5 +487,6 @@ describe("POST /api/inbound/github — failed handlers", () => {
     expect(response.status).toBe(200);
     expect(releasedIds()).toEqual([]);
     expect(markSuccesses).toEqual(["d-sync"]);
+    expectLog(/github\ push\ sync\ failed/, { level: "error" });
   });
 });

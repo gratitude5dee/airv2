@@ -152,6 +152,7 @@ import { NextRequest } from "next/server";
 import { appReserveUsd } from "@/lib/functions/runtime";
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 function post(bearer: string, body: Record<string, unknown>): Promise<Response> {
   return POST(
     new NextRequest("https://air.test/api/gateway/v1/chat/completions", {
@@ -556,6 +557,8 @@ describe("gateway app principal (MC5 §11.3)", () => {
       expect(await response.json()).toEqual({ error: "cap_unavailable", reason: "fn_reserve" });
       expect(sent).toBeNull();
       expect(opsRows).toHaveLength(0);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expectLog(/fn\ reserve\ failed/, { level: "error" });
     });
 
     it("a refused token never reaches the ledger", async () => {

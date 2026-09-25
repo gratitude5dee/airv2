@@ -56,6 +56,7 @@ import {
 } from "./versions";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
+import { expectLog } from "../testing/expectLog";
 /* ------------------------------------------------------------ fake db */
 
 interface VersionRowLike {
@@ -422,6 +423,7 @@ describe("uploadVersion", () => {
     expect(versions()).toHaveLength(1);
     expect(versions()[0]!.purged_at).not.toBeNull();
     expect(r2.deletePrefix).toHaveBeenCalledTimes(1);
+    expectLog(/version\ discard\ incomplete;\ sweep\ will\ finish\ it/, { level: "error" });
   });
 
   it("a discard whose R2 delete fails leaves a tombstone the next sweep finishes", async () => {
@@ -439,6 +441,7 @@ describe("uploadVersion", () => {
     expect(versions()).toHaveLength(0);
     expect(r2.deletePrefix).toHaveBeenCalledTimes(2);
     expect(r2.deletePrefix).toHaveBeenLastCalledWith(`apps/alice-notes/${left.version}/`);
+    expectLog(/version\ discard\ incomplete;\ sweep\ will\ finish\ it/, { level: "error" });
   });
 
   it("the deploy claims the app row through the same client that owns the ledger", async () => {
@@ -1105,6 +1108,7 @@ describe("sweepVersions (§13.1 retention)", () => {
     // The next sweep finishes the job.
     expect(await sweepVersions(supabase, now)).toBe(1);
     expect(versions().map((v) => v.version)).toEqual(["v1700000000100"]);
+    expectLog(/version\ sweep\ purge\ failed/, { level: "error" });
   });
 
   it("a candidate a rollback made live since the read is left alone", async () => {
@@ -1137,6 +1141,7 @@ describe("sweepVersions (§13.1 retention)", () => {
     expect(versions()).toHaveLength(2);
     expect(await sweepVersions(supabase, now)).toBe(1);
     expect(r2.deletePrefix).toHaveBeenCalledTimes(2);
+    expectLog(/version\ sweep\ purge\ failed/, { level: "error" });
   });
 
   it("without R2 nothing is removed: rows outlive the sweep so artifacts stay reachable", async () => {
@@ -1151,6 +1156,7 @@ describe("sweepVersions (§13.1 retention)", () => {
     expect(old.purged_at).toBeNull();
     expect(versions()).toHaveLength(2);
     expect(r2.deletePrefix).not.toHaveBeenCalled();
+    expectLog(/version\ sweep\ purge\ failed/, { level: "error" });
   });
 
   it("pages through every row instead of stopping at a fixed cap", async () => {

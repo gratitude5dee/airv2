@@ -50,6 +50,7 @@ import { BoxApiError } from "../box/client";
 import { MailApiError } from "../mail/errors";
 import { FakeSupabase } from "../testing/fakeSupabase";
 
+import { expectLog } from "../testing/expectLog";
 const ORIGINAL = { ...process.env };
 
 function fakeSupabase(
@@ -354,6 +355,7 @@ describe("ensureMailboxOnBox", () => {
     expect(mail.ensurePod).not.toHaveBeenCalled();
     expect(mail.createInbox).not.toHaveBeenCalled();
     expect(box.writeFile).not.toHaveBeenCalled();
+    expectLog(/mailbox\ ensure\ skipped\ —\ user\ has\ no\ username\ to\ address/, { level: "error" });
   });
 });
 
