@@ -48,7 +48,7 @@ import {
   handleOnboarding,
   signupSender,
 } from "@/lib/provisioning/onboarding";
-import { ensureComputeProvisioned } from "@/lib/provisioning/provision";
+import { provisionComputeWithWelcome } from "@/lib/provisioning/welcome";
 import {
   createDecision,
   normalizeAddress,
@@ -441,7 +441,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         warmSenderPromise,
       );
       if (startCompute) {
-        await ensureComputeProvisioned(supabase, userId).catch(
+        await provisionComputeWithWelcome(supabase, userId).catch(
           (error: unknown) => {
             console.error(
               JSON.stringify({
