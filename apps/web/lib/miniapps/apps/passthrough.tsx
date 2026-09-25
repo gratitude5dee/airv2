@@ -12,6 +12,7 @@ import { mintToken, verifyToken } from "../tokens";
 import { esc, forbidden } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 export async function renderPassthrough(
   ctx: MiniAppContext
@@ -169,13 +170,8 @@ export async function renderPassthrough(
       );
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({
-        msg: "computer mini-app failed",
-        user_id: ctx.session.userId,
-        error: message,
-      })
-    );
+    log.error("computer mini-app failed", {user_id: ctx.session.userId,
+        error: message,});
     return errorPage(
       "Couldn't prepare your agent's computer right now. Check your connection, then retry."
     );

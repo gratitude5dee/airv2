@@ -15,6 +15,7 @@ import {
   transcribeAudio,
   TranscriptionError,
 } from "@/lib/voice/transcribe";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,13 +54,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .gte("occurred_at", oneHourAgo);
   if (countError) {
     // Fail closed: without a usable count the hourly limit is unenforceable.
-    console.error(
-      JSON.stringify({
-        msg: "stt rate-limit count failed",
-        user_id: userId,
-        error: countError.message,
-      })
-    );
+    log.error("stt rate-limit count failed", {user_id: userId,
+        error: countError.message,});
     return NextResponse.json({ error: "transcription_failed" }, { status: 500 });
   }
   if ((count ?? 0) >= STT_HOURLY_LIMIT) {
@@ -72,9 +68,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const status =
       error instanceof TranscriptionError ? error.status : undefined;
-    console.error(
-      JSON.stringify({ msg: "stt failed", user_id: userId, provider_status: status })
-    );
+    log.error("stt failed", {user_id: userId, provider_status: status});
     return NextResponse.json({ error: "transcription_failed" }, { status: 502 });
   }
 
@@ -88,13 +82,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // A dropped ledger row silently disables both metering and the hourly
     // limit — surface it loudly, but the user already paid for the
     // transcription, so still deliver the text.
-    console.error(
-      JSON.stringify({
-        msg: "stt cost event insert failed",
-        user_id: userId,
-        error: insertError.message,
-      })
-    );
+    log.error("stt cost event insert failed", {user_id: userId,
+        error: insertError.message,});
   }
 
   return NextResponse.json({ text, duration_s: durationS });

@@ -31,6 +31,7 @@ import { attachmentMarker } from "@/lib/chat/attachments";
 import { parseTradeCommand } from "@/lib/trade/parse";
 import { runTradeCommand } from "@/lib/trade/imessage";
 import { mintSignedLink } from "@/lib/miniapps/cards";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,25 +142,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             });
           }
         } catch (error) {
-          console.error(
-            JSON.stringify({
-              msg: "twin job execution failed",
-              user_id: userId,
+          log.error("twin job execution failed", {user_id: userId,
               job_id: job.id,
-              error: error instanceof Error ? error.message : String(error),
-            })
-          );
+              error: error instanceof Error ? error.message : String(error),});
         }
       });
       return NextResponse.json({ creative_job_id: job.id, mode: "twin" });
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "twin job start failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("twin job start failed", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
       return NextResponse.json({ error: "run failed" }, { status: 500 });
     }
   }
@@ -195,25 +186,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await recordReferenceUses(supabase, job.id, userId, attached.uses);
       after(async () => {
         await executeCreativeJob(supabase, job.id, userId, attached.turn).catch((error: unknown) => {
-          console.error(
-            JSON.stringify({
-              msg: "creative job execution failed",
-              user_id: userId,
+          log.error("creative job execution failed", {user_id: userId,
               job_id: job.id,
-              error: error instanceof Error ? error.message : String(error),
-            })
-          );
+              error: error instanceof Error ? error.message : String(error),});
         });
       });
       return NextResponse.json({ creative_job_id: job.id, mode: command.mode });
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "creative job start failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("creative job start failed", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
       return NextResponse.json({ error: "run failed" }, { status: 500 });
     }
   }
@@ -245,13 +226,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         });
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "trade web command failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("trade web command failed", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
       return NextResponse.json({
         creative_line: "Couldn't reach trading — try again.",
       });
@@ -284,9 +260,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "bot delegation skipped", user_id: userId, error: message })
-    );
+    log.error("bot delegation skipped", {user_id: userId, error: message});
   }
   if (delegate) {
     try {
@@ -305,9 +279,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: "busy" }, { status: 429 });
       }
       const message = error instanceof Error ? error.message : "unknown error";
-      console.error(
-        JSON.stringify({ msg: "bot delegation failed", user_id: userId, error: message })
-      );
+      log.error("bot delegation failed", {user_id: userId, error: message});
       return NextResponse.json({ error: "run failed" }, { status: 500 });
     }
   }
@@ -329,9 +301,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "web chat run failed", user_id: userId, error: message })
-    );
+    log.error("web chat run failed", {user_id: userId, error: message});
     return NextResponse.json({ error: "run failed" }, { status: 500 });
   }
 }

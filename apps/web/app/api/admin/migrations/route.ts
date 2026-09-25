@@ -29,6 +29,7 @@ import {
 } from "@/lib/migration/types";
 import { driveMigration } from "@/lib/migration/driver";
 import { loadMigrationForUser } from "@/lib/migration/store";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,12 +59,7 @@ function errorResponse(error: unknown): NextResponse {
   }
   // Unknown errors: log server-side only — the message can carry provider
   // or driver internals that don't belong in an operator-facing response.
-  console.error(
-    JSON.stringify({
-      msg: "admin migrations op failed",
-      error: error instanceof Error ? error.message : String(error),
-    })
-  );
+  log.error("admin migrations op failed", {error: error instanceof Error ? error.message : String(error),});
   return NextResponse.json({ error: "internal" }, { status: 500 });
 }
 

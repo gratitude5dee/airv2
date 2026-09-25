@@ -22,6 +22,7 @@ import {
   publicUrl,
   putObject,
 } from "./r2";
+import { log } from "../log";
 
 /** Lifetime of a presigned PUT; a pending reservation older than this can
  * never be completed, so the sweeper releases its charge. */
@@ -102,12 +103,7 @@ export async function sweepAbandonedUploads(
     try {
       await deleteObject(row.key);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "sweeper object delete failed",
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("sweeper object delete failed", {error: error instanceof Error ? error.message : String(error),});
       continue;
     }
     const charged = await takeReservation(supabase, row.user_id, row.key);

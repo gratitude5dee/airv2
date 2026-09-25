@@ -53,6 +53,7 @@ import {
   type FreezeDuration,
   type FreezeResolution,
 } from "./freezeRecipe";
+import { log } from "../log";
 
 export const FREEZE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 export const MAX_FREEZE_UPLOAD_BYTES = 12 * 1024 * 1024;
@@ -213,24 +214,14 @@ export async function appendFreezeEvent(
       return;
     }
     if (error.code !== "23505") {
-      console.error(
-        JSON.stringify({
-          msg: "freeze event insert failed",
-          session_id: sessionId,
-          error: error.message,
-        })
-      );
+      log.error("freeze event insert failed", {session_id: sessionId,
+          error: error.message,});
       return;
     }
   }
-  console.error(
-    JSON.stringify({
-      msg: "freeze event dropped: sequence retries exhausted",
-      session_id: sessionId,
+  log.error("freeze event dropped: sequence retries exhausted", {session_id: sessionId,
       kind: event.kind,
-      state: event.state ?? null,
-    })
-  );
+      state: event.state ?? null,});
 }
 
 async function signedAssetUrl(
@@ -449,9 +440,7 @@ export async function deleteFreezeClipObject(
     .remove([clipPath])
     .then(({ error }) => {
       if (error) {
-        console.warn(
-          JSON.stringify({ msg: "freeze clip cleanup failed", clipPath })
-        );
+        log.warn("freeze clip cleanup failed", {clipPath});
       }
     })
     .catch(() => undefined);
@@ -981,14 +970,9 @@ export async function executeFreezeRender(
         result.asset
       )
         .catch((error: unknown) =>
-          console.error(
-            JSON.stringify({
-              msg: "freeze stitch failed — delivering the raw camera move",
-              session_id: session.id,
+          log.error("freeze stitch failed — delivering the raw camera move", {session_id: session.id,
               job_id: job.id,
-              error: error instanceof Error ? error.message : String(error),
-            })
-          )
+              error: error instanceof Error ? error.message : String(error),})
         );
     }
     return result;

@@ -34,6 +34,7 @@ import {
 import { baseHeaders, esc, page } from "../miniapps/html";
 import { mintToken } from "../miniapps/tokens";
 import type { RegistryApp } from "../miniapps/registry";
+import { log } from "../log";
 
 /** Paid sessions carry a synthetic principal so modules can tell them apart. */
 export const PAID_SESSION_TTL_MINUTES = 60;
@@ -192,9 +193,7 @@ async function insertReceipt(
   });
   if (!error) return "ok";
   if (error.code === "23505") return "replay";
-  console.error(
-    JSON.stringify({ msg: "x402 receipt insert failed", error: error.message })
-  );
+  log.error("x402 receipt insert failed", {error: error.message});
   return "error";
 }
 
@@ -311,15 +310,10 @@ export const x402PaymentGate: X402Gate = async (request, app, options) => {
   if (inserted === "error") return paymentError(502, "receipt write failed");
 
   await logGateEvent(supabase, app.id, null, "gate_settled", "x402");
-  console.log(
-    JSON.stringify({
-      msg: "x402 settled",
-      app: app.slug,
+  log.info("x402 settled", {app: app.slug,
       payer,
       tx: settlement.transaction,
-      jti,
-    })
-  );
+      jti,});
 
   const response = options?.settled
     ? options.settled()

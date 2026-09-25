@@ -62,6 +62,7 @@ import {
   type StepReceipt,
   type TenantControl,
 } from "./types";
+import { log } from "../log";
 
 export interface StepCtx {
   supabase: SupabaseClient;
@@ -640,14 +641,10 @@ export async function stepActivating(ctx: StepCtx): Promise<StepOutcome> {
   // second, target-scoped key — the source's key is untouched (C10)).
   if (!hasStep(migration, stepName(ctx, "activate.wiring"))) {
     const logError = (what: string) => (error: unknown) =>
-      console.error(
-        JSON.stringify({
-          msg: "activation wiring failed",
-          what,
+      log.error("activation wiring failed", {box_id: migration.candidate_box_id ?? migration.source_box_id ?? null,
+        what,
           migration_id: migration.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     await installComposioMcp(supabase, migration.user_id, toTarget).catch(
       logError("composio")
     );
@@ -741,13 +738,9 @@ export async function stepObserving(ctx: StepCtx): Promise<StepOutcome> {
       await stopCompute(fromTarget);
     } catch (error) {
       // A refused stop keeps the source warm and fenced — safe; retry next drive.
-      console.error(
-        JSON.stringify({
-          msg: "retained source stop refused",
-          migration_id: migration.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("retained source stop refused", {box_id: migration.candidate_box_id ?? migration.source_box_id ?? null,
+        migration_id: migration.id,
+          error: error instanceof Error ? error.message : String(error),});
       return { kind: "stay", wakeInMs: 60_000 };
     }
     ctx.migration = await recordStep(

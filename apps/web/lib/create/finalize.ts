@@ -34,6 +34,7 @@ import { advanceIntake, getIntake, IntakeError, type IntakeRow } from "./intake"
 import { mirrorVersion } from "./mirror";
 import { devUrl } from "./release";
 import { getVersion, type VersionRow } from "./versions";
+import { log } from "../log";
 
 /* -------------------------------------------------------------- input */
 
@@ -352,16 +353,11 @@ export async function applyFinalize(
   });
   const decisionId = await filePublishDecision(supabase, userId, app, payload);
   const advanced = await advanceIntake(supabase, userId, appname, "finalize_complete");
-  console.log(
-    JSON.stringify({
-      msg: "create finalize applied",
-      user_id: userId,
+  log.info("create finalize applied", {user_id: userId,
       slug: app.slug,
       store: input.store,
       mirror: input.mirror,
-      icon: input.icon_key !== undefined,
-    })
-  );
+      icon: input.icon_key !== undefined,});
   return { decision_id: decisionId, stage: advanced.stage, store: input.store, mirror: input.mirror };
 }
 
@@ -465,9 +461,7 @@ export async function onPublishApproved(
         .eq("id", intake.id);
     }
     await recordOpsEvent(supabase, MIRROR_KIND, userId, `${slug}:failed`).catch(() => undefined);
-    console.error(
-      JSON.stringify({ msg: "mirror failed after publish approval", user_id: userId, slug, reason })
-    );
+    log.error("mirror failed after publish approval", {user_id: userId, slug, reason});
   }
   return outcome;
 }
@@ -506,14 +500,9 @@ export async function onPublishDecision(
       await onPublishApproved(supabase, userId, slug, decision);
     }
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "publish decision hook failed",
-        user_id: userId,
+    log.error("publish decision hook failed", {user_id: userId,
         slug,
         outcome,
-        error: error instanceof Error ? error.name : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.name : "unknown",});
   }
 }

@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { writeFile, command } from "../box/client";
 import { compileBrand, validateBrandSource } from "./compile";
+import { log } from "../log";
 
 interface BrandKitRow {
   source: unknown;
@@ -63,13 +64,8 @@ export async function mirrorBrandIfStale(
   try {
     await mirrorBrandToBox(supabase, userId, boxId, { onlyIfStale: true });
   } catch (error) {
-    console.log(
-      JSON.stringify({
-        msg: "brand mirror failed",
-        user_id: userId,
+    log.info("brand mirror failed", {user_id: userId,
         box_id: boxId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+        error: error instanceof Error ? error.message : String(error),});
   }
 }

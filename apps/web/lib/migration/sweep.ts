@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { driveMigration } from "./driver";
 import { NONTERMINAL_PHASES } from "./types";
+import { log } from "../log";
 
 const SWEEP_BATCH = 5;
 
@@ -29,9 +30,8 @@ export async function reconcileMigrations(
     .order("wake_at", { ascending: true, nullsFirst: true })
     .limit(SWEEP_BATCH);
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "migration sweep query failed", error: error.message })
-    );
+    log.error("migration sweep query failed", {box_id: null,
+        error: error.message});
     return { driven: 0, errors: 1 };
   }
   let driven = 0;
@@ -44,13 +44,9 @@ export async function reconcileMigrations(
       if (result) driven += 1;
     } catch (error) {
       errors += 1;
-      console.error(
-        JSON.stringify({
-          msg: "migration sweep drive failed",
-          migration_id: row.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("migration sweep drive failed", {box_id: null,
+        migration_id: row.id,
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   return { driven, errors };

@@ -30,6 +30,7 @@ import {
   sendIconPreview,
   storeIcon,
 } from "@/lib/create/icon";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,14 +130,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           await sender.close().catch(() => undefined);
         }
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "icon preview send failed",
-            user_id: userId,
+        log.error("icon preview send failed", {user_id: userId,
             slug: app.slug,
-            error: error instanceof Error ? error.name : "unknown",
-          })
-        );
+            error: error instanceof Error ? error.name : "unknown",});
       }
     }
     return NextResponse.json({ ...stored, generated: true, previewed });

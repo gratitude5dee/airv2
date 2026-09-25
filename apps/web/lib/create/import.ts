@@ -50,6 +50,7 @@ import { discardEmptyDraft, resolveOrCreateDropApp, titleFor } from "./drop";
 import { enforceCsp, type LintFinding } from "./lint";
 import { draftPreviewUrl } from "./preview";
 import { uploadVersion } from "./versions";
+import { log } from "../log";
 
 /** §10: 50 MiB archive, 5,000 files; the kept subtree still meets the bundle caps. */
 export const IMPORT_MAX_ZIP_BYTES = 50 * 1024 * 1024;
@@ -318,7 +319,7 @@ async function restoreLink(
       .select("id");
     if (!error) {
       if ((data ?? []).length === 0) {
-        console.log(JSON.stringify({ msg: "repo link restore skipped: superseded", link: id }));
+        log.info("repo link restore skipped: superseded", {link: id});
       }
       return null;
     }
@@ -328,9 +329,7 @@ async function restoreLink(
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
   }
-  console.error(
-    JSON.stringify({ msg: "repo link restore failed", link: id, app_id: previous.app_id, error: lastError })
-  );
+  log.error("repo link restore failed", {link: id, app_id: previous.app_id, error: lastError});
   return lastError;
 }
 
@@ -347,7 +346,7 @@ async function removeOwnLink(supabase: SupabaseClient, link: RepoLink): Promise<
     .eq("import_id", link.import_id)
     .select("id");
   if (error) {
-    console.error(JSON.stringify({ msg: "repo link remove failed", link: link.id, error: error.message }));
+    log.error("repo link remove failed", {link: link.id, error: error.message});
     return false;
   }
   return (data ?? []).length > 0;
@@ -381,7 +380,7 @@ async function confirmLink(
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
   }
-  console.error(JSON.stringify({ msg: "repo link stamp failed", link: link.id, error: lastError }));
+  log.error("repo link stamp failed", {link: link.id, error: lastError});
   throw new ImportError(
     `the link is saved and the import went through, but its sync record could not be written ` +
       `(${lastError}) — import again to refresh it`,
@@ -424,7 +423,7 @@ async function stampLink(
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
   }
-  console.error(JSON.stringify({ msg: "repo link stamp failed", link: linkId, error: lastError }));
+  log.error("repo link stamp failed", {link: linkId, error: lastError});
 }
 
 /**
@@ -1185,7 +1184,7 @@ async function revertWorkflow(
         wrote.content
       )
     ) {
-      console.log(JSON.stringify({ msg: "workflow kept: the standing link needs it", repo: repo.full_name, branch }));
+      log.info("workflow kept: the standing link needs it", {repo: repo.full_name, branch});
       return;
     }
     const token = await installationToken(installationId, {

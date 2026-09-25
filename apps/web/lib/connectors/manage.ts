@@ -17,6 +17,7 @@ import {
   installComposioMcp,
   writeConnectedToolsFile,
 } from "../provisioning/connectors";
+import { log } from "../log";
 
 export const TOOLKIT_SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
 
@@ -106,13 +107,8 @@ export async function syncConnections(
     try {
       await installComposioMcp(supabase, userId);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "composio mcp install failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("composio mcp install failed", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   if (changed) await refreshConnectedTools(supabase, userId);
@@ -171,12 +167,7 @@ async function refreshConnectedTools(
   try {
     await writeConnectedToolsFile(supabase, userId);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "connected-tools write failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("connected-tools write failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
   }
 }

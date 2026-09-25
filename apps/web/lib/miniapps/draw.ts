@@ -28,6 +28,7 @@ import type { CreativeChannel, CreativeJob } from "../creative/jobs";
 import type { MediaInput } from "../creative/gmi";
 import { executeCreativeJob, type CreativeRunResult } from "../creative/run";
 import type { RouterPlan } from "../creative/schema";
+import { log } from "../log";
 
 export const DRAW_MODES = ["fast", "detailed", "turbo", "hq"] as const;
 export type DrawMode = (typeof DRAW_MODES)[number];
@@ -223,24 +224,14 @@ export async function appendDrawEvent(
       return;
     }
     if (error.code !== "23505") {
-      console.error(
-        JSON.stringify({
-          msg: "draw event insert failed",
-          session_id: sessionId,
-          error: error.message,
-        })
-      );
+      log.error("draw event insert failed", {session_id: sessionId,
+          error: error.message,});
       return;
     }
   }
-  console.error(
-    JSON.stringify({
-      msg: "draw event dropped: sequence retries exhausted",
-      session_id: sessionId,
+  log.error("draw event dropped: sequence retries exhausted", {session_id: sessionId,
       kind: event.kind,
-      state: event.state ?? null,
-    })
-  );
+      state: event.state ?? null,});
 }
 
 const MAX_DRAW_PROMPT_CHARS = 2000;
@@ -403,13 +394,8 @@ async function updateCreativeJobRoot(
     .update({ root_job_id: rootJobId })
     .eq("id", jobId);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "draw job root update failed",
-        job_id: jobId,
-        error: error.message,
-      })
-    );
+    log.error("draw job root update failed", {job_id: jobId,
+        error: error.message,});
   }
 }
 

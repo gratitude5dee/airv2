@@ -13,6 +13,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { MigrationBusyError } from "./types";
+import { log } from "../log";
 
 /** Lease TTLs per operation kind — long enough to cover worst-case work. */
 export const OP_TTL_SECONDS = {
@@ -61,14 +62,10 @@ export async function admitOperation(
     // rpc at all): admit without a lease — migration is dark-shipped and
     // normal traffic must not break. An explicit `admitted: false` is the
     // only path that closes the gate.
-    console.error(
-      JSON.stringify({
-        msg: "admit_operation failed open",
+    log.error("admit_operation failed open", {box_id: null,
         user_id: userId,
         kind,
-        error: error.message,
-      })
-    );
+        error: error.message,});
     return { operationId: `untracked:${holder}`, routingGeneration: 0 };
   }
   const result = data as {
@@ -123,13 +120,9 @@ export async function assertAdmissionOpen(
   if (error || data !== true) {
     if (data === false) throw new MigrationBusyError();
     if (error) {
-      console.error(
-        JSON.stringify({
-          msg: "admission check failed open",
-          user_id: userId,
-          error: error.message,
-        })
-      );
+      log.error("admission check failed open", {box_id: null,
+        user_id: userId,
+          error: error.message,});
     }
   }
 }

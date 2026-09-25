@@ -28,6 +28,7 @@ import {
   OWNER_ONLY_CARD_LINE,
 } from "./imessageCommand";
 import { getRegistryApp } from "./registry";
+import { log } from "../log";
 
 const FREEZE_COMMAND = /^\/freeze(?:\s+(.*))?$/is;
 const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
@@ -145,13 +146,8 @@ export async function maybeRunFreezeLane(
           .catch(() => undefined);
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "freeze sketch auto-start failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("freeze sketch auto-start failed", {user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(
           job.spaceId,

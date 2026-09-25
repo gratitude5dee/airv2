@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "../log";
 
 const ORPHAN_AGE_MS = 60_000;
 const SWEEP_OVERDUE_MS = 31_000;
@@ -186,13 +187,9 @@ export async function recoverOrphanedCarriedJobs(
     }
   }
   if (inserts.length > 0 || unresolved > 0) {
-    console.info(
-      JSON.stringify({
-        msg: "orphaned carried jobs reconciled",
+    log.info("orphaned carried jobs reconciled", {box_id: null,
         restored: inserts.length,
-        unresolved,
-      }),
-    );
+        unresolved,});
   }
   return { restored: inserts.length, unresolved };
 }

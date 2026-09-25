@@ -51,6 +51,7 @@ import {
   type ComputeMigration,
   type MigrationPhase,
 } from "./types";
+import { log } from "../log";
 
 /** Phases before the route commit — the leg where cancellation is possible. */
 const PRE_COMMIT: readonly MigrationPhase[] = [
@@ -88,14 +89,10 @@ async function settle(
     p_reopen: reopen,
   });
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "settle_migration failed",
+    log.error("settle_migration failed", {box_id: null,
         migration_id: migrationId,
         phase,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }
 
@@ -107,13 +104,9 @@ async function compensateAndFail(
   try {
     await runCancelCompensation(ctx);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "migration compensation failed",
+    log.error("migration compensation failed", {box_id: ctx.migration.candidate_box_id ?? ctx.migration.source_box_id ?? null,
         migration_id: ctx.migration.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+        error: error instanceof Error ? error.message : String(error),});
     // Compensation itself failed — do not mark failed (that would release
     // the tenant hold with debris live); park in cleanup_failed.
     await settle(ctx.supabase, ctx.migration.id, "cleanup_failed", false);
@@ -132,13 +125,9 @@ async function compensateAndFail(
   await settle(ctx.supabase, ctx.migration.id, "failed", true);
   await replayHeldReceipts(ctx.supabase, ctx.migration.user_id).catch(
     (error) =>
-      console.error(
-        JSON.stringify({
-          msg: "held replay after cancel failed",
-          migration_id: ctx.migration.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      )
+      log.error("held replay after cancel failed", {box_id: ctx.migration.candidate_box_id ?? ctx.migration.source_box_id ?? null,
+        migration_id: ctx.migration.id,
+          error: error instanceof Error ? error.message : String(error),})
   );
   return "failed";
 }

@@ -19,6 +19,7 @@ import {
 } from "@/lib/orchestrator/boxes";
 import { REPLACE_CLAIM_TTL_MS } from "@/lib/provisioning/provision";
 import { serviceClient } from "@/lib/supabase";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -130,12 +131,7 @@ interface QueryResult {
 }
 
 function unavailableResponse(failures: readonly string[]): NextResponse {
-  console.error(
-    JSON.stringify({
-      msg: "admin health query failed",
-      sources: failures,
-    })
-  );
+  log.error("admin health query failed", {sources: failures,});
   return NextResponse.json(
     { error: "health data unavailable", sources: failures },
     { status: 503, headers: { "Cache-Control": "no-store" } }

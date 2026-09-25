@@ -9,6 +9,7 @@ import { serviceClient } from "@/lib/supabase";
 import { desktopSession } from "@/lib/auth/desktop";
 import { StartLimitError } from "@/lib/orchestrator/boxes";
 import { startChatRun } from "@/lib/chat/relay";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,14 +34,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({
-        msg: "desktop chat run failed",
-        user_id: session.userId,
+    log.error("desktop chat run failed", {user_id: session.userId,
         device_id: session.deviceId,
-        error: message,
-      })
-    );
+        error: message,});
     return NextResponse.json({ error: "run failed" }, { status: 500 });
   }
 }

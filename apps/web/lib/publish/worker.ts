@@ -37,6 +37,7 @@ import {
   retryDelaySeconds,
   verdictFor,
 } from "./verdict";
+import { log } from "../log";
 
 /** All of a user's slots due inside this window ride one wake — a machine
  * start is the limit that actually binds (ARCHITECTURE §6.2), so it is one
@@ -156,26 +157,16 @@ export async function publishDueSlots(
         box = await ensureBoxAwake(supabase, userId);
         result.usersWoken += 1;
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "publish sweep wake failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("publish sweep wake failed", {user_id: userId,
+            error: error instanceof Error ? error.message : String(error),});
         continue; // slots stay scheduled; next sweep retries the wake
       }
       for (const slot of slots) {
         const outcome = await publishSlot(supabase, box, slot).catch(
           (error) => {
-            console.error(
-              JSON.stringify({
-                msg: "publish slot crashed",
-                slot_id: slot.id,
+            log.error("publish slot crashed", {slot_id: slot.id,
                 user_id: userId,
-                error: error instanceof Error ? error.message : String(error),
-              })
-            );
+                error: error instanceof Error ? error.message : String(error),});
             return "skipped" as const;
           }
         );
@@ -384,13 +375,8 @@ async function finalizeAsPublished(
     })
     .eq("id", slotId);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "slot finalize failed",
-        slot_id: slotId,
-        error: error.message,
-      })
-    );
+    log.error("slot finalize failed", {slot_id: slotId,
+        error: error.message,});
     return false;
   }
   return true;
@@ -459,13 +445,8 @@ async function park(
     { kind, message },
     slot.id
   ).catch((error) => {
-    console.error(
-      JSON.stringify({
-        msg: "decision raise failed",
-        slot_id: slot.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("decision raise failed", {slot_id: slot.id,
+        error: error instanceof Error ? error.message : String(error),});
   });
 }
 

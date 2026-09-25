@@ -20,6 +20,7 @@ import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
 import { boxTarget } from "../compute/runtime";
 import { assertAdmissionOpen } from "../migration/admission";
+import { log } from "../log";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -91,13 +92,8 @@ export async function afterResume(boxId: string): Promise<void> {
       return;
     } catch (error) {
       if (attempt === AFTER_RESUME_ATTEMPTS) {
-        console.error(
-          JSON.stringify({
-            msg: "post-resume box housekeeping failed",
-            box_id: boxId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("post-resume box housekeeping failed", {box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),});
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, AFTER_RESUME_RETRY_MS));
@@ -141,13 +137,8 @@ export async function refreshDashboardRoute(
       .eq("provider_box_id", boxId);
     return dashboard;
   } catch (error) {
-    console.log(
-      JSON.stringify({
-        msg: "dashboard route refresh failed",
-        box_id: boxId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.info("dashboard route refresh failed", {box_id: boxId,
+        error: error instanceof Error ? error.message : String(error),});
     return null;
   }
 }
@@ -164,13 +155,14 @@ export async function prewarmBox(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
+  let boxId = "";
   try {
     const { data } = await supabase
       .from("boxes")
       .select("provider_box_id")
       .eq("user_id", userId)
       .maybeSingle();
-    const boxId = (data?.provider_box_id as string | undefined) ?? "";
+    boxId = (data?.provider_box_id as string | undefined) ?? "";
     if (!boxId) return;
     const box = await getBox(boxId);
     if (box.state === "ready" || box.state === "idle") return;
@@ -180,13 +172,9 @@ export async function prewarmBox(
       .update({ state: "starting", last_active_at: new Date().toISOString() })
       .eq("provider_box_id", boxId);
   } catch (error) {
-    console.log(
-      JSON.stringify({
-        msg: "box prewarm skipped",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.info("box prewarm skipped", {user_id: userId,
+        box_id: boxId || null,
+        error: error instanceof Error ? error.message : String(error),});
   }
 }
 
@@ -387,13 +375,8 @@ export async function ensureBoxAwake(
       refreshed = true;
       if (await health(target)) break;
     } catch (error) {
-      console.log(
-        JSON.stringify({
-          msg: "hosted route refresh retrying",
-          box_id: boxId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.info("hosted route refresh retrying", {box_id: boxId,
+          error: error instanceof Error ? error.message : String(error),});
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
@@ -418,13 +401,8 @@ export async function ensureBoxAwake(
           await import("../provisioning/connectors");
         await writeConnectedToolsFile(supabase, userId, boxTarget(boxId));
       } catch (error) {
-        console.log(
-          JSON.stringify({
-            msg: "post-wake connector convergence failed",
-            box_id: boxId,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        log.info("post-wake connector convergence failed", {box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),});
       }
     })();
   }

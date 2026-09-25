@@ -10,6 +10,7 @@ import {
   TERMINAL_PHASES,
   type ComputeMigration,
 } from "./types";
+import { log } from "../log";
 
 /**
  * The user's live migration row, if any. `null` also when the table does not
@@ -37,13 +38,9 @@ export async function activeMigrationFor(
     if (error.code === "42P01" || error.message.includes("compute_migrations")) {
       return null;
     }
-    console.error(
-      JSON.stringify({
-        msg: "migration exclusion check failed open",
+    log.error("migration exclusion check failed open", {box_id: null,
         user_id: userId,
-        error: error.message,
-      })
-    );
+        error: error.message,});
     return null;
   }
   return (data as ComputeMigration | null) ?? null;

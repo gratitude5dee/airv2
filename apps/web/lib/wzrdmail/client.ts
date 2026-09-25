@@ -21,6 +21,7 @@ import type {
   AgentMailThread,
   AgentMailThreadDetail,
 } from "../agentmail/client";
+import { log } from "../log";
 
 /** Attachment bytes can be large; allow a longer download window. */
 const ATTACHMENT_TIMEOUT_MS = 60_000;
@@ -413,10 +414,5 @@ export async function ensureWebhook(
       client_id: "air-inbound",
     },
   });
-  console.error(
-    JSON.stringify({
-      msg: "wzrdmail webhook created — set WZRDMAIL_WEBHOOK_SECRET to its signing secret",
-      webhook_id: created.webhook_id,
-    })
-  );
+  log.error("wzrdmail webhook created — set WZRDMAIL_WEBHOOK_SECRET to its signing secret", {webhook_id: created.webhook_id,});
 }

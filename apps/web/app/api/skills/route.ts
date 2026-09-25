@@ -17,6 +17,7 @@ import {
   uninstallSkill,
   updateSkill,
 } from "@/lib/skills/hub";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,9 +34,7 @@ function errorResponse(error: unknown, userId: string, op: string): NextResponse
     );
   }
   const message = error instanceof Error ? error.message : "unknown error";
-  console.error(
-    JSON.stringify({ msg: `skill ${op} failed`, user_id: userId, error: message })
-  );
+  log.error(`skill ${op} failed`, {user_id: userId, error: message});
   return NextResponse.json({ error: "skill operation failed" }, { status: 500 });
 }
 

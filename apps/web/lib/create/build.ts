@@ -77,6 +77,7 @@ import { lintBundle, LintError } from "./lint";
 import { draftPreviewUrl } from "./preview";
 import { lockedTestsRemoved, parseTestsSnapshot, TestsSchema, type Test } from "./tests";
 import { newVersionId, uploadVersion, VersionError, type Finding } from "./versions";
+import { log } from "../log";
 
 export const AIR_APP_SCHEMA = "air.app.v1";
 export const WORKSPACE_ROOT = ".hermes/create";
@@ -1340,9 +1341,7 @@ export async function closeBuild(
     .update({ ...patch, finished_at: new Date().toISOString() })
     .eq("id", buildId);
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "build ledger update failed", build_id: buildId, error: error.message })
-    );
+    log.error("build ledger update failed", {build_id: buildId, error: error.message});
   }
 }
 

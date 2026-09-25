@@ -20,6 +20,7 @@ import {
   type StorefrontProduct,
 } from "./catalog";
 import { CommerceError, getMerchant } from "./merchants";
+import { log } from "../log";
 
 export interface Order {
   id: string;
@@ -127,9 +128,7 @@ export async function logStorefrontEvent(
     amount_cents: fields.amountCents ?? null,
   });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "storefront event insert failed", error: error.message })
-    );
+    log.error("storefront event insert failed", {error: error.message});
   }
 }
 
@@ -204,12 +203,7 @@ export async function startCheckout(
       .update({ status: "expired", resolved_at: new Date().toISOString() })
       .eq("id", orderId)
       .eq("status", "pending");
-    console.error(
-      JSON.stringify({
-        msg: "checkout session create failed",
-        error: cause instanceof Error ? cause.message : String(cause),
-      })
-    );
+    log.error("checkout session create failed", {error: cause instanceof Error ? cause.message : String(cause),});
     throw new CommerceError("payments are unavailable right now — try again later", 502);
   }
   await supabase
@@ -273,16 +267,11 @@ export async function fulfillCheckoutSession(
   const order = parseOrder(found);
   if (!order) return false;
   if (!sessionMatchesOrder(session, order)) {
-    console.error(
-      JSON.stringify({
-        msg: "checkout session amount mismatch; order left pending for reconciliation",
-        orderId: order.id,
+    log.error("checkout session amount mismatch; order left pending for reconciliation", {orderId: order.id,
         sessionId: session.id,
         expectedCents: order.amount_cents,
         amountTotal: session.amount_total,
-        currency: session.currency,
-      })
-    );
+        currency: session.currency,});
     return false;
   }
   const paymentIntent =

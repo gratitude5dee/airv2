@@ -36,6 +36,7 @@ import {
 } from "../miniapps/registry";
 import { recordOpsEvent } from "../security/limits";
 import { deletePrefix, r2Configured } from "../storage/r2";
+import { log } from "../log";
 
 export class VersionError extends Error {
   readonly status: number;
@@ -369,13 +370,8 @@ export async function uploadVersion(
       if (current) {
         await restoreAppOrigin(supabase, current, version, goesLive);
       } else {
-        console.error(
-          JSON.stringify({
-            msg: "app origin not restored; registry pointers unreadable, left to reconcile",
-            slug: app.slug,
-            version,
-          })
-        );
+        log.error("app origin not restored; registry pointers unreadable, left to reconcile", {slug: app.slug,
+            version,});
       }
     }
     await discardVersion(supabase, app, row.id, version);
@@ -388,18 +384,13 @@ export async function uploadVersion(
     // and retired exactly like Worker releases (retention depends on it).
     await stampLive(supabase, app.id, version, app.bundle_version, now);
   }
-  console.log(
-    JSON.stringify({
-      msg: "miniapp bundle uploaded",
-      slug: app.slug,
+  log.info("miniapp bundle uploaded", {slug: app.slug,
       version,
       lane,
       files: files.length,
       findings: options.findings?.length ?? 0,
       app_origin: deployed !== null,
-      staged: stageOnly,
-    })
-  );
+      staged: stageOnly,});
   return version;
 }
 
@@ -453,14 +444,9 @@ async function discardVersion(
       .eq("id", rowId);
     if (rowError) throw new Error(rowError.message);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "version discard incomplete; sweep will finish it",
-        slug: app.slug,
+    log.error("version discard incomplete; sweep will finish it", {slug: app.slug,
         version,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+        error: error instanceof Error ? error.message : String(error),});
   }
 }
 
@@ -671,15 +657,10 @@ export async function rollbackTo(
   };
   await syncManifest(supabase, current).catch(rethrowRefusedAsVersionError);
   await recordOpsEvent(supabase, "rollback", app.owner_user_id, app.slug);
-  console.log(
-    JSON.stringify({
-      msg: "miniapp rolled back",
-      user_id: app.owner_user_id,
+  log.info("miniapp rolled back", {user_id: app.owner_user_id,
       slug: app.slug,
       from: app.bundle_version,
-      to: target.version,
-    })
-  );
+      to: target.version,});
   return target;
 }
 
@@ -830,17 +811,12 @@ export async function sweepVersions(
     try {
       if (await purgeVersion(supabase, row)) removed += 1;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "version sweep purge failed",
-          version: row.version,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("version sweep purge failed", {version: row.version,
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   if (removed > 0) {
-    console.log(JSON.stringify({ msg: "version sweep", removed }));
+    log.info("version sweep", {removed});
   }
   return removed;
 }

@@ -5,6 +5,7 @@
  * never see the owner's Box shell, tools, vault, or other apps.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "../log";
 
 export interface GuestGrant {
   id: string;
@@ -76,14 +77,9 @@ export async function redeemGuestGrant(
     .select("id");
   if (error) throw new Error(`guest grant redeem failed: ${error.message}`);
   if ((updated?.length ?? 0) === 0) return null;
-  console.log(
-    JSON.stringify({
-      msg: "miniapp guest grant redeemed",
-      grant_id: row.id,
+  log.info("miniapp guest grant redeemed", {grant_id: row.id,
       app_id: appId,
-      user_id: row.created_by,
-    })
-  );
+      user_id: row.created_by,});
   return row;
 }
 

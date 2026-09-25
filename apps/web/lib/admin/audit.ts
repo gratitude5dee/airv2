@@ -7,6 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RegistryApp } from "../miniapps/registry";
+import { log } from "../log";
 
 export const ADMIN_AUDIT_ACTIONS = ["dev_revoke", "dev_renew", "suspend"] as const;
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];
@@ -48,25 +49,15 @@ export async function recordAdminAudit(
   try {
     const { error } = await supabase.from("admin_audit").insert(row);
     if (!error) return true;
-    console.error(
-      JSON.stringify({
-        msg: "admin audit insert failed",
-        user_id: row.user_id,
+    log.error("admin audit insert failed", {user_id: row.user_id,
         app: row.slug,
         action: row.action,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "admin audit insert threw",
-        user_id: row.user_id,
+    log.error("admin audit insert threw", {user_id: row.user_id,
         app: row.slug,
         action: row.action,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
   }
   return false;
 }

@@ -18,6 +18,7 @@ import {
   mintDelivery,
   sweepExpiredDeliveries,
 } from "@/lib/assets/pipeline";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,13 +89,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     const message =
       error instanceof AssetPipelineError ? error.message : "delivery failed";
-    console.error(
-      JSON.stringify({
-        msg: "asset delivery failed",
-        user_id: session.userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("asset delivery failed", {user_id: session.userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

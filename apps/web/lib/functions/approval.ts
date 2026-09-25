@@ -32,6 +32,7 @@ import type { FunctionsDeclaration } from "./egress";
 import { ensureResources } from "./provision";
 import { ensureRuntimeToken, rotateRuntimeToken, runtimeTokensReady } from "./runtime";
 import type { RegistryApp } from "../miniapps/registry";
+import { log } from "../log";
 
 export type BackendResolution = "approved" | "dismissed";
 
@@ -136,13 +137,8 @@ export async function stageBackend(
   }
   const decision = await fileBackendDecision(supabase, app, row);
   await syncManifest(supabase, await ownedApp(supabase, userId, slug)).catch((error) => {
-    console.warn(
-      JSON.stringify({
-        msg: "manifest sync after backend stage failed",
-        app: slug,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.warn("manifest sync after backend stage failed", {app: slug,
+        error: error instanceof Error ? error.message : String(error),});
   });
   return { row, decision };
 }

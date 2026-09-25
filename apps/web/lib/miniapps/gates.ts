@@ -23,6 +23,7 @@ import type { RegistryApp } from "./registry";
 import { resolveVia } from "./surface";
 import { elapsedMs } from "./timing";
 import { verifyToken, type MiniAppRole } from "./tokens";
+import { log } from "../log";
 
 export { elapsedMs };
 
@@ -314,8 +315,6 @@ export async function logGateEvent(
     ref: ref ?? null,
   });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "gate event insert failed", error: error.message })
-    );
+    log.error("gate event insert failed", {error: error.message});
   }
 }

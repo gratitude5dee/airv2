@@ -6,6 +6,7 @@
 import { env } from "../env";
 import { DEFAULT_REQUEST_TIMEOUT_MS, requestSignal } from "../http/timeout";
 import { MailApiError } from "../mail/errors";
+import { log } from "../log";
 
 const AGENTMAIL_API = "https://api.agentmail.to/v0";
 
@@ -439,10 +440,5 @@ export async function ensureWebhook(
       client_id: "air-inbound",
     },
   });
-  console.error(
-    JSON.stringify({
-      msg: "agentmail webhook created — set AGENTMAIL_WEBHOOK_SECRET to its signing secret",
-      webhook_id: created.webhook_id,
-    })
-  );
+  log.error("agentmail webhook created — set AGENTMAIL_WEBHOOK_SECRET to its signing secret", {webhook_id: created.webhook_id,});
 }

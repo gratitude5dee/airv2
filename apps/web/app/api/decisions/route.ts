@@ -59,6 +59,7 @@ import {
   MuseCapabilityError,
   resolveMuseActionDecision,
 } from "@/lib/muse/capabilities";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -266,14 +267,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         body.action === "approve",
       );
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "social_post approval relay failed",
-          user_id: userId,
+      log.error("social_post approval relay failed", {user_id: userId,
           action: body.action,
-          error: error instanceof Error ? error.message : "unknown",
-        }),
-      );
+          error: error instanceof Error ? error.message : "unknown",});
       // The referenced run may have already ended (the ref is the newest open
       // run at proposal time). A gone run can't post, so a dismiss may finish
       // anyway — the card must be clearable. Everything else (box wake
@@ -315,13 +311,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const mapped = hostedErrorResponse(error);
       if (mapped) return mapped;
       if (decision.kind === "payment_request") throw error;
-      console.error(
-        JSON.stringify({
-          msg: "purchase_review resolution failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : "unknown",
-        }),
-      );
+      log.error("purchase_review resolution failed", {user_id: userId,
+          error: error instanceof Error ? error.message : "unknown",});
       return NextResponse.json(
         { error: "could not resolve the purchase review — try again" },
         { status: 502 },
@@ -340,14 +331,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         id: decision.id as string,
       });
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "shop_publish approval failed",
-          user_id: userId,
+      log.error("shop_publish approval failed", {user_id: userId,
           decision_id: decision.id,
-          error: error instanceof Error ? error.message : "unknown",
-        }),
-      );
+          error: error instanceof Error ? error.message : "unknown",});
       if (error instanceof CommerceError) {
         return NextResponse.json(
           { error: error.message },
@@ -388,14 +374,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       try {
         await setPublishStatus(supabase, userId, slug, "published");
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "miniapp_publish approval failed",
-            user_id: userId,
+        log.error("miniapp_publish approval failed", {user_id: userId,
             app: slug,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+            error: error instanceof Error ? error.message : "unknown",});
         if (error instanceof PublishError) {
           return NextResponse.json({ error: error.message }, { status: error.status });
         }
@@ -439,14 +420,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         backend: row ? { status: row.status, approved: row.approved_manifest } : null,
       });
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "miniapp_backend approval failed",
-          user_id: userId,
+      log.error("miniapp_backend approval failed", {user_id: userId,
           app: slug,
-          error: error instanceof Error ? error.message : "unknown",
-        }),
-      );
+          error: error instanceof Error ? error.message : "unknown",});
       if (isBackendError(error) || error instanceof PublishError) {
         return NextResponse.json(
           { error: error.message },
@@ -525,14 +501,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               { status: error.status },
             );
           }
-          console.error(
-            JSON.stringify({
-              msg: "wallet transfer execution failed",
-              user_id: userId,
+          log.error("wallet transfer execution failed", {user_id: userId,
               transfer_id: transfer.id,
-              error: error instanceof Error ? error.message : "unknown",
-            }),
-          );
+              error: error instanceof Error ? error.message : "unknown",});
           return NextResponse.json(
             { error: "the send failed — nothing moved; try again" },
             { status: 502 },

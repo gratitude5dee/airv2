@@ -19,6 +19,7 @@ import { stageKernelAction } from "@/lib/kernel/actions";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { ACTION_LABELS } from "@/lib/kernel/actions";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,13 +97,8 @@ async function notifyOwnerOfAction(
     );
   } catch (error) {
     await claim?.release().catch(() => undefined);
-    console.error(
-      JSON.stringify({
-        msg: "kernel action card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("kernel action card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 

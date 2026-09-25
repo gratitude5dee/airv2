@@ -11,6 +11,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { log } from "../log";
 
 export const FILL_TICKET_USE = "fill_ticket";
 /** exp ≤ 10 minutes, always (§V6 choreography step 4). */
@@ -68,16 +69,11 @@ export function mintFillTicket(
       Math.min(ttlMinutes, MAX_TTL_MINUTES) * 60,
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  console.log(
-    JSON.stringify({
-      msg: "fill ticket minted",
-      user_id: userId,
+  log.info("fill ticket minted", {user_id: userId,
       item_id: itemId,
       host: claims.host,
       amount_band: band,
-      jti: claims.jti,
-    })
-  );
+      jti: claims.jti,});
   return { token: `${payload}.${sign(payload)}`, claims };
 }
 
@@ -125,14 +121,9 @@ export async function redeemFillTicket(
     if (error.code === "23505" || error.code === "23503") return false;
     throw new Error(`fill ticket redemption failed: ${error.message}`);
   }
-  console.log(
-    JSON.stringify({
-      msg: "fill ticket redeemed",
-      user_id: claims.userId,
+  log.info("fill ticket redeemed", {user_id: claims.userId,
       item_id: claims.itemId,
       host: claims.host,
-      jti: claims.jti,
-    })
-  );
+      jti: claims.jti,});
   return true;
 }

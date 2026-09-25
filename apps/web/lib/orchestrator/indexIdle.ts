@@ -18,6 +18,7 @@
  * probes — defers, and the reason is reported so a stuck fleet is visible.
  */
 import { command, type CommandResult } from "@/lib/box/client";
+import { log } from "../log";
 
 export const IDLE_GRACE_SECONDS = 1200;
 export const LEGACY_STOP_GRACE_MS = IDLE_GRACE_SECONDS * 1000;
@@ -73,7 +74,7 @@ async function run(boxId: string, subcommand: string, args: string): Promise<Com
 
 /** ovctl stderr is diagnostics (tracebacks, argparse), never owner content. */
 function probeFailed(boxId: string, subcommand: string, detail: Record<string, unknown>): void {
-  console.error(JSON.stringify({ msg: "ovctl probe failed", box_id: boxId, subcommand, ...detail }));
+  log.error("ovctl probe failed", {box_id: boxId, subcommand, ...detail});
 }
 
 /** Old boxes with idle-check but no claim: read-only probe, deny on anything unclear. */

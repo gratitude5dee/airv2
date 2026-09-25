@@ -28,6 +28,7 @@ import {
   findKvNamespace,
 } from "./cloudflare";
 import { AppOriginRefusedError } from "./deploy";
+import { log } from "../log";
 
 export const PENDING_PREFIX = "pending:";
 /** A pending marker older than this belongs to a writer that died mid-create. */
@@ -163,9 +164,7 @@ export async function ensureResources(
       await vendorDelete(resource, id).catch(() => undefined);
       throw new BackendError(409, `${resource} was provisioned by another build; retry`);
     }
-    console.log(
-      JSON.stringify({ msg: "app resource provisioned", app: slug, resource })
-    );
+    log.info("app resource provisioned", {app: slug, resource});
     const fresh = await loadFunctions(supabase, current.app_id);
     if (!fresh) throw new BackendError(502, "backend row vanished");
     current = fresh;

@@ -18,6 +18,7 @@ import {
   type MailProvider,
 } from "../mail/client";
 import { BoxApiError, command, readFile, writeFile } from "../box/client";
+import { log } from "../log";
 
 interface BoxMailWiring {
   /** Hermes mcp_servers entry name. */
@@ -144,12 +145,8 @@ export async function ensureMailboxOnBox(
     }
     const username = user?.username as string | undefined;
     if (!username) {
-      console.error(
-        JSON.stringify({
-          msg: "mailbox ensure skipped — user has no username to address",
-          user_id: userId,
-        })
-      );
+      log.error("mailbox ensure skipped — user has no username to address", {box_id: null,
+        user_id: userId,});
       return false;
     }
     const provisioned = await provisionEmail(supabase, userId, username);
@@ -289,14 +286,9 @@ export async function provisionEmail(
       await installMailboxOnBox(boxId, userId, inbox.inbox_id);
       installedBoxId = boxId;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: `box ${wiring.mcpName} key injection failed`,
-          user_id: userId,
+      log.error(`box ${wiring.mcpName} key injection failed`, {user_id: userId,
           box_id: boxId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
 
