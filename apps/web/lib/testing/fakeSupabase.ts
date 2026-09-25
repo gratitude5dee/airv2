@@ -352,7 +352,14 @@ function makePredicate(column: string, op: string, value: unknown): (row: Row) =
     case "is":
       return (row) => (row[column] ?? null) === value;
     case "in": {
-      const values = Array.isArray(value) ? value : [value];
+      // `.in()` passes a real array; `.not(col,"in",...)` and
+      // `.filter(col,"in",...)` arrive as the PostgREST "(a,b,c)" string —
+      // parse it the same way `or(...)` terms already do.
+      const values = Array.isArray(value)
+        ? value
+        : typeof value === "string" && value.startsWith("(") && value.endsWith(")")
+          ? splitTopLevel(value.slice(1, -1)).map(parseOrValue)
+          : [value];
       return (row) => values.some((v) => row[column] === v || String(row[column]) === String(v));
     }
     case "like":
