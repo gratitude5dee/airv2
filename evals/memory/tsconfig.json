@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // "dom" because generate.ts typechecks the real lib/imessage archive
+    // modules, whose transitive graph includes fetch/RequestInit types.
+    "lib": ["esnext", "dom"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "baseUrl": "../..",
+    "paths": { "@/*": ["apps/web/*"] }
+  },
+  "include": ["*.ts"]
+}
