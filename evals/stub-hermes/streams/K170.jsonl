@@ -1,0 +1,6 @@
+{"comment": "K170 \u2014 conditional follow-up: the watch persists, the follow-up is a pending draft"}
+{"call": {"method": "POST", "path": "/api/calendar/schedule", "body": {"name": "Venue contract check", "cron": "0 9 * * 2", "timezone": "UTC", "prompt": "Check the inbox for the venue contract; if it has not arrived, surface the staged follow-up draft for owner approval.", "deliver": "imessage"}}}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: venue@example.com, subject: Following up on the contract"}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-k170-$LANE", "inbox_id": "inbox-eval"}}}
+{"sse": {"event": "message.delta", "delta": "I'll check for the contract on Tuesday; a follow-up is drafted and pending your approval."}}
+{"sse": {"event": "run.completed"}}

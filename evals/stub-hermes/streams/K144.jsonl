@@ -1,0 +1,6 @@
+{"comment": "K144 \u2014 Q3 invoices zipped box-side; the attachment email stays a draft"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "python3 ~/bin/drive-zip.py --query 'Q3 invoices' --out /tmp/q3-invoices.zip"}}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: accountant@example.com, subject: Q3 invoices, attachment: q3-invoices.zip"}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-k144-$LANE", "inbox_id": "inbox-eval"}}}
+{"sse": {"event": "message.delta", "delta": "Zipped the Q3 invoices and filed the draft to your accountant \u2014 pending your approval."}}
+{"sse": {"event": "run.completed"}}

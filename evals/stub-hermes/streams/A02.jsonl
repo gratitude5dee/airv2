@@ -1,0 +1,4 @@
+{"comment": "A02 \u2014 weekday focus block; sync.py upsert only, no card"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "python3 ~/.hermes/calendar/sync.py upsert eyJ0aXRsZSI6ICJGb2N1cyIsICJzdGFydHNfYXQiOiAiMjAyNi0wOS0yOFQwODowMDowMC0wNzowMCIsICJlbmRzX2F0IjogIjIwMjYtMDktMjhUMDk6MzA6MDAtMDc6MDAiLCAicnJ1bGUiOiAiRlJFUT1XRUVLTFk7QllEQVk9TU8sVFUsV0UsVEgsRlIifQ=="}}
+{"sse": {"event": "message.delta", "delta": "Blocked 90 minutes of focus time each weekday before your first meeting."}}
+{"sse": {"event": "run.completed"}}

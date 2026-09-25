@@ -11,6 +11,11 @@ coverage/
 .env*
 __pycache__/
 
+# Contract-eval lane runtime artifacts (R-EV-07)
+evals/contract/.work/
+evals/contract/.bin/
+evals/contract/results/
+
 # Built by apps/web/scripts/build-onairos-connect.mjs (prebuild)
 apps/web/public/creator-os/onairos-connect.js
 apps/web/public/creator-os/bg/

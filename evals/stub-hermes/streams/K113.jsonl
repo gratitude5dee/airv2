@@ -1,0 +1,4 @@
+{"comment": "K113 \u2014 REAL ID slot search only"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://dmv.example.gov/appointments"}}
+{"sse": {"event": "message.delta", "delta": "Earliest weekday slots next month: Tue the 7th at 10:40am, Wed the 8th at 9:15am, and Fri the 10th at 8:00am. Tell me which and I'll grab it."}}
+{"sse": {"event": "run.completed"}}
