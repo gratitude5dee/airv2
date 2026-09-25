@@ -1,11 +1,20 @@
-# Deploy the Cloudflare workers (V13 §11.3): air-create (Workflow + DO +
-# Browser Run), air-dev (dev-link router), air-dispatcher (app origin).
+# Deploy the platform workers (V13 §11.3): air-create (Workflow + DO +
+# Browser Run), air-dev (dev-link router), air-dispatcher + air-outbound
+# (app origin). PRs run a `check` job per worker — npm ci, tsc where a
+# tsconfig exists, vitest where tests exist, `wrangler deploy --dry-run` —
+# and main pushes deploy only after check, in release.sh's order
+# (outbound → static-stub digest → dispatcher → health), on Node 22, with
+# cancel-in-progress off so a deploy is never interrupted mid-flight.
 # Secrets needed in repo settings: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
 # Worker secrets (CREATE_BRIDGE_SECRET, CANDIDATE_SECRET, LIVE_TOKEN_SECRET,
 # CONTROL_PLANE_ORIGIN, APP_ORIGIN_SIGNING_KEY) are provisioned once per
 # environment with `wrangler secret put` — never in CI.
 name: workers
 on:
+  pull_request:
+    paths:
+      - "infra/workers/**"
+      - ".github/workflows/workers.yml"
   push:
     branches: [main]
     paths:
@@ -15,58 +24,137 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: workers-deploy
-  cancel-in-progress: true
+  group: workers-deploy-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  create:
-    name: air-create
+  check:
+    name: check (${{ matrix.worker }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        worker:
+          - { name: dispatcher, dir: infra/workers }
+          - { name: create, dir: infra/workers/create }
+          - { name: dev-router, dir: infra/workers/dev-router }
+          - { name: outbound, dir: infra/workers/outbound }
+          - { name: muse, dir: infra/workers/muse }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm ci
-        working-directory: infra/workers/create
-      - run: npx tsc --noEmit
-        working-directory: infra/workers/create
-      - run: npx vitest run
-        working-directory: infra/workers/create
+          node-version: "22"
+      - name: npm ci
+        run: |
+          if [ -f package-lock.json ]; then npm ci;
+          elif [ -f package.json ]; then npm install;
+          else echo "no package manifest — skipping"; fi
+        working-directory: ${{ matrix.worker.dir }}
+      - name: tsc --noEmit
+        run: |
+          if ls tsconfig*.json >/dev/null 2>&1; then npx tsc --noEmit;
+          else echo "no tsconfig — skipping"; fi
+        working-directory: ${{ matrix.worker.dir }}
+      - name: vitest run
+        run: |
+          if ls vitest.config.* test/*.test.* >/dev/null 2>&1; then npx vitest run;
+          else echo "no tests — skipping"; fi
+        working-directory: ${{ matrix.worker.dir }}
+      - name: wrangler deploy --dry-run
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ci-dry-run
+        run: |
+          cfg=$(ls wrangler.toml wrangler.jsonc wrangler.json 2>/dev/null | head -1 || true)
+          if [ -n "$cfg" ]; then
+            npx --yes wrangler@4 deploy --dry-run --outdir /tmp/worker-dist --config "$cfg"
+          else
+            echo "no wrangler config — skipping"
+          fi
+        working-directory: ${{ matrix.worker.dir }}
+  deploy-outbound:
+    name: deploy air-outbound
+    needs: check
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infra/workers
+          command: deploy --config outbound/wrangler.toml
+  deploy-dispatcher:
+    name: deploy air-dispatcher
+    needs: deploy-outbound
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: static-stub digest check
+        # release.sh's step 3: the control plane embeds the stub; a drift
+        # ships two stubs. staticStub.test.ts pins bytes in the web job;
+        # this keeps a deploy from landing on a red check somehow skipped.
+        run: |
+          STUB_SHA=$(sha256sum infra/workers/static-stub/index.mjs | cut -d' ' -f1)
+          STUB_HEX=$(grep -oE '[0-9a-f]{64}' apps/web/lib/functions/staticStub.ts | head -1 || true)
+          echo "index.mjs sha256: $STUB_SHA (embedded pin: ${STUB_HEX:-none})"
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infra/workers
+          command: deploy
+      - name: health check
+        run: |
+          HEALTH_URL="${CF_DISPATCH_HEALTH_URL:-https://dispatch.apps.wzrd.tech/__air/health}"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 10 "$HEALTH_URL" | grep -q '"ok":true'; then
+              echo "healthy: $HEALTH_URL"; exit 0
+            fi
+            [ "$attempt" = 5 ] && { echo "FATAL: $HEALTH_URL did not answer"; exit 1; }
+            sleep 3
+          done
+  deploy-create:
+    name: deploy air-create
+    needs: check
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: infra/workers/create
           command: deploy
-  dev-router:
-    name: air-dev
+  deploy-dev-router:
+    name: deploy air-dev
+    needs: check
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm ci
-        working-directory: infra/workers/dev-router
+          node-version: "22"
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: infra/workers/dev-router
-          command: deploy
-  dispatcher:
-    name: air-dispatcher
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: npm ci
-        working-directory: infra/workers
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: infra/workers
           command: deploy

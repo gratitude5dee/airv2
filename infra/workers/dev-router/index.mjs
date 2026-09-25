@@ -102,7 +102,7 @@ function notFound() {
   });
 }
 
-function slugFromHost(hostname) {
+export function slugFromHost(hostname) {
   if (!hostname.endsWith(".dev.wzrd.tech") && hostname !== "dev.wzrd.tech") return null;
   const slug = hostname === "dev.wzrd.tech" ? "" : hostname.slice(0, -".dev.wzrd.tech".length);
   return SLUG_RE.test(slug) ? slug : null;
