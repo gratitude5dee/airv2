@@ -349,14 +349,14 @@ function createFullServer(env: FullEnv): McpServer {
 
   if (hasScope(context, "wallet:request")) {
     server.registerTool("air.wallet.request", {
-      title: "Send from an Air wallet",
-      description: "Submit a wallet transfer from the owner's Air wallet.",
+      title: "Request an Air wallet send",
+      description: "Create a wallet-send approval request. This tool never sends funds; only the owner can approve the request in Air.",
       inputSchema: z.object({ to: z.string().min(1).max(128), amount_display: z.string().min(1).max(32), token_address: z.string().nullable().optional(), memo: z.string().max(140).optional() }),
-      outputSchema: z.object({ transfer_id: z.string(), transaction_id: z.string() }),
+      outputSchema: z.object({ decision_id: z.string().uuid() }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     }, async (input) => {
       try { return result(await capability(env, context.userId, "wallet-request", input)); }
-      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not submit the transfer"); }
+      catch (error) { return toolError(error instanceof ControlPlaneError ? error.message : "Air could not create the approval"); }
     });
   }
 

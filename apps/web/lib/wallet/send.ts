@@ -186,42 +186,6 @@ export async function createTransferRequest(
   return { transferId: transfer.id as string, decisionId: decision.id as string };
 }
 
-/**
- * Create and submit a transfer without inserting a Needs-you decision. This
- * is deliberately available only to the authenticated Muse control-plane
- * capability: every other Air surface continues to use createTransferRequest.
- */
-export async function executeDirectTransfer(
-  supabase: SupabaseClient,
-  userId: string,
-  toRaw: string,
-  amountRaw: string,
-  asset: WalletAsset = "native"
-): Promise<{ transferId: string; transactionId: string }> {
-  const to = validateSendAddress(toRaw);
-  const spec = assetSpec(asset);
-  const atomic = parseAssetAmount(amountRaw, spec.decimals);
-  const { data: transfer, error } = await supabase
-    .from("wallet_transfers")
-    .insert({
-      user_id: userId,
-      to_address: to,
-      amount_wei: atomic.toString(),
-      amount_display: amountRaw.trim(),
-      chain_id: env.walletChainId(),
-      token_address: spec.tokenAddress,
-      token_symbol: spec.symbol,
-    })
-    .select(TRANSFER_COLUMNS)
-    .single();
-  if (error || !transfer) throw new WalletSendError(500, "could not record the transfer");
-  const transferRow = transfer as WalletTransfer;
-  return {
-    transferId: transferRow.id,
-    transactionId: await executeTransfer(supabase, userId, transferRow),
-  };
-}
-
 /** The pending transfer a run_approval ref points at, if it is one. */
 export async function findPendingTransfer(
   supabase: SupabaseClient,
