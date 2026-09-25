@@ -15,10 +15,17 @@ import {
   ensureBoxAwake,
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
+import { loadBoxCredentials } from "@/lib/box/credentials";
 import { listSessions } from "@/lib/hermes/client";
 import { botTarget, BOT_CHAT_SESSION, isValidBotName } from "@/lib/bots/client";
 import { provisionBot, deleteBot, applyModelTier } from "@/lib/bots/provision";
-import { getBot, listBots, toPublic, type BotPublic } from "@/lib/bots/store";
+import {
+  BOT_COLUMNS,
+  getBot,
+  listBots,
+  toPublic,
+  type BotPublic,
+} from "@/lib/bots/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,19 +78,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const roster: RosterEntry[] = bots.map(toPublic);
 
   // Live previews only when the box is already awake — never wake for a
-  // roster render (the box sleeps most of the time; metadata is enough).
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("provider_box_id, hosted_url, hosted_token, api_server_key, state")
-    .eq("user_id", userId)
-    .maybeSingle();
+  // roster render (the box sleeps most of the time; metadata is enough). A
+  // lookup failure must not break the roster: previews are best-effort.
+  const box = await loadBoxCredentials(supabase, userId).catch(() => null);
   const awake = box?.state === "ready" || box?.state === "idle";
-  if (awake && box?.hosted_url && box.hosted_token) {
-    const boxTarget = {
-      hostedUrl: box.hosted_url as string,
-      hostedToken: box.hosted_token as string,
-      apiServerKey: box.api_server_key as string,
-    };
+  if (awake && box?.target.hostedUrl && box.target.hostedToken) {
+    const boxTarget = box.target;
     await Promise.all(
       roster.map(async (entry, index) => {
         const bot = bots[index];
@@ -227,9 +227,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     .from("bots")
     .update(patch)
     .eq("id", bot.id)
-    .select(
-      "id, user_id, name, title, description, avatar_kind, avatar_ref, model_tier, api_server_key, status, group_label, created_at"
-    )
+    .select(BOT_COLUMNS)
     .single();
   if (error || !data) {
     return NextResponse.json({ error: "update failed" }, { status: 500 });

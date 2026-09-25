@@ -20,7 +20,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuthorized } from "@/lib/admin/auth";
-import { providerOf, type BoxProvider } from "@/lib/box/client";
+import { providerOf, type BoxProviderKind } from "@/lib/box/client";
 import {
   providerFor,
   toComputeEnvironment,
@@ -40,7 +40,7 @@ export const dynamic = "force-dynamic";
  */
 export const maxDuration = 300;
 
-function isBoxProvider(value: unknown): value is BoxProvider {
+function isBoxProvider(value: unknown): value is BoxProviderKind {
   return value === "ascii" || value === "tenki";
 }
 

@@ -17,6 +17,7 @@ import {
   type HostedRoute,
 } from "@/lib/orchestrator/boxes";
 import { dashboardRequestWithRetry } from "@/lib/box/dashboard";
+import { hermesAuthHeaders } from "@/lib/hermes/client";
 import { openSecret } from "@/lib/crypto/secretbox";
 import { env } from "@/lib/env";
 import { resolveUpstream } from "@/lib/box/allowlist";
@@ -109,10 +110,10 @@ async function handle(
         upstream = attempt.response;
       }
     } else {
-      upstream = await proxyTo(box.target.hostedUrl, {
-        Authorization: `Bearer ${profileKey ?? box.target.apiServerKey}`,
-        Cookie: `_port_auth=${box.target.hostedToken}`,
-      });
+      upstream = await proxyTo(
+        box.target.hostedUrl,
+        hermesAuthHeaders(box.target, profileKey ?? undefined)
+      );
     }
     const body = await upstream.text();
     return new NextResponse(body, {
