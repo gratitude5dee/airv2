@@ -11,11 +11,17 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 await build({
-  entryPoints: [join(root, "lib/miniapps/client/freeze-studio.tsx")],
-  outfile: join(root, "public/creator-os/freeze-studio.js"),
+  entryPoints: [
+    { in: join(root, "lib/miniapps/client/freeze-studio.tsx"), out: "freeze-studio" },
+  ],
+  outdir: join(root, "public/creator-os"),
+  // R-PERF-07: `three` (~660 KB) rides an async chunk loaded only when the
+  // 3D stage mounts. chunks/freeze/ is committed alongside freeze-studio.js.
+  chunkNames: "chunks/freeze/[name]-[hash]",
   bundle: true,
   minify: true,
-  format: "iife",
+  format: "esm",
+  splitting: true,
   platform: "browser",
   jsx: "automatic",
   define: { "process.env.NODE_ENV": '"production"' },
