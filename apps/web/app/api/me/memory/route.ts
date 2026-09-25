@@ -39,7 +39,7 @@ function busy(): NextResponse {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 /** Edit USER.md (the user profile — the one memory file the owner authors). */
 export async function PUT(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -128,7 +128,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
 
 /** Clear-with-confirm: `{ action: "clear", target, confirm: true }`. */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

@@ -13,8 +13,8 @@ import {
 } from "@/lib/thirdweb/client";
 import {
   SESSION_COOKIE,
-  createSessionToken,
   createSignupToken,
+  issueSessionToken,
 } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -116,8 +116,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const token = await issueSessionToken(supabase, userId);
+  if (!token) {
+    return NextResponse.json(
+      { error: "session unavailable — retry" },
+      { status: 503 }
+    );
+  }
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE, createSessionToken(userId), {
+  response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

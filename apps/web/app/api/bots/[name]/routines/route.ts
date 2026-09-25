@@ -78,7 +78,7 @@ async function resolveBot(
   | { userId: string; supabase: SupabaseClient; bot: BotRow }
   | { response: NextResponse }
 > {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return {
       response: NextResponse.json({ error: "unauthorized" }, { status: 401 }),

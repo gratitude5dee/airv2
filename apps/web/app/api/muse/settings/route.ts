@@ -18,14 +18,14 @@ const Body = z.object({
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!museEnabled()) return new NextResponse(null, { status: 404 });
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   return NextResponse.json({ settings: await getMuseSettings(serviceClient(), userId) });
 }
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   if (!museEnabled()) return new NextResponse(null, { status: 404 });
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });

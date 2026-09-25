@@ -36,7 +36,7 @@ async function callerUserId(
   supabase: SupabaseClient,
   request: NextRequest
 ): Promise<string | undefined> {
-  return sessionUserId(request) ?? (await boxUserId(supabase, request));
+  return await sessionUserId(request) ?? (await boxUserId(supabase, request));
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

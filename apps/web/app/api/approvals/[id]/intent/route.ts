@@ -26,7 +26,7 @@ export async function POST(
   if (typeof body.k === "string") {
     userId = verifyApprovalToken(body.k, id)?.userId ?? null;
   }
-  userId = userId ?? sessionUserId(request) ?? null;
+  userId = userId ?? await sessionUserId(request) ?? null;
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
