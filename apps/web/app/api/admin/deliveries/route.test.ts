@@ -41,7 +41,7 @@ const base = "https://air.test/api/admin/deliveries";
 const USER = "11111111-1111-4111-8111-111111111111";
 const SCHED = "22222222-2222-4222-8222-222222222222";
 const authed = (url = base) =>
-  new NextRequest(url, { headers: { authorization: "Bearer admin-key" } });
+  new NextRequest(url, { headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" } });
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";

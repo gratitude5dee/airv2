@@ -38,7 +38,7 @@ async function boxUserId(
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = (await boxUserId(supabase, request)) ?? sessionUserId(request);
+  const userId = (await boxUserId(supabase, request)) ?? await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

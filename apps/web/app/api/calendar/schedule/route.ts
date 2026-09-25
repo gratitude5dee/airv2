@@ -52,7 +52,7 @@ const DeleteScheduleSchema = z.object({
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // The owner's session or the box itself (watch_for files watches the
   // same way — the persistent check is a schedule, not a promise).
   const box = await callingBox(supabase, request);
-  const userId = sessionUserId(request) ?? box?.userId;
+  const userId = await sessionUserId(request) ?? box?.userId;
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -218,7 +218,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

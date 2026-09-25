@@ -99,7 +99,7 @@ import { POST } from "./route";
 const authed = (body: unknown) =>
   new NextRequest("https://air.test/api/admin/delete", {
     method: "POST",
-    headers: { authorization: "Bearer admin-key", "content-type": "application/json" },
+    headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 

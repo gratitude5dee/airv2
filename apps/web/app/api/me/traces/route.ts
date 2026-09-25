@@ -15,7 +15,7 @@ const RECENT_DAYS = 30;
 const MAX_ROWS = 50;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

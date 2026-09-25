@@ -68,6 +68,7 @@ function form(action: string): FormData {
 
 beforeAll(() => {
   process.env["SESSION_SECRET"] = "test-session-secret";
+  process.env["COMMAND_LANE_KEY"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 });
 
 afterEach(() => {

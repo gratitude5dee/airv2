@@ -71,7 +71,8 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
+  const operator = adminAuthorized(request);
+  if (!operator) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { slug } = await context.params;
@@ -122,6 +123,7 @@ export async function POST(
     await recordAdminAudit(supabase, {
       action: "suspend",
       app,
+      operator,
       detail: {
         previous_status: app.status,
         live_version: app.status === "published" ? app.bundle_version : null,
@@ -133,6 +135,7 @@ export async function POST(
         msg: "admin suspended app",
         user_id: app.owner_user_id,
         app: app.slug,
+        operator,
         previous_status: app.status,
         dev_revoked: devVersion !== null,
       })

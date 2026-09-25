@@ -16,7 +16,7 @@ import { GET } from "./route";
 
 const base = "https://air.test/api/admin/create";
 const authed = (qs = "") =>
-  new NextRequest(`${base}${qs}`, { headers: { authorization: "Bearer admin-key" } });
+  new NextRequest(`${base}${qs}`, { headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" } });
 const recent = new Date(Date.now() - 3_600_000).toISOString();
 const old = new Date(Date.now() - 400 * 86_400_000).toISOString();
 

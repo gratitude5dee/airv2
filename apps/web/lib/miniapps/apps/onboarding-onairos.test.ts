@@ -5,11 +5,17 @@
  * the onairos_handoff action forwards the browser handoff to syncOnairos
  * without ever logging or storing it platform-side.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
+
+// R-SEC-06: native-Onairos renders mint the relay's API cookie, which
+// needs the C15 signing key.
+beforeAll(() => {
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
+});
 
 const boxFiles = new Map<string, string>();
 

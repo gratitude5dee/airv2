@@ -29,7 +29,7 @@ import { GET } from "./route";
 
 const base = "https://air.test/api/admin/tokens";
 const authed = (url = base) =>
-  new NextRequest(url, { headers: { authorization: "Bearer admin-key" } });
+  new NextRequest(url, { headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" } });
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";

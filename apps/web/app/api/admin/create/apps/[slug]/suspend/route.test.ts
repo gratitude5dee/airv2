@@ -31,7 +31,7 @@ const post = (slug: string, key = "admin-key") =>
   POST(
     new NextRequest(`${base}/${slug}/suspend`, {
       method: "POST",
-      headers: { authorization: `Bearer ${key}` },
+      headers: { authorization: `Bearer ${key}`, "x-admin-operator": "carol" },
     }),
     { params: Promise.resolve({ slug }) }
   );

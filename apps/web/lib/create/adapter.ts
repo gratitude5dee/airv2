@@ -11,7 +11,12 @@
  */
 import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BridgeError, verifyBridgeRequest } from "./bridge";
+import {
+  BRIDGE_SIG_HEADER,
+  BridgeError,
+  claimBridgeNonce,
+  verifyBridgeRequest,
+} from "./bridge";
 import { getJob, JobError, type JobRow } from "./job";
 
 export class AdapterError extends Error {
@@ -31,6 +36,7 @@ export class AdapterError extends Error {
  * off — every adapter route answers the same way).
  */
 export async function adapterBody<T = Record<string, unknown>>(
+  supabase: SupabaseClient,
   request: NextRequest
 ): Promise<{ body: T; raw: string }> {
   const raw = await request.text();
@@ -46,6 +52,22 @@ export async function adapterBody<T = Record<string, unknown>>(
       JSON.stringify({ msg: "create adapter bad signature", path: request.nextUrl.pathname })
     );
     throw new AdapterError("unauthorized", 401);
+  }
+  // R-SEC-04: a validly-signed request delivered twice is a replay. The
+  // nonce claim runs only after the signature verifies, so an
+  // unauthenticated caller cannot fill the table with garbage.
+  const claim = await claimBridgeNonce(
+    supabase,
+    request.headers.get(BRIDGE_SIG_HEADER) ?? ""
+  );
+  if (claim === "unavailable") {
+    throw new AdapterError("create bridge nonce store unavailable", 503);
+  }
+  if (claim === "replay") {
+    console.log(
+      JSON.stringify({ msg: "create adapter replay", path: request.nextUrl.pathname })
+    );
+    throw new AdapterError("request already handled", 409);
   }
   let body: T;
   try {
@@ -63,7 +85,7 @@ export async function adapterJob<T extends { job_id?: unknown }>(
   supabase: SupabaseClient,
   request: NextRequest
 ): Promise<{ job: JobRow; body: T }> {
-  const { body } = await adapterBody<T>(request);
+  const { body } = await adapterBody<T>(supabase, request);
   if (typeof body.job_id !== "string" || !JOB_ID_RE.test(body.job_id)) {
     throw new AdapterError("invalid job_id", 400);
   }
