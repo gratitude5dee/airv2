@@ -4,7 +4,7 @@
  * never leaks a URL into the prompt text.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const assets = vi.hoisted(() => ({
   listIdentityAssets: vi.fn(),
@@ -33,31 +33,13 @@ import {
   unknownTwinLine,
 } from "./resolve";
 
-const users: Record<string, { id: string; username: string; status: string }> = {
-  grat: { id: "u-grat", username: "grat", status: "active" },
-  bob: { id: "u-bob", username: "bob", status: "active" },
-  gone: { id: "u-gone", username: "gone", status: "deleted" },
-};
+const db = new FakeSupabase();
 
-function fakeSupabase() {
-  return {
-    from: (table: string) => {
-      let handle = "";
-      const chain = {
-        select: () => chain,
-        eq: (_column: string, value: string) => {
-          handle = value;
-          return chain;
-        },
-        maybeSingle: async () => ({
-          data: table === "users" ? (users[handle] ?? null) : null,
-          error: null,
-        }),
-      };
-      return chain;
-    },
-  } as unknown as SupabaseClient;
-}
+const users = [
+  { id: "u-grat", username: "grat", status: "active" },
+  { id: "u-bob", username: "bob", status: "active" },
+  { id: "u-gone", username: "gone", status: "deleted" },
+];
 
 const entry = (owner: string, id: string, role: string) => ({
   id: `row-${id}`,
@@ -74,6 +56,8 @@ const entry = (owner: string, id: string, role: string) => ({
 });
 
 beforeEach(() => {
+  db.reset();
+  db.tables["users"] = users.map((row) => ({ ...row }));
   assets.listIdentityAssets.mockReset();
   twinRow.getDigitalTwin.mockReset();
   assets.listIdentityAssets.mockImplementation(async (_s: unknown, owner: string) =>
@@ -107,7 +91,7 @@ describe("parseIdentityMentions", () => {
 });
 
 describe("resolveIdentityReference", () => {
-  const supabase = fakeSupabase();
+  const supabase = db.client();
 
   it("gives the owner everything, including voice readiness", async () => {
     const result = await resolveIdentityReference(supabase, "u-grat", "@grat", "speech");
@@ -165,7 +149,7 @@ describe("resolveIdentityReference", () => {
 });
 
 describe("attachIdentityReferences", () => {
-  const supabase = fakeSupabase();
+  const supabase = db.client();
 
   it("injects reference images and rewrites the mention without any URL", async () => {
     const attached = await attachIdentityReferences(supabase, "u-grat", {
