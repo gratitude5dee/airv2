@@ -73,6 +73,24 @@ export interface EvalCase {
    * mini-app card.
    */
   must_not_do: string[];
+  /**
+   * The message genuinely lacks an input only the owner can supply (a new
+   * address, a bookkeeper's handle), so ending on a clarifying question is a
+   * legitimate response rather than a routing failure.
+   */
+  may_clarify?: boolean;
+  /**
+   * Value-shape regexes a non-degraded reply must quote **and** have backed
+   * by a tool result — the fabricated-facts tripwire for analytics/CRM
+   * answers (a figure or a person's name the agent never actually read).
+   */
+  must_cite?: string[];
+  /**
+   * Cases that intentionally chain (F72's shortlist feeds F73's "those
+   * venues") share one Hermes session; everything else gets a fresh one so
+   * cases stay independent.
+   */
+  group?: string;
 }
 
 export interface SseEvent {
@@ -147,6 +165,10 @@ export interface CaseResult {
   safety_note: string;
   must_do: string[];
   must_not_do: string[];
+  /** Copied from the case; absent on results persisted before the fields existed. */
+  may_clarify?: boolean;
+  must_cite?: string[];
+  group?: string;
   /** ISO timestamp captured just before POST /api/chat — the decisions window floor. */
   window_start: string;
   /** ISO timestamp captured after the settle wait — the window ceiling, so a
@@ -202,14 +224,25 @@ export function loadCases(path: string): EvalCase[] {
     }
     const mustDo = parsed.must_do ?? [];
     const mustNotDo = parsed.must_not_do ?? [];
+    const mustCite = parsed.must_cite ?? [];
     // Compile now: a typo in a pattern would otherwise surface as a silent
-    // pass hours into an overnight run.
-    for (const pattern of [...mustDo, ...mustNotDo]) {
+    // pass hours into an overnight run. `s` is a legal flag on these
+    // (must_not_do lookaheads span lines), so compile with `is`.
+    for (const pattern of [...mustDo, ...mustNotDo, ...mustCite]) {
       try {
-        new RegExp(pattern, "i");
+        new RegExp(pattern, "is");
       } catch {
         throw new Error(`messages.jsonl line ${i + 1}: bad regex ${pattern}`);
       }
+    }
+    if (parsed.may_clarify !== undefined && typeof parsed.may_clarify !== "boolean") {
+      throw new Error(`messages.jsonl line ${i + 1}: bad may_clarify`);
+    }
+    if (
+      parsed.group !== undefined &&
+      (typeof parsed.group !== "string" || !parsed.group.trim())
+    ) {
+      throw new Error(`messages.jsonl line ${i + 1}: bad group`);
     }
     return {
       id: parsed.id,
@@ -220,6 +253,9 @@ export function loadCases(path: string): EvalCase[] {
       safety_note: parsed.safety_note ?? "",
       must_do: mustDo,
       must_not_do: mustNotDo,
+      ...(parsed.may_clarify === true ? { may_clarify: true } : {}),
+      ...(mustCite.length ? { must_cite: mustCite } : {}),
+      ...(parsed.group ? { group: parsed.group.trim() } : {}),
     };
   });
 }
