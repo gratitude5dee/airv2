@@ -67,6 +67,10 @@ export const env = {
       "nscr.io/nroeoinh9vg4q/air/mac-bootstrap:latest",
     ),
   adminApiKey: (): string => required("ADMIN_API_KEY"),
+  // The scheduler's bearer secret. Optional like the other worker tokens:
+  // a deployment without cron jobs has nothing to protect, and an unset
+  // secret fails closed (no token can equal it).
+  cronSecret: (): string | null => process.env["CRON_SECRET"] ?? null,
   appOrigin: (): string => optional("APP_ORIGIN", "https://app.wzrd.tech"),
   supabaseUrl: (): string => required("SUPABASE_URL"),
   supabaseServiceRoleKey: (): string => required("SUPABASE_SERVICE_ROLE_KEY"),

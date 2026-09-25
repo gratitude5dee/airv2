@@ -66,6 +66,7 @@ import {
   toResponsesRequest,
 } from "@/lib/gateway/responses";
 import { fetchWithHeaderTimeout } from "@/lib/http/timeout";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -329,16 +330,9 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   const { path } = await params;
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return unauthorized();
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return unauthorized();
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   if (path.join("/") !== "models") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
@@ -370,13 +364,9 @@ export async function POST(
     if (!app) return unauthorized();
     userId = app.userId;
   } else {
-    const { data: box } = await supabase
-      .from("boxes")
-      .select("user_id")
-      .eq("gateway_token", token)
-      .maybeSingle();
-    if (!box) return unauthorized();
-    userId = box.user_id as string;
+    const box = await requireBox(supabase, request).catch(guardResponse);
+    if (box instanceof NextResponse) return box;
+    userId = box.userId;
   }
 
   // Only the metered completion endpoint is proxied (review 2026-08 P1-1);

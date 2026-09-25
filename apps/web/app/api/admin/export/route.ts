@@ -6,13 +6,13 @@
  */
 import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { EXPORT_TABLES } from "@/lib/admin/export-tables";
 import { deepMemoryExport } from "@/lib/memory/deep";
 import { readMemoryFiles } from "@/lib/memory/files";
 import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,9 +29,8 @@ function pseudonymizePayer(address: string | null): string | null {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const userId = request.nextUrl.searchParams.get("user_id");
   if (!userId) {
     return NextResponse.json({ error: "user_id required" }, { status: 400 });

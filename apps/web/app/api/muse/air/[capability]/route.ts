@@ -1,5 +1,4 @@
 import { after, NextRequest, NextResponse } from "next/server";
-import { hasMuseWorkerToken, museEnabled } from "@/lib/muse/auth";
 import {
   isMuseCapability,
   MuseCapabilityError,
@@ -7,6 +6,7 @@ import {
   runMuseCapability,
 } from "@/lib/muse/capabilities";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireWorker } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +21,8 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ capability: string }> },
 ): Promise<NextResponse> {
-  if (!museEnabled() || !hasMuseWorkerToken(request)) return new NextResponse(null, { status: 404 });
+  const auth = await requireWorker(request, "muse").catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const { capability } = await context.params;
   if (!isMuseCapability(capability)) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const body = await request.json().catch(() => null) as { user_id?: unknown; input?: unknown } | null;

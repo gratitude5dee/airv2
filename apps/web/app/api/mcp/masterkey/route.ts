@@ -24,14 +24,11 @@ import {
   type ToolResult,
 } from "@/lib/masterkey/client";
 import { checkMasterkeySpend, recordMasterkeyRun } from "@/lib/masterkey/spend";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-function unauthorized(): NextResponse {
-  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-}
 
 /** MCP streamable-HTTP headers the client legitimately controls. */
 const FORWARDED_REQUEST_HEADERS = [
@@ -94,19 +91,10 @@ function jsonRpcError(id: number | string | null, code: number, message: string,
 }
 
 async function proxy(request: NextRequest): Promise<Response> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const gatewayToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!gatewayToken) return unauthorized();
-
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", gatewayToken)
-    .maybeSingle();
-  if (!box) return unauthorized();
-  const userId = box.user_id as string;
-
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
+  const userId = box.userId;
   let token: string;
   try {
     ({ token } = await ensureMasterkeyToken(supabase, userId));

@@ -9,39 +9,22 @@
  * public projection, second credential path.
  */
 import { NextRequest, NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
-import { sessionUserId } from "@/lib/auth/user";
 import { listPublicApps } from "@/lib/miniapps/registry";
 import { canonicalDetailUrl, searchIndex } from "@/lib/miniapps/discovery";
 import { env } from "@/lib/env";
+import { guardResponse, requireBoxOrOwner } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_RESULTS = 20;
 
-async function boxUserId(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<string | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  return box ? (box.user_id as string) : null;
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = (await boxUserId(supabase, request)) ?? sessionUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireBoxOrOwner(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const q = request.nextUrl.searchParams.get("q") ?? "";
   const apps = await listPublicApps(supabase);
   const results = searchIndex(apps, q).slice(0, MAX_RESULTS);

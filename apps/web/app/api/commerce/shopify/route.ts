@@ -1,6 +1,6 @@
 /**
  * Shopify sync hook for the box-side `shopify-sync` skill (box-auth,
- * gateway_token bearer like /api/browser/purchase).
+ * GATEWAY_TOKEN bearer like /api/browser/purchase).
  *  - GET: the published catalog with each product's external_refs, so the
  *    skill can compute a diff before pushing to Shopify.
  *  - POST {product_key, shopify_product_id, shopify_url?}: record the ref a
@@ -8,13 +8,13 @@
  *    this route (C23).
  */
 import { NextRequest, NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { CommerceError } from "@/lib/commerce/merchants";
 import {
   listProductsWithRefs,
   upsertExternalRef,
 } from "@/lib/commerce/shopify";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,27 +26,11 @@ function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return null;
-  return { userId: box.user_id as string };
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  try {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;try {
     const products = await listProductsWithRefs(supabase, box.userId);
     return json({ ok: true, products });
   } catch (error) {
@@ -59,9 +43,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const body = (await request.json().catch(() => null)) as {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const body = (await request.json().catch(() => null)) as {
     product_key?: unknown;
     shopify_product_id?: unknown;
     shopify_url?: unknown;

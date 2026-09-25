@@ -7,7 +7,6 @@
  * 409 otherwise.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import {
   isChannelName,
@@ -16,6 +15,7 @@ import {
   setChannelTemplateBox,
 } from "@/lib/fleet/channels";
 import { FleetError } from "@/lib/fleet/releases";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,9 +32,8 @@ function errorResponse(error: unknown): NextResponse {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   try {
     const channels = await listChannels(serviceClient());
     return NextResponse.json({ channels });
@@ -44,9 +43,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   let body: {
     channel?: unknown;
     release_id?: unknown;

@@ -10,29 +10,15 @@ import {
   reconcileTradeOrders,
 } from "@/lib/trade/service";
 import { tickWatchlists } from "@/lib/trade/watch";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const tokenBytes = Buffer.from(token);
-  const secretBytes = Buffer.from(secret);
-  if (tokenBytes.length !== secretBytes.length) return false;
-  let same = 0;
-  for (let i = 0; i < tokenBytes.length; i++) {
-    same |= tokenBytes[i]! ^ secretBytes[i]!;
-  }
-  return same === 0;
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!authorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const expired = await expireTradeApprovals(supabase).catch(() => -1);
 
