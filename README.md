@@ -53,7 +53,7 @@ on top. Details in [`docs/platform.md`](docs/platform.md).
 
 - TypeScript strict; no `any` in `lib/`.
 - All Box and Hermes calls go through `lib/box/` and `lib/hermes/`.
-- Every webhook handler ships an idempotency test in the same PR.
+- Inbound webhooks carry replay/dedupe tests (`inbound/imessage`, `inbound/calcom`, `inbound/email`); a new webhook handler ships an idempotency test in the same PR.
 - Structured logs carry `user_id` and `box_id` on every line touching a box.
 - Migrations are forward-only and numbered; never edit an applied migration.
 
