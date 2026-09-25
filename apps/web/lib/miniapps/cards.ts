@@ -229,11 +229,15 @@ export async function sendMiniAppCard(
   appSlug: CardKind,
   resourceId: string,
   layout?: CardLayoutOverride,
-  jobId?: string
+  jobId?: string,
+  sender?: SpectrumSender
 ): Promise<void> {
-  const sender = await createSpectrumSender();
+  // An injected sender is the turn's shared one (R-PERF-04): the caller
+  // owns its lifecycle and it is never closed here.
+  const ownSender = !sender;
+  const send = sender ?? (await createSpectrumSender("card-send"));
   try {
-    const message = await sender.sendApp(
+    const message = await send.sendApp(
       spaceId,
       phone,
       () => mintSignedLink(userId, appSlug, resourceId, "card", jobId),
@@ -258,7 +262,7 @@ export async function sendMiniAppCard(
   } finally {
     // Best-effort: a teardown failure after a successful send must not
     // surface as a delivery failure (callers may retry on error).
-    await sender.close().catch(() => undefined);
+    if (ownSender) await send.close().catch(() => undefined);
   }
 }
 
@@ -306,7 +310,8 @@ export async function sendOrUpdateAppCard(
   supabase: SupabaseClient,
   owner: { userId: string; spaceId: string; phone: string },
   slug: string,
-  layout?: CardLayoutOverride
+  layout?: CardLayoutOverride,
+  sender?: SpectrumSender
 ): Promise<"updated" | "sent" | "cooldown"> {
   const existing = await readMiniAppCardSession(
     supabase,
@@ -315,14 +320,14 @@ export async function sendOrUpdateAppCard(
     slug
   ).catch(() => undefined);
   if (existing) {
-    const outcome = await updateMiniAppCard(supabase, owner.userId, "app", slug, layout);
+    const outcome = await updateMiniAppCard(supabase, owner.userId, "app", slug, layout, sender);
     if (outcome === "updated") return "updated";
     if (outcome === "failed") throw new Error("app card update failed");
   }
   const claim = await claimCardSend(supabase, owner.userId, "app");
   if (!claim) return "cooldown";
   try {
-    await sendMiniAppCard(supabase, owner.spaceId, owner.phone, owner.userId, "app", slug, layout);
+    await sendMiniAppCard(supabase, owner.spaceId, owner.phone, owner.userId, "app", slug, layout, undefined, sender);
   } catch (error) {
     await claim.release().catch(() => undefined);
     throw error;
@@ -338,7 +343,8 @@ export async function sendOrUpdateAppCard(
 export async function sendOrUpdateCheckoutCard(
   supabase: SupabaseClient,
   owner: { userId: string; spaceId: string; phone: string },
-  handoffId: string
+  handoffId: string,
+  sender?: SpectrumSender
 ): Promise<"updated" | "sent" | "cooldown"> {
   const handoff = await getCheckoutHandoff(supabase, owner.userId, handoffId);
   if (!handoff) throw new Error("checkout handoff not found");
@@ -352,7 +358,8 @@ export async function sendOrUpdateCheckoutCard(
     const outcome = await refreshCheckoutCard(
       supabase,
       owner.userId,
-      handoff
+      handoff,
+      sender
     );
     if (outcome === "updated") return "updated";
     if (outcome === "failed") throw new Error("checkout card update failed");
@@ -360,7 +367,7 @@ export async function sendOrUpdateCheckoutCard(
   const claim = await claimCardSend(supabase, owner.userId, "checkout");
   if (!claim) return "cooldown";
   try {
-    await sendCheckoutHandoffCard(supabase, owner, handoff);
+    await sendCheckoutHandoffCard(supabase, owner, handoff, sender);
   } catch (error) {
     await claim.release().catch(() => undefined);
     throw error;
@@ -384,14 +391,16 @@ export async function sendOrUpdateCheckoutCard(
 async function sendCheckoutHandoffCard(
   supabase: SupabaseClient,
   owner: { userId: string; spaceId: string; phone: string },
-  handoff: CheckoutHandoff
+  handoff: CheckoutHandoff,
+  sender?: SpectrumSender
 ): Promise<void> {
-  const sender = await createSpectrumSender();
+  const ownSender = !sender;
+  const send = sender ?? (await createSpectrumSender("card-checkout"));
   const browserLink = mintCheckoutBrowserLink(owner.userId, handoff.id);
   let nativeDelivered = false;
   try {
     try {
-      const message = await sender.sendApp(
+      const message = await send.sendApp(
         owner.spaceId,
         owner.phone,
         () => mintSignedLink(owner.userId, "checkout", handoff.id, "card"),
@@ -417,7 +426,7 @@ async function sendCheckoutHandoffCard(
     }
 
     try {
-      await sender.sendText(
+      await send.sendText(
         owner.spaceId,
         owner.phone,
         `Open checkout in your browser: ${browserLink}`
@@ -435,13 +444,16 @@ async function sendCheckoutHandoffCard(
       );
     }
   } finally {
-    await sender.close().catch(() => undefined);
+    if (ownSender) await send.close().catch(() => undefined);
   }
 }
 
 /**
  * Deliver the `[card: <kind>]` markers stripped from an agent reply, in
- * order, to the owner's thread. Same contract as POST /api/cards/<kind>:
+ * order, to the owner's thread. There is a `sender` parameter on every
+ * helper below: the flush passes the turn's shared sender in so one turn
+ * constructs the Spectrum app once. External callers omit it and keep
+ * their own create-and-close scope. Same contract as POST /api/cards/<kind>:
  * unknown kinds are ignored, each kind is rate limited by claimCardSend
  * (a kind still in cooldown is skipped, never retried), an `app` marker must
  * name one of the owner's apps, and one failed send never blocks the rest
@@ -450,7 +462,8 @@ async function sendCheckoutHandoffCard(
 export async function sendMarkedCards(
   supabase: SupabaseClient,
   owner: { userId: string; spaceId: string; phone: string },
-  kinds: readonly string[]
+  kinds: readonly string[],
+  sender?: SpectrumSender
 ): Promise<number> {
   let sent = 0;
   for (const marker of kinds.slice(0, MAX_MARKED_CARDS)) {
@@ -464,10 +477,10 @@ export async function sendMarkedCards(
         if (!app || app.owner_user_id !== owner.userId) {
           throw new Error("app not found");
         }
-        if ((await sendOrUpdateAppCard(supabase, owner, resourceId)) === "cooldown") continue;
+        if ((await sendOrUpdateAppCard(supabase, owner, resourceId, undefined, sender)) === "cooldown") continue;
       } else if (kind === "checkout") {
         if (
-          (await sendOrUpdateCheckoutCard(supabase, owner, resourceId)) ===
+          (await sendOrUpdateCheckoutCard(supabase, owner, resourceId, sender)) ===
           "cooldown"
         ) continue;
       } else {
@@ -487,7 +500,8 @@ export async function sendMarkedCards(
           kind,
           resourceId,
           layout,
-          jobId
+          jobId,
+          sender
         );
       }
       sent += 1;
@@ -567,7 +581,8 @@ export async function updateMiniAppCard(
   userId: string,
   appSlug: CardKind,
   resourceId: string,
-  layout?: CardLayoutOverride
+  layout?: CardLayoutOverride,
+  sender?: SpectrumSender
 ): Promise<CardUpdateOutcome> {
   let destination:
     | { space_id?: unknown; phone?: unknown }
@@ -623,23 +638,26 @@ export async function updateMiniAppCard(
     return "stale";
   }
 
-  let sender: SpectrumSender;
-  try {
-    sender = await createSpectrumSender();
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "mini-app card sender creation failed",
-        user_id: userId,
-        kind: appSlug,
-        resource_id: resourceId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
-    return "failed";
+  let send = sender;
+  const ownSender = !send;
+  if (!send) {
+    try {
+      send = await createSpectrumSender("card-update");
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "mini-app card sender creation failed",
+          user_id: userId,
+          kind: appSlug,
+          resource_id: resourceId,
+          error: error instanceof Error ? error.message : "unknown",
+        })
+      );
+      return "failed";
+    }
   }
   try {
-    const refreshed = await sender.editApp(
+    const refreshed = await send.editApp(
       spaceId,
       phone,
       session,
@@ -721,7 +739,7 @@ export async function updateMiniAppCard(
     );
     return "failed";
   } finally {
-    await sender.close().catch(() => undefined);
+    if (ownSender) await send?.close().catch(() => undefined);
   }
 }
 
@@ -733,13 +751,15 @@ export async function updateMiniAppCard(
 export async function refreshCheckoutCard(
   supabase: SupabaseClient,
   userId: string,
-  handoff: Pick<CheckoutHandoff, "id" | "status">
+  handoff: Pick<CheckoutHandoff, "id" | "status">,
+  sender?: SpectrumSender
 ): Promise<CardUpdateOutcome> {
   return updateMiniAppCard(
     supabase,
     userId,
     "checkout",
     handoff.id,
-    checkoutCardLayout(handoff.status)
+    checkoutCardLayout(handoff.status),
+    sender
   );
 }

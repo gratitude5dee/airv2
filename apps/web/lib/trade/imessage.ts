@@ -6,7 +6,10 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mintApprovalUrl } from "../approvals/token";
-import { createSpectrumSender } from "../spectrum/sender";
+import {
+  createSpectrumSender,
+  type SpectrumSender,
+} from "../spectrum/sender";
 import { mintSignedLink, sendMiniAppCard } from "../miniapps/cards";
 import { OWNER_ONLY_CARD_LINE } from "../miniapps/imessageCommand";
 import {
@@ -28,6 +31,9 @@ interface TradeJob {
    *  anyway, and any filed approval still shows up in Needs you). */
   spaceId?: string;
   phone?: string;
+  /** The turn's shared Spectrum sender (R-PERF-04). Never closed here —
+   *  the flush that owns it closes it once. */
+  sender?: SpectrumSender;
 }
 
 function money(value: number | null | undefined): string {
@@ -56,6 +62,7 @@ export async function deliverTradeApproval(
   userId: string,
   decisionId: string,
   summary: string,
+  sharedSender?: SpectrumSender,
 ): Promise<void> {
   try {
     const { data: dest } = await supabase
@@ -70,10 +77,12 @@ export async function deliverTradeApproval(
       await sendMiniAppCard(supabase, spaceId, phone, userId, "trade", "approve", {
         subcaption: summary,
         summary: `Trade — ${summary}`,
-      });
+      }, undefined, sharedSender);
     } catch {
       // Card transport failed — fall back to the hosted approval link.
-      const sender = await createSpectrumSender().catch(() => null);
+      const ownSender = !sharedSender;
+      const sender =
+        sharedSender ?? (await createSpectrumSender("trade-approval").catch(() => null));
       if (!sender) return;
       try {
         await sender.sendRichLink(spaceId, phone, mintApprovalUrl(userId, decisionId));
@@ -82,7 +91,7 @@ export async function deliverTradeApproval(
           .sendText(spaceId, phone, `${summary} — approve it in Needs you.`)
           .catch(() => undefined);
       } finally {
-        await sender.close().catch(() => undefined);
+        if (ownSender) await sender.close().catch(() => undefined);
       }
     }
   } catch (error) {
@@ -173,6 +182,8 @@ export async function runTradeCommand(
               "trade",
               "settings",
               { subcaption: "Connect your Coinbase key" },
+              undefined,
+              job.sender,
             );
             return { handled: true };
           }
@@ -192,7 +203,13 @@ export async function runTradeCommand(
         return reply(await ordersText(supabase, job.userId, command.scope));
       case "cancel": {
         const result = await proposeTradeCancel(supabase, job.userId, command.ref);
-        await deliverTradeApproval(supabase, job.userId, result.decisionId, result.label);
+        await deliverTradeApproval(
+          supabase,
+          job.userId,
+          result.decisionId,
+          result.label,
+          job.sender,
+        );
         return reply(`${result.label} — approve it in the Trade card or Needs you.`);
       }
       case "watch": {

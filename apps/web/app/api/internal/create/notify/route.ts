@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (!destination) {
       return Response.json({ ok: true, sent: false, reason: "owner_has_not_texted" });
     }
-    const sender = await createSpectrumSender();
+    const sender = await createSpectrumSender("create-notify");
     try {
       await sender.sendText(
         destination.space_id,

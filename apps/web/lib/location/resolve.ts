@@ -164,7 +164,7 @@ export async function resolveDueLocationRequests(
   if (!claimed.length) return { resolved: 0, expired: 0 };
   let resolved = 0;
   let expired = 0;
-  const sender = await createSpectrumSender().catch(() => undefined);
+  const sender = await createSpectrumSender("location-sweep").catch(() => undefined);
   try {
     for (const request of claimed) {
       try {

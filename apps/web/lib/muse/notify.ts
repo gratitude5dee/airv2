@@ -110,7 +110,7 @@ export async function sendMuseUpdate(
     return { delivered: false, deferred: false, remaining_today: 0, reason: "daily_cap" };
   }
 
-  const sender = await createSpectrumSender();
+  const sender = await createSpectrumSender("muse-notify");
   try {
     await sender.sendText(
       destination.space_id,
@@ -130,7 +130,7 @@ export async function sendMuseReply(
 ): Promise<boolean> {
   const destination = await ownerDestination(supabase, input.userId);
   if (!destination) return false;
-  const sender = await createSpectrumSender();
+  const sender = await createSpectrumSender("muse-reply");
   try {
     await sender.sendText(
       destination.space_id,
