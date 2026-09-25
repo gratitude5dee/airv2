@@ -752,10 +752,11 @@ export async function runFlush(
     attempts: number;
     senderTier: number | null;
   },
-  chainStartedAt: string
+  chainStartedAt: string,
+  sender?: SpectrumSender
 ): Promise<void> {
   try {
-    await runFlushInner(supabase, job, chainStartedAt);
+    await runFlushInner(supabase, job, chainStartedAt, sender);
   } finally {
     // Release the claim_flush operation lease (held under the space id);
     // expiry is the backstop when this invocation died mid-run.
@@ -772,21 +773,29 @@ async function runFlushInner(
     attempts: number;
     senderTier: number | null;
   },
-  chainStartedAt: string
+  chainStartedAt: string,
+  sharedSender?: SpectrumSender
 ): Promise<void> {
   // Connect to Spectrum BEFORE draining: draining deletes the queued rows,
   // so a sender that cannot be created (e.g. a Spectrum/Cloudflare 502)
   // must leave the burst in the queue and retry with backoff instead of
-  // silently destroying it.
+  // silently destroying it. A sharedSender is the turn's warm sender
+  // (R-PERF-04): already connected, and owned by the caller — never closed
+  // here, so the webhook's tapback/receipts and the flush share one init.
+  const ownsSender = !sharedSender;
   let sender: SpectrumSender;
-  try {
-    sender = await createSpectrumSender();
-  } catch (error) {
-    if (job.attempts < MAX_ATTEMPTS) {
-      await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
-      return;
+  if (sharedSender) {
+    sender = sharedSender;
+  } else {
+    try {
+      sender = await createSpectrumSender("flush");
+    } catch (error) {
+      if (job.attempts < MAX_ATTEMPTS) {
+        await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+        return;
+      }
+      throw error;
     }
-    throw error;
   }
   let progressTimeline: ProgressTimeline | undefined;
   
@@ -1045,6 +1054,7 @@ async function runFlushInner(
             userId: job.userId,
             phone: job.phone,
             senderTier: job.senderTier,
+            sender,
           },
           tradeCommand
         );
@@ -1553,7 +1563,8 @@ async function runFlushInner(
         await sendMarkedCards(
           supabase,
           { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
-          stripped.cards
+          stripped.cards,
+          sender
         ).catch(() => 0);
       } else {
         await sender
@@ -1659,7 +1670,7 @@ async function runFlushInner(
     // cleared it, and a throw mid-turn must not leave the box awake with no
     // deadline. Monotonic, so a no-op for boxes that never woke.
     await armStopAfter(supabase, job.userId).catch(() => undefined);
-    await sender.close().catch(() => undefined);
+    if (ownsSender) await sender.close().catch(() => undefined);
   }
 }
 
@@ -1743,11 +1754,17 @@ export async function dropQuickAckMarker(
     .eq("message_id", messageId);
 }
 
-/** Debounce wait + claim + run; the webhook route calls this via after(). */
+/**
+ * Debounce wait + claim + run; the webhook route calls this via after().
+ * `sender` is the turn's warm Spectrum sender (R-PERF-04): the flush reuses
+ * it for every send/lane/card instead of a second SDK init, and the route
+ * retains ownership (it closes it after this resolves).
+ */
 export async function flushAfterDebounce(
   supabase: SupabaseClient,
   message: InboundMessage,
-  runAt: string
+  runAt: string,
+  sender?: SpectrumSender
 ): Promise<void> {
   const waitMs = new Date(runAt).getTime() - Date.now();
   if (waitMs > 0) {
@@ -1769,6 +1786,7 @@ export async function flushAfterDebounce(
       attempts: (data?.attempts as number | undefined) ?? 0,
       senderTier: message.senderTier ?? null,
     },
-    claim.chainStartedAt
+    claim.chainStartedAt,
+    sender
   );
 }

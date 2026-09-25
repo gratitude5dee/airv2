@@ -839,7 +839,8 @@ describe("runFlush history replay", () => {
       expect(vi.mocked(sendMarkedCards)).toHaveBeenCalledWith(
         expect.anything(),
         { userId: "user-1", spaceId: "space-1", phone: "+15551234567" },
-        ["onboarding"]
+        ["onboarding"],
+        expect.objectContaining({ sendText: expect.any(Function) })
       );
     });
 

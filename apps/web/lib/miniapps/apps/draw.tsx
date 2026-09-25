@@ -293,7 +293,7 @@ export const draw: MiniAppModule = {
                     : "image/jpeg";
           let sent = false;
           try {
-            const sender = await createSpectrumSender();
+            const sender = await createSpectrumSender("draw-attachment");
             try {
               await sender.sendAttachment(
                 session.space_id,
