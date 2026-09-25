@@ -18,7 +18,6 @@ import { asRecord } from "@/lib/records";
 import { serviceClient } from "@/lib/supabase";
 import {
   clampCreateTier,
-  costUsd,
   createEffortFor,
   createProviderFor,
   DEFAULT_MODEL_FAMILY,
@@ -39,6 +38,20 @@ import {
   type ModelFamily,
   type ModelSelection,
 } from "@/lib/entitlements/models";
+import {
+  gatewayModelFamilyOverride,
+  gmiFastToolContinuation,
+  gmiRoutineTurn,
+  isRuntimeBearer,
+  isTimeoutError,
+} from "@/lib/gateway/routing";
+import {
+  carriesAssistantWork,
+  meter,
+  meteringTee,
+  type RouteTrace,
+  type Usage,
+} from "@/lib/gateway/metering";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
 import { getProviderKey, PROVIDER_LABELS } from "@/lib/providers/keys";
 import {
@@ -85,238 +98,8 @@ const GATEWAY_CONTEXT_LENGTH = 128_000;
 
 type Json = Record<string, unknown>;
 
-interface Usage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-}
-
 function unauthorized(): NextResponse {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-}
-
-function isTimeoutError(error: unknown): boolean {
-  if (!(error instanceof Error || error instanceof DOMException)) return false;
-  return (
-    error.name === "TimeoutError" ||
-    error.name === "AbortError" ||
-    /timed?\s*out|timeout/i.test(error.message)
-  );
-}
-
-// Task-type routing for the gmi family (goal-gmi-models Phase 2): a turn
-// that opens with a short user message carrying no depth cue and no
-// money/publish cue is routine work — draft an email, check the calendar,
-// quick lookup — and rides the fast lane (GLM-5.3-Flash) instead of the
-// entitled tier. The rule only ever downgrades, so spend stays
-// entitlement-bounded; it mirrors the deterministic half of the box's
-// shadow taskrouter (infra/template/taskrouter) until hermes can consult it
-// per-turn upstream. Mid-turn continuations (the last message is a tool
-// result, not the opener) keep the request's resolution, and a caller's
-// explicit `model:"fast"` is unaffected either way. GMI_ROUTINE_FAST=off
-// disables the rule.
-const GMI_ROUTINE_MAX_CHARS = 280;
-// Depth cues keep the entitled tier — these are the turns Astra is for.
-const GMI_DEEP_TURN_RE =
-  /\b(research|analy[sz]e|compare|plan(?:ning)?|strategy|debug|investigate|essay|whitepaper|refactor|architect)\b/i;
-// Money movement and public publishing never ride the routine lane — the
-// approval queue is the real control, but those turns keep the entitled
-// model regardless.
-const GMI_RISK_TURN_RE =
-  /(\$\s?\d|\b(wire|venmo|zelle|paypal|checkout|charge|deposit|renew|reorder|refund|invoice|payment|purchase|transfer|delete|publish|tweet)\b)/i;
-
-/** Text of the request's opening user message, or null for any other shape. */
-function openingUserTurnText(body: Json): string | null {
-  const messages = body["messages"];
-  if (!Array.isArray(messages) || messages.length === 0) return null;
-  const last = messages[messages.length - 1];
-  if (!last || typeof last !== "object") return null;
-  const msg = last as { role?: unknown; content?: unknown };
-  if (msg.role !== "user") return null;
-  if (typeof msg.content === "string") return msg.content;
-  if (Array.isArray(msg.content)) {
-    const text = (msg.content as { type?: unknown; text?: unknown }[])
-      .map((part) =>
-        part && part.type === "text" && typeof part.text === "string"
-          ? part.text
-          : ""
-      )
-      .join("\n")
-      .trim();
-    return text || null;
-  }
-  return null;
-}
-
-/** True when a gmi request's opening user turn reads as routine work. */
-function gmiRoutineTurn(body: Json): boolean {
-  if (process.env["GMI_ROUTINE_FAST"] === "off") return false;
-  const text = openingUserTurnText(body)?.trim();
-  if (!text || text.length > GMI_ROUTINE_MAX_CHARS) return false;
-  return !GMI_DEEP_TURN_RE.test(text) && !GMI_RISK_TURN_RE.test(text);
-}
-
-/**
- * Once a non-sensitive turn has a tool result, Astra has already made the
- * expensive planning decision. Let GLM interpret the result and choose the
- * next step so multi-tool iMessage turns do not pay Astra latency on every
- * loop. Money movement, checkout, deletion, and publishing remain on the
- * entitled model for the whole conversation.
- */
-function gmiFastToolContinuation(body: Json): boolean {
-  const messages = body["messages"];
-  if (!Array.isArray(messages) || messages.length === 0) return false;
-  const last = messages[messages.length - 1];
-  if (!last || typeof last !== "object" || (last as { role?: unknown }).role !== "tool") {
-    return false;
-  }
-  return !messages.some((message) => {
-    if (!message || typeof message !== "object") return false;
-    const row = message as { role?: unknown; content?: unknown };
-    return (
-      row.role === "user" &&
-      typeof row.content === "string" &&
-      GMI_RISK_TURN_RE.test(row.content)
-    );
-  });
-}
-
-/**
- * Temporary fleet-wide provider switch. Unlike changing every entitlement,
- * this preserves each user's saved preference and can be reversed without a
- * database migration. An override deliberately uses the platform provider
- * key so operations can move spend between platform credit pools.
- */
-function gatewayModelFamilyOverride(): ModelFamily | null {
-  const value = process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] ?? "";
-  return isModelFamily(value) ? value : null;
-}
-
-/** Router decision facts recorded alongside usage — the admin trace row. */
-interface RouteTrace {
-  requestedModel: string | null;
-  reasoningEffort: string | null;
-  startedAtMs: number;
-  /** The entitled family, which differs from the served one on a fallback. */
-  requestedFamily: ModelFamily;
-  /** `create:<slug>` when the completion is a Create turn's; drives the
-   * per-project budget (goal-create-v11 §9.1). */
-  label?: string | null;
-  /** The Create role the turn was made for (`#<stage>`, V12 §7.3); null
-   * when absent or not a Create turn. */
-  createStage?: CreateStage | null;
-  /** Set for a Functions Worker's call: `trigger='app'`, and the hold taken
-   * before dispatch settles to the real cost on the app's daily counter
-   * (CR8). */
-  app?: { id: string; hold: AppHold } | null;
-}
-
-async function meter(
-  userId: string,
-  tier: "fast" | "balanced" | "deep",
-  family: ModelFamily,
-  usage: Usage,
-  model?: string,
-  /** Served on the user's own provider key — their spend, cost 0 here. */
-  onPersonalKey = false,
-  trace?: RouteTrace
-): Promise<void> {
-  const promptTokens = usage.prompt_tokens ?? 0;
-  const completionTokens = usage.completion_tokens ?? 0;
-  const cost = onPersonalKey
-    ? 0
-    : costUsd(tier, promptTokens, completionTokens, family, model);
-  const supabase = serviceClient();
-  const { error: runError } = await supabase.from("agent_runs").insert({
-    user_id: userId,
-    trigger: trace?.app ? "app" : null,
-    ended_at: new Date().toISOString(),
-    outcome: "gateway_completion",
-    cost_usd: cost,
-    prompt_tokens: promptTokens,
-    completion_tokens: completionTokens,
-    model_family: family,
-    model: model ?? null,
-    fallback_from:
-      trace && trace.requestedFamily !== family ? trace.requestedFamily : null,
-    speed_tier: tier,
-    requested_model: trace?.requestedModel ?? null,
-    reasoning_effort: trace?.reasoningEffort ?? null,
-    latency_ms: trace ? Date.now() - trace.startedAtMs : null,
-    create_stage: trace?.createStage ?? null,
-    ...(trace?.label ? { label: trace.label } : {}),
-  });
-  if (runError) {
-    console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
-  }
-  if (trace && trace.requestedFamily !== family) {
-    console.warn(
-      JSON.stringify({
-        msg: "gateway provider fallback",
-        user_id: userId,
-        requested_family: trace.requestedFamily,
-        served_family: family,
-        served_model: model ?? null,
-      })
-    );
-  }
-  const { error: spendError } = await supabase.rpc("add_spend", {
-    p_user_id: userId,
-    p_cost_usd: cost,
-  });
-  if (spendError) {
-    console.error(JSON.stringify({ msg: "add_spend failed", user_id: userId, error: spendError.message }));
-  }
-  if (trace?.app) await settleAppSpend(supabase, trace.app.hold, cost);
-}
-
-/** Runtime tokens are prefixed so the two principals never share a lookup. */
-function isRuntimeBearer(token: string): boolean {
-  return token.startsWith("art_");
-}
-
-/**
- * Watches the SSE pass-through for the final usage chunk without altering
- * it. `onEnd` fires exactly once when the stream closes: with the usage, or
- * null when no chunk carried one. A usage-less close means a Functions hold
- * is released — but when the stream errored the call did consume provider
- * spend, so `errored` lets the caller settle the reservation instead of
- * releasing it for free.
- */
-function meteringTee(
-  upstream: ReadableStream<Uint8Array>,
-  onEnd: (usage: Usage | null, errored: boolean) => void
-): ReadableStream<Uint8Array> {
-  const [client, monitor] = upstream.tee();
-  void (async () => {
-    const reader = monitor.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let errored = false;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-      }
-    } catch {
-      // upstream dropped mid-stream; whatever arrived is still scanned
-      errored = true;
-    }
-    let usage: Usage | null = null;
-    for (const line of buffer.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-      try {
-        const parsed = JSON.parse(data) as { usage?: Usage };
-        if (parsed.usage) usage = parsed.usage;
-      } catch {
-        // non-JSON keepalive; ignore
-      }
-    }
-    onEnd(usage, errored);
-  })();
-  return client;
 }
 
 /**
@@ -996,36 +779,6 @@ export async function POST(
     // or a tool call. Reasoning alone is not an answer: accepting it leaves
     // Hermes with an empty final_response and the iMessage turn retries forever.
     if (streaming && servedFamily !== "openai" && nonOpenAiProvider) {
-      const carriesAssistantWork = async (response: Response): Promise<boolean> => {
-        const raw = new Uint8Array(await response.clone().arrayBuffer());
-        const text = new TextDecoder().decode(raw);
-        for (const line of text.split("\n")) {
-          if (!line.startsWith("data:")) continue;
-          const data = line.slice(5).trim();
-          if (!data || data === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(data) as {
-              choices?: {
-                delta?: {
-                  content?: string | null;
-                  tool_calls?: unknown[];
-                };
-              }[];
-            };
-            const delta = parsed.choices?.[0]?.delta;
-            if (
-              delta &&
-              (delta.content ||
-                (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0))
-            ) {
-              return true;
-            }
-          } catch {
-            // non-JSON keepalive; ignore
-          }
-        }
-        return false;
-      };
       let hasAssistantWork: boolean;
       try {
         hasAssistantWork = await carriesAssistantWork(upstream);
