@@ -13,7 +13,6 @@ import { createSpectrumSender } from "../spectrum/sender";
 import {
   createRun,
   ensureSession,
-  loadConversationTranscript,
   runEvents,
   stopRun,
 } from "../hermes/client";
@@ -26,7 +25,6 @@ vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
   createRun: vi.fn(),
   ensureSession: vi.fn(),
-  loadConversationTranscript: vi.fn(),
   MAIN_SESSION: "main",
   MAIN_SESSION_TITLE: "Air",
   runEvents: vi.fn(),
@@ -208,10 +206,6 @@ describe("runFlush during a Spectrum outage", () => {
       },
     } as never);
     vi.mocked(ensureSession).mockResolvedValue({ created: false });
-    vi.mocked(loadConversationTranscript).mockResolvedValue({
-      rows: 2,
-      history: [],
-    });
     vi.mocked(createRun).mockResolvedValue({ run_id: "run-1" });
     vi.mocked(runEvents).mockResolvedValue(undefined as never);
     vi.mocked(probeForTapback).mockRejectedValue(
