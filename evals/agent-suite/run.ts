@@ -14,7 +14,9 @@
  * Required env: EVAL_BASE_URL, EVAL_SESSION_COOKIE, EVAL_USER_ID,
  * SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY. See README.md.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CaseTiming } from "./timing";
 import {
@@ -47,8 +49,9 @@ interface Config {
   userId: string;
   supa: Supa;
   resultsDir: string;
+  stamp: string;
   only: Set<string> | null;
-  /** Hermes session the runs land in; unset keeps the shared air-main. */
+  /** Hermes session the runs land in; unset gives each case its own. */
   session: string | undefined;
 }
 
@@ -65,9 +68,24 @@ function config(): Config {
     userId: requireEnv("EVAL_USER_ID"),
     supa: { url: requireEnv("SUPABASE_URL").replace(/\/$/, ""), key: requireEnv("SUPABASE_SERVICE_ROLE_KEY") },
     resultsDir,
+    stamp,
     only,
     session: process.env.EVAL_SESSION,
   };
+}
+
+/**
+ * Each case runs on a fresh Hermes session (`eval-<stamp>-<id>`) so cases are
+ * independent — no case can inherit another's context, and a leaked context
+ * carry-over reads as the model win it isn't. Cases that intentionally chain
+ * (the F72→F73 "those venues" pair) name a `group` and share its session.
+ * EVAL_SESSION pins every case to one session, which is how a run targeting
+ * a pre-warmed box session still works.
+ */
+function sessionFor(cfg: Config, c: EvalCase): string | undefined {
+  if (cfg.session) return cfg.session;
+  const key = (c.group ?? c.id).toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+  return `eval-${cfg.stamp}-${key}`;
 }
 
 /**
@@ -87,7 +105,7 @@ async function stopRun(cfg: Config, runId: string): Promise<string> {
   }
 }
 
-async function startRun(cfg: Config, input: string): Promise<string> {
+async function startRun(cfg: Config, input: string, session: string | undefined): Promise<string> {
   const res = await fetch(`${cfg.baseUrl}/api/chat`, {
     method: "POST",
     headers: {
@@ -95,7 +113,7 @@ async function startRun(cfg: Config, input: string): Promise<string> {
       Cookie: `air_session=${cfg.cookie}`,
     },
     body: JSON.stringify(
-      cfg.session ? { input, via: "web", session: cfg.session } : { input, via: "web" }
+      session ? { input, via: "web", session } : { input, via: "web" }
     ),
   });
   const text = await res.text();
@@ -319,6 +337,9 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     safety_note: testCase.safety_note,
     must_do: testCase.must_do,
     must_not_do: testCase.must_not_do,
+    ...(testCase.may_clarify ? { may_clarify: true } : {}),
+    ...(testCase.must_cite?.length ? { must_cite: testCase.must_cite } : {}),
+    ...(testCase.group ? { group: testCase.group } : {}),
     window_start: windowStart,
     window_end: null,
     run_id: null,
@@ -340,7 +361,7 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
 
   let runId: string;
   try {
-    runId = await startRun(cfg, testCase.message);
+    runId = await startRun(cfg, testCase.message, sessionFor(cfg, testCase));
   } catch (error) {
     timing.stop();
     return { ...base, ...timing.snapshot(), error: redact(String(error)), elapsed_ms: Date.now() - startedAt };
@@ -395,6 +416,7 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
 async function main(): Promise<void> {
   const cfg = config();
   const cases = loadCases(join(HERE, "messages.jsonl"));
+  const startedAt = new Date().toISOString();
   mkdirSync(cfg.resultsDir, { recursive: true });
   const done = new Set(
     readdirSync(cfg.resultsDir)
@@ -429,14 +451,70 @@ async function main(): Promise<void> {
   }
 
   // Snapshot the suite alongside the raw results so a report can always be
-  // rescored against the exact cases that ran. Written once per results dir:
-  // a resume's `ran` count covers only the remaining queue, so rewriting it
-  // would erase the original run's counts.
+  // rescored against the exact cases that ran, on the exact code and model
+  // that produced them. Written once per results dir: a resume's `ran` count
+  // covers only the remaining queue, so rewriting it would erase the
+  // original run's counts.
   const suitePath = join(cfg.resultsDir, "suite.json");
   if (!existsSync(suitePath)) {
+    const written = readdirSync(cfg.resultsDir)
+      .filter((f) => f.endsWith(".json") && f !== "suite.json")
+      .map((f) => JSON.parse(readFileSync(join(cfg.resultsDir, f), "utf8")) as CaseResult);
+    const inventoryPath = process.env.EVAL_INVENTORY ?? join(HERE, "installed-skills.txt");
+    let commitSha: string | null = null;
+    try {
+      commitSha = execSync("git rev-parse HEAD", { cwd: HERE }).toString().trim();
+    } catch {
+      // Not inside a git checkout — the field stays null rather than faking one.
+    }
+    let inventorySha256: string | null = null;
+    try {
+      inventorySha256 = createHash("sha256").update(readFileSync(inventoryPath)).digest("hex");
+    } catch {
+      // No inventory capture — scorer falls back to the same default.
+    }
     writeFileSync(
       suitePath,
-      `${JSON.stringify({ count: cases.length, ran: queue.length, at: new Date().toISOString() }, null, 2)}\n`
+      `${JSON.stringify(
+        {
+          count: cases.length,
+          ran: queue.length,
+          started_at: startedAt,
+          ended_at: new Date().toISOString(),
+          commit_sha: commitSha,
+          node: process.version,
+          model_family: process.env.EVAL_MODEL_FAMILY ?? null,
+          served_models: [
+            ...new Set(
+              written.flatMap((r) => r.window_runs.map((w) => w.model).filter((m): m is string => Boolean(m)))
+            ),
+          ],
+          requested_models: [
+            ...new Set(
+              written
+                .flatMap((r) => r.window_runs.map((w) => w.requested_model))
+                .filter((m): m is string => Boolean(m))
+            ),
+          ],
+          speed_tiers: [
+            ...new Set(
+              written
+                .flatMap((r) => r.window_runs.map((w) => w.speed_tier))
+                .filter((m): m is string => Boolean(m))
+            ),
+          ],
+          settle_ms: SETTLE_MS,
+          timeout_ms: TIMEOUT_MS,
+          delay_ms: DELAY_MS,
+          eval_session: cfg.session ?? null,
+          session_policy: cfg.session ? "fixed" : "per-case",
+          inventory_sha256: inventorySha256,
+          inventory_path: inventoryPath,
+          cases: written.map((r) => r.id).sort(),
+        },
+        null,
+        2
+      )}\n`
     );
   }
   console.log(`[eval] done — score with: npx tsx evals/agent-suite/score.ts ${cfg.resultsDir}`);
