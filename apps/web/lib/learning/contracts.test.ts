@@ -61,7 +61,7 @@ describe("control-plane receipt allowlist", () => {
 
   it("persists every required field except the version sentinel", () => {
     // schema_version pins the contract itself; it is asserted, never stored.
-    const stored = new Set(RECEIPT_COLUMNS);
+    const stored: Set<string> = new Set(RECEIPT_COLUMNS);
     for (const key of SCHEMA.required) {
       if (key === "schema_version") continue;
       expect(stored.has(key), `required key ${key} cannot reach learning_events`).toBe(true);
