@@ -29,14 +29,14 @@ function makeDb(options?: {
   db.tables["imessage_destinations"] = [
     { user_id: "user-1", space_id: "space-1", phone: "+15555550123" },
   ];
-  db.tables["miniapp_card_sessions"] = options?.session
+  db.tables["miniapp_card_sessions"] = options?.["session"]
     ? [
         {
           user_id: "user-1",
           kind: "vault",
           resource_id: "default",
           space_id: "space-1",
-          session: options.session,
+          session: options["session"],
         },
       ]
     : [];
@@ -74,7 +74,7 @@ describe("mini-app card session lifecycle", () => {
       "vault",
       "default"
     );
-    expect(db.rows("miniapp_card_sessions")[0]?.session).toEqual(SESSION);
+    expect(db.rows("miniapp_card_sessions")[0]?.["session"]).toEqual(SESSION);
 
     await updateMiniAppCard(db.client(), "user-1", "vault", "default");
     expect(senderMock.editApp).toHaveBeenCalledOnce();

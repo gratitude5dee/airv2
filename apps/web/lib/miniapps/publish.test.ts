@@ -9,7 +9,7 @@ const deploy = vi.hoisted(() => ({
       this.name = "AppOriginRefusedError";
     }
   },
-  promoteVersion: vi.fn(async (_supabase: unknown, _app: unknown, _version: string) => null),
+  promoteVersion: vi.fn(async () => null),
   syncManifest: vi.fn(async () => true),
 }));
 vi.mock("../functions/deploy", () => deploy);
@@ -337,11 +337,15 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     // The fenced RPC commits its generation by writing the row's updated_at —
     // the fake replays that so the status flip's CAS really filters.
     versions.pointLiveAt.mockImplementation(
-      async (supabase: SupabaseClient, app: unknown, _version: string) => {
-        await (supabase as ReturnType<FakeSupabase["client"]>)
+      async (...rawArgs: unknown[]) => {
+        const [supabase, app] = rawArgs as [
+          ReturnType<FakeSupabase["client"]>,
+          { id: string },
+        ];
+        await supabase
           .from("mini_apps")
           .update({ updated_at: COMMITTED_AT })
-          .eq("id", (app as { id: string }).id);
+          .eq("id", app.id);
         return COMMITTED_AT;
       }
     );
@@ -469,11 +473,15 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
     // The fenced RPC commits its generation by writing the row's updated_at —
     // the fake replays that so the status flip's CAS really filters.
     versions.pointLiveAt.mockImplementation(
-      async (supabase: SupabaseClient, app: unknown, _version: string) => {
-        await (supabase as ReturnType<FakeSupabase["client"]>)
+      async (...rawArgs: unknown[]) => {
+        const [supabase, app] = rawArgs as [
+          ReturnType<FakeSupabase["client"]>,
+          { id: string },
+        ];
+        await supabase
           .from("mini_apps")
           .update({ updated_at: COMMITTED_AT })
-          .eq("id", (app as { id: string }).id);
+          .eq("id", app.id);
         return COMMITTED_AT;
       }
     );

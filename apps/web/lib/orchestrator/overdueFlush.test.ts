@@ -22,6 +22,8 @@ describe("listClaimableOverdueFlushJobs", () => {
       new Date("2026-09-14T23:20:00.000Z"),
     );
 
+    // chain_started_at is filter-only, not in the select list — PostgREST
+    // would not return it.
     expect(result).toEqual([
       {
         space_id: "space-1",
@@ -30,7 +32,6 @@ describe("listClaimableOverdueFlushJobs", () => {
         run_at: "2026-09-14T23:14:00.000Z",
         attempts: 0,
         sender_tier: 0,
-        chain_started_at: null,
       },
     ]);
     expect(db.filters).toContainEqual({

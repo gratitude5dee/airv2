@@ -324,8 +324,8 @@ describe("admitFreezeSketch claim-failure classification", () => {
     const job = await admitFreezeSketch(supabase, session(), sketchInput);
     const jobRow = db.rows("creative_jobs")[0];
     expect(job.id).toBe(jobRow?.["id"]);
-    expect(db.rows("freeze_sessions")[0]?.active_job_id).toBe(job.id);
-    expect(db.rows("freeze_sessions")[0]?.latest_job_id).toBe(job.id);
+    expect(db.rows("freeze_sessions")[0]?.["active_job_id"]).toBe(job.id);
+    expect(db.rows("freeze_sessions")[0]?.["latest_job_id"]).toBe(job.id);
     expect(
       db.inserts.find((i) => i.table === "freeze_events")?.row
     ).toMatchObject({ kind: "state", state: "admitted" });
