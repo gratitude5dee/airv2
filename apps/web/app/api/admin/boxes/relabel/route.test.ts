@@ -40,7 +40,7 @@ const base = "https://air.test/api/admin/boxes/relabel";
 const authed = () =>
   new NextRequest(base, {
     method: "POST",
-    headers: { authorization: "Bearer admin-key" },
+    headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" },
   });
 
 beforeEach(() => {

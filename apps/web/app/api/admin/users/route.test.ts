@@ -44,7 +44,7 @@ import { GET } from "./route";
 
 const base = "https://air.test/api/admin/users";
 const authed = () =>
-  new NextRequest(base, { headers: { authorization: "Bearer admin-key" } });
+  new NextRequest(base, { headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" } });
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";

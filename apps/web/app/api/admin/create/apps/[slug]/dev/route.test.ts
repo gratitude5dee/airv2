@@ -29,7 +29,7 @@ const post = (slug: string, body: unknown, key = "admin-key") =>
   POST(
     new NextRequest(`${base}/${slug}/dev`, {
       method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${key}`, "x-admin-operator": "carol", "content-type": "application/json" },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
     { params: Promise.resolve({ slug }) }

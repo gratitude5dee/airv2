@@ -41,7 +41,7 @@ import { GET } from "./route";
 
 const base = "https://air.test/api/admin/deployments";
 const authed = (qs = "") =>
-  new NextRequest(`${base}${qs}`, { headers: { authorization: "Bearer admin-key" } });
+  new NextRequest(`${base}${qs}`, { headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" } });
 const OWNER = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
 const SHA = "a".repeat(64);

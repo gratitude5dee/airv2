@@ -72,7 +72,7 @@ const base = "https://air.test/api/admin/boxes/reprovision";
 const post = (body: unknown, auth = "Bearer admin-key") =>
   new NextRequest(base, {
     method: "POST",
-    headers: { authorization: auth, "content-type": "application/json" },
+    headers: { authorization: auth, "x-admin-operator": "carol", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 

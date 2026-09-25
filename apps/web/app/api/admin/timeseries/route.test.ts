@@ -70,7 +70,7 @@ import { GET } from "./route";
 const base = "https://air.test/api/admin/timeseries";
 const authed = (qs = "") =>
   new NextRequest(`${base}${qs}`, {
-    headers: { authorization: "Bearer admin-key" },
+    headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" },
   });
 
 beforeEach(() => {

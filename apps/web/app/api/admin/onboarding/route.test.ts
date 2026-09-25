@@ -29,7 +29,7 @@ import { GET } from "./route";
 
 const base = "https://air.test/api/admin/onboarding";
 const authed = () =>
-  new NextRequest(base, { headers: { authorization: "Bearer admin-key" } });
+  new NextRequest(base, { headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" } });
 
 function steps(overrides: Record<string, string>): Record<string, string> {
   const all: Record<string, string> = {};
