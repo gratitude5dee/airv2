@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wz-sky — standalone fBm cloud + light-ray sky</title>
+<style>
+  html,body{margin:0;height:100%;background:#04060d;overflow:hidden}
+  #sky{position:fixed;inset:0;width:100%;height:100%;display:block}
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<script>
+(() => {
+  'use strict';
+
+  const RAYS = 0.9;      // light-ray intensity
+  const PROGRESS = 0;    // 0..1 scroll journey; see wireScroll() below
+  const DPR_CAP = 1.25;
+
+  const V1 = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+
+  const SKY_FRAG = `
+precision highp float;
+uniform vec2 uRes;uniform float uTime;uniform float uProgress;uniform float uRays;
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
+float noise(vec2 p){vec2 i=floor(p);vec2 f=fract(p);f=f*f*(3.0-2.0*f);
+return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
+float fbm(vec2 p){float s=0.0;float a=0.56;mat2 r=mat2(0.8,-0.6,0.6,0.8);
+for(int i=0;i<5;i++){s+=a*noise(p);p=r*p*2.03+9.7;a*=0.52;}return s;}
+float rayStrength(vec2 src,vec2 dir,vec2 coord,float seedA,float seedB,float speed){
+vec2 toC=coord-src;float d=length(toC);vec2 dn=toC/max(d,1e-4);
+float cosA=dot(dn,dir);
+float distorted=cosA+0.04*sin(uTime*1.4+d*3.0);
+float spread=pow(max(distorted,0.0),2.4);
+float lenFall=clamp((1.7-d)/1.7,0.0,1.0);
+float base=clamp((0.45+0.15*sin(distorted*seedA+uTime*speed))+(0.3+0.2*cos(-distorted*seedB+uTime*speed)),0.0,1.0);
+return base*lenFall*spread;}
+void main(){
+vec2 uv=gl_FragCoord.xy/uRes;
+float j=clamp(uProgress,0.0,1.0);
+vec2 drift=vec2(-j*0.46-uTime*0.006,j*0.11+uTime*0.0018);
+float horizon=smoothstep(0.0,0.72,uv.y);
+vec3 sky=mix(vec3(0.015,0.045,0.12),vec3(0.08,0.30,0.62),horizon);
+float fA=fbm(uv*vec2(2.1,3.2)+drift);
+float fB=fbm(uv*vec2(4.8,2.3)-drift*0.65);
+float cloud=smoothstep(0.42,0.78,fA*0.72+fB*0.38+uv.y*0.12);
+float mist=smoothstep(0.18,0.92,fbm(uv*vec2(1.15,2.1)+drift*0.4));
+vec3 cloudColor=mix(vec3(0.21,0.36,0.56),vec3(0.86,0.93,1.0),smoothstep(0.42,1.0,fB+uv.y*0.24));
+sky=mix(sky,cloudColor,cloud*(0.78-j*0.22));
+sky+=mist*0.055*vec3(0.42,0.65,1.0);
+vec2 sunP=vec2(0.73,0.64);
+float sun=smoothstep(0.28,0.0,distance(uv,sunP));
+sky+=sun*vec3(0.3,0.42,0.56)*(1.0-j*0.58);
+vec2 asp=vec2(uRes.x/uRes.y,1.0);
+vec2 rc=uv*asp;vec2 rs=sunP*asp;
+vec2 rdir=normalize(vec2(-0.34,-1.0));
+float r1=rayStrength(rs,rdir,rc,36.2214,21.11349,1.1);
+float r2=rayStrength(rs,rdir,rc,22.3991,18.0234,0.8);
+float rays=(r1*0.5+r2*0.4)*uRays*(1.0-j*0.55);
+sky+=rays*vec3(0.72,0.86,1.0)*(0.55+0.45*cloud);
+sky+=(hash(gl_FragCoord.xy+uTime)*2.0-1.0)*0.012;
+float veil=smoothstep(0.52,1.0,j);
+sky=mix(sky,vec3(0.02,0.035,0.07),veil*0.84);
+sky*=0.85+0.15*smoothstep(0.0,0.45,uv.y);
+gl_FragColor=vec4(sky,1.0);}`;
+
+  function compile(gl, type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      const err = gl.getShaderInfoLog(s);
+      gl.deleteShader(s);
+      throw new Error('shader: ' + err);
+    }
+    return s;
+  }
+  function program(gl, vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p));
+    return p;
+  }
+  function bigTri(gl, prog) {
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  }
+
+  const canvas = document.getElementById('sky');
+  const gl = canvas.getContext('webgl', { alpha: true, antialias: false, premultipliedAlpha: false, depth: false, stencil: false })
+    || canvas.getContext('experimental-webgl');
+  if (!gl) { document.body.style.background = 'linear-gradient(#04060d,#0d2a52)'; return; }
+
+  const prog = program(gl, V1, SKY_FRAG);
+  gl.useProgram(prog);
+  bigTri(gl, prog);
+
+  const uRes = gl.getUniformLocation(prog, 'uRes');
+  const uTime = gl.getUniformLocation(prog, 'uTime');
+  const uProgress = gl.getUniformLocation(prog, 'uProgress');
+  const uRays = gl.getUniformLocation(prog, 'uRays');
+
+  let w = 1, h = 1, progress = PROGRESS;
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+    w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Scroll-driven journey: call this instead of leaving PROGRESS fixed.
+  function wireScroll() {
+    const read = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      progress = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+    };
+    window.addEventListener('scroll', read, { passive: true });
+    read();
+  }
+  void wireScroll;
+
+  let t = Math.random() * 40, last = performance.now();
+  function frame(ts) {
+    t += Math.min(50, ts - last) * 0.001;
+    last = ts;
+    gl.uniform2f(uRes, w, h);
+    gl.uniform1f(uTime, t);
+    gl.uniform1f(uProgress, progress);
+    gl.uniform1f(uRays, RAYS);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
