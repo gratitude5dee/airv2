@@ -7,7 +7,9 @@
  * resolves through the SAME rails as /api/decisions (lib/approvals/hosted).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
+import { parseBody } from "@/lib/http/body";
 import { serviceClient } from "@/lib/supabase";
 import { verifyApprovalToken } from "@/lib/approvals/token";
 import {
@@ -63,26 +65,26 @@ export async function GET(
   });
 }
 
+const Body = z.object({
+  action: z.enum(["approve", "dismiss"]).optional(),
+  method: z.enum(["link", "fill"]).optional(),
+  k: z.string().optional(),
+  card_item_id: z.string().min(1).optional(),
+});
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const { id } = await params;
-  const body = (await request.json().catch(() => ({}))) as {
-    action?: string;
-    method?: string;
-    k?: string;
-    card_item_id?: string;
-  };
-  const auth = authenticate(
-    request,
-    id,
-    typeof body.k === "string" ? body.k : undefined
-  );
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const auth = authenticate(request, id, body.k);
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!["approve", "dismiss"].includes(body.action ?? "")) {
+  if (!body.action) {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
   const supabase = serviceClient();
@@ -111,9 +113,7 @@ export async function POST(
       decision as HostedDecision,
       body.action === "approve" ? "approve" : "dismiss",
       body.method === "link" ? "link" : "fill",
-      typeof body.card_item_id === "string" && body.card_item_id
-        ? body.card_item_id
-        : null
+      body.card_item_id ?? null
     );
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

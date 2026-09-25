@@ -4,8 +4,10 @@
  * decision resolution path (/api/decisions) after the user approves.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { serviceClient } from "@/lib/supabase";
 import { sessionUserId } from "@/lib/auth/user";
+import { parseBody } from "@/lib/http/body";
 import {
   createTransferRequest,
   WalletSendError,
@@ -15,23 +17,21 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const Body = z.object({
+  to: z.string(),
+  amount: z.string(),
+  asset: z.enum(["usdc", "native"]).optional(),
+});
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    to?: string;
-    amount?: string;
-    asset?: string;
-  };
-  if (typeof body.to !== "string" || typeof body.amount !== "string") {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
-  }
-  const asset: WalletAsset = body.asset === "usdc" ? "usdc" : "native";
-  if (body.asset !== undefined && body.asset !== "usdc" && body.asset !== "native") {
-    return NextResponse.json({ error: "invalid asset" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const asset: WalletAsset = body.asset ?? "native";
   try {
     const result = await createTransferRequest(
       serviceClient(),
