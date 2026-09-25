@@ -193,6 +193,7 @@ import { OnairosError } from "@/lib/onairos/context";
 import { syncOnairos } from "@/lib/onairos/sync";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { externalOrigin } from "../gates";
+import { apiCookieName } from "./published";
 import { mintToken } from "../tokens";
 import { baseHeaders, esc, forbidden, withBaseHeaders } from "../html";
 import { WORDMARK_IMG } from "../shell";
@@ -2490,6 +2491,36 @@ function rendersNativeOnairos(
   return slideForStep(step).id === "personality" && snapshot.onairos.available;
 }
 
+/**
+ * R-SEC-06: the Onairos slide's SDK calls ride the authenticated relay at
+ * /api/mini/onairos — mint this app's API cookie path-scoped to the relay
+ * (same convention as published.ts's /api/apps cookie) so the relay can
+ * tell a live mini-app session from a stranger. Only the native-Onairos
+ * render carries it.
+ */
+function withOnairosApiCookie(
+  response: NextResponse,
+  ctx: MiniAppContext,
+  onairosRender: boolean
+): NextResponse {
+  if (!onairosRender) return response;
+  response.cookies.set(
+    apiCookieName("onboarding"),
+    mintToken(ctx.session.userId, "onboarding", ctx.session.resourceId, 15, {
+      role: ctx.session.role,
+      grantId: ctx.session.grantId,
+    }),
+    {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/api/mini/onairos",
+      maxAge: 15 * 60,
+    }
+  );
+  return response;
+}
+
 /** The Get started slide ships the same-origin clipboard/close bundle. */
 const rendersPrompts = (step: OnboardingStepId): boolean =>
   slideForStep(step).id === "start";
@@ -2546,24 +2577,29 @@ async function respond(
   const current = activeTheme(ctx);
   await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
   await withLiveResolutions(snapshot, active);
-  return slides(
-    current,
-    renderOnboarding(
+  const onairos = rendersNativeOnairos(snapshot, active);
+  return withOnairosApiCookie(
+    slides(
       current,
-      snapshot,
-      active,
-      notice,
-      ctx.session.via === "card",
-      browserSigninHref(ctx, snapshot, active),
-      requestedPanelKey(ctx),
-      allowsFx(ctx)
+      renderOnboarding(
+        current,
+        snapshot,
+        active,
+        notice,
+        ctx.session.via === "card",
+        browserSigninHref(ctx, snapshot, active),
+        requestedPanelKey(ctx),
+        allowsFx(ctx)
+      ),
+      onairos,
+      rendersIdentityMedia(active),
+      rendersBooth(active, ctx.session.via === "card"),
+      rendersPrompts(active),
+      rendersIntro(active),
+      ctx.session.via !== "card"
     ),
-    rendersNativeOnairos(snapshot, active),
-    rendersIdentityMedia(active),
-    rendersBooth(active, ctx.session.via === "card"),
-    rendersPrompts(active),
-    rendersIntro(active),
-    ctx.session.via !== "card"
+    ctx,
+    onairos
   );
 }
 
@@ -2805,24 +2841,29 @@ export const onboarding: MiniAppModule = {
     const current = activeTheme(ctx);
     await withLiveLink(ctx.supabase, ctx.session.userId, snapshot, active);
     await withLiveResolutions(snapshot, active);
-    return slides(
-      current,
-      renderOnboarding(
+    const onairos = rendersNativeOnairos(snapshot, active);
+    return withOnairosApiCookie(
+      slides(
         current,
-        snapshot,
-        active,
-        null,
-        ctx.session.via === "card",
-        browserSigninHref(ctx, snapshot, active),
-        requestedPanelKey(ctx),
-        allowsFx(ctx)
+        renderOnboarding(
+          current,
+          snapshot,
+          active,
+          null,
+          ctx.session.via === "card",
+          browserSigninHref(ctx, snapshot, active),
+          requestedPanelKey(ctx),
+          allowsFx(ctx)
+        ),
+        onairos,
+        rendersIdentityMedia(active),
+        rendersBooth(active, ctx.session.via === "card"),
+        rendersPrompts(active),
+        rendersIntro(active),
+        ctx.session.via !== "card"
       ),
-      rendersNativeOnairos(snapshot, active),
-      rendersIdentityMedia(active),
-      rendersBooth(active, ctx.session.via === "card"),
-      rendersPrompts(active),
-      rendersIntro(active),
-      ctx.session.via !== "card"
+      ctx,
+      onairos
     );
   },
 
