@@ -1,6 +1,7 @@
 {
   "name": "@air/muse-mm0-worker",
   "private": true,
+  "engines": { "node": ">=22 <25" },
   "version": "0.1.0",
   "type": "module",
   "scripts": {

@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: .nvmrc
       - run: npm ci
         working-directory: infra/workers/create
       - run: npx tsc --noEmit
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: .nvmrc
       - run: npm ci
         working-directory: infra/workers/dev-router
       - uses: cloudflare/wrangler-action@v3
@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: .nvmrc
       - run: npm ci
         working-directory: infra/workers
       - uses: cloudflare/wrangler-action@v3

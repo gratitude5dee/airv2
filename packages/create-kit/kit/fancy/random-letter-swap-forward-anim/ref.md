@@ -4,7 +4,7 @@
 
 Letter Swap with randomized per-letter direction. Hover-only.
 
-- **Weight**: 0.7 KiB JS + 0.1 KiB CSS (own, gzip); 43.2 KiB with vendor deps. **Lite**: true. **Touch**: false. **Reduced motion**: none.
+- **Weight**: 0.8 KiB JS + 0.1 KiB CSS (own, gzip); 43.3 KiB with vendor deps. **Lite**: true. **Touch**: false. **Reduced motion**: none.
 - **License**: MIT, tier A, from `danielpetho/fancy@f9f62c61207b` by daniel petho.
 - **Deps**: `motion`.
 
