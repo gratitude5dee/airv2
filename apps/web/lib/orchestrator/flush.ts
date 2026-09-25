@@ -133,7 +133,7 @@ interface QueuedMessage {
   message_id: string;
   body: string;
   sender_id?: string | undefined;
-  /** The sender's resolved trust tier at enqueue (migration 0129). */
+  /** The sender's resolved trust tier at enqueue (migration 0130). */
   sender_tier?: number | null | undefined;
   received_at?: string | undefined;
 }
@@ -1861,7 +1861,7 @@ export async function flushAfterDebounce(
       userId: message.userId,
       phone: message.phone,
       attempts: (data?.attempts as number | undefined) ?? 0,
-      // The job row's folded minimum trust (schedule_flush, migration 0129),
+      // The job row's folded minimum trust (schedule_flush, migration 0130),
       // not this caller's own tier — that was the last-message bug.
       senderTier:
         (data?.sender_tier as number | null | undefined) ??
