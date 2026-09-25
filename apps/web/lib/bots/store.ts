@@ -25,7 +25,7 @@ export interface BotRow {
   created_at: string;
 }
 
-const BOT_COLUMNS =
+export const BOT_COLUMNS =
   "id, user_id, name, title, description, avatar_kind, avatar_ref, model_tier, api_server_key, status, group_label, created_at";
 
 export async function listBots(

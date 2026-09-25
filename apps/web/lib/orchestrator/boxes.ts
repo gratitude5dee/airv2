@@ -17,6 +17,11 @@ import {
 } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
 import { mirrorBrandIfStale } from "../brand/mirror";
+import {
+  loadBoxCredentials,
+  recordDashboardRoute,
+  recordHostedRoute,
+} from "../box/credentials";
 import { recordBoxStateEvent } from "../box/events";
 import { boxTarget } from "../compute/runtime";
 import { assertAdmissionOpen } from "../migration/admission";
@@ -39,16 +44,6 @@ export interface UserBox {
   dashboard?: HostedRoute | undefined;
   /** Sealed dashboard basic-auth password (CM1/CC10). Server-side only. */
   dashboardAuthSealed?: string | undefined;
-}
-
-interface BoxRow {
-  provider_box_id: string;
-  hosted_url: string;
-  hosted_token: string;
-  api_server_key: string;
-  dashboard_url: string | null;
-  dashboard_token: string | null;
-  dashboard_auth: string | null;
 }
 
 export const API_SERVER_PORT = 8642;
@@ -115,10 +110,7 @@ async function refreshApiServerRoute(
   boxId: string
 ): Promise<HostedRoute> {
   const apiServer = await hostRoute(boxId, API_SERVER_PORT);
-  await supabase
-    .from("boxes")
-    .update({ hosted_url: apiServer.url, hosted_token: apiServer.token })
-    .eq("provider_box_id", boxId);
+  await recordHostedRoute(supabase, boxId, apiServer);
   return apiServer;
 }
 
@@ -135,10 +127,7 @@ export async function refreshDashboardRoute(
 ): Promise<HostedRoute | null> {
   try {
     const dashboard = await hostRoute(boxId, DASHBOARD_PORT);
-    await supabase
-      .from("boxes")
-      .update({ dashboard_url: dashboard.url, dashboard_token: dashboard.token })
-      .eq("provider_box_id", boxId);
+    await recordDashboardRoute(supabase, boxId, dashboard);
     return dashboard;
   } catch (error) {
     console.log(
@@ -233,31 +222,13 @@ export async function peekUserBox(
   supabase: SupabaseClient,
   userId: string
 ): Promise<UserBox | null> {
-  const { data, error } = await supabase
-    .from("boxes")
-    .select(
-      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth, state"
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
-  }
-  if (!data) return null;
-  const row = data as BoxRow & { state: string | null };
-  if (row.state !== "ready") return null;
+  const creds = await loadBoxCredentials(supabase, userId);
+  if (!creds || creds.state !== "ready") return null;
   return {
-    boxId: row.provider_box_id,
-    target: {
-      hostedUrl: row.hosted_url,
-      hostedToken: row.hosted_token,
-      apiServerKey: row.api_server_key,
-    },
-    dashboard:
-      row.dashboard_url && row.dashboard_token !== null
-        ? { url: row.dashboard_url, token: row.dashboard_token }
-        : undefined,
-    dashboardAuthSealed: row.dashboard_auth ?? undefined,
+    boxId: creds.boxId,
+    target: creds.target,
+    dashboard: creds.dashboard,
+    dashboardAuthSealed: creds.dashboardAuthSealed,
   };
 }
 
@@ -272,24 +243,11 @@ export async function ensureBoxAwake(
   // The pause window of a live migration holds box work out; callers should
   // translate MigrationBusyError to a retryable response where they have one.
   await assertAdmissionOpen(supabase, userId);
-  const { data, error: selectError } = await supabase
-    .from("boxes")
-    .select(
-      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth"
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
-  // A failed query (e.g. a migration missing a selected column) is not the
-  // same as a missing row — surface it as its own error so an infra problem
-  // never reads as "this user has no box".
-  if (selectError) {
-    throw new Error(`box lookup failed for user ${userId}: ${selectError.message}`);
-  }
-  if (!data) {
+  const creds = await loadBoxCredentials(supabase, userId);
+  if (!creds) {
     throw new Error(`no box for user ${userId}`);
   }
-  const row = data as BoxRow;
-  const boxId = row.provider_box_id;
+  const boxId = creds.boxId;
 
   await supabase
     .from("boxes")
@@ -337,17 +295,8 @@ export async function ensureBoxAwake(
     void afterResume(boxId);
   }
 
-  let target: HermesBoxTarget = {
-    hostedUrl: row.hosted_url,
-    hostedToken: row.hosted_token,
-    apiServerKey: row.api_server_key,
-  };
-  // Namespace/Tenki ingress carries no route token (token is ""), so the
-  // route exists whenever a URL does.
-  const dashboard: HostedRoute | undefined =
-    row.dashboard_url && row.dashboard_token !== null
-      ? { url: row.dashboard_url, token: row.dashboard_token }
-      : undefined;
+  let target: HermesBoxTarget = { ...creds.target };
+  const dashboard: HostedRoute | undefined = creds.dashboard;
 
   // The hosted token rotates across stop/resume; hermes-host re-registers on
   // boot but the stored token may be stale. Probe, then refresh once.
@@ -443,7 +392,7 @@ export async function ensureBoxAwake(
     boxId,
     target,
     dashboard,
-    dashboardAuthSealed: row.dashboard_auth ?? undefined,
+    dashboardAuthSealed: creds.dashboardAuthSealed,
   };
   } catch (error) {
     // The deadline was cleared above and the caller's re-arm will never run

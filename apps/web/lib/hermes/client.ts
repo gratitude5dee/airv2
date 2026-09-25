@@ -71,10 +71,19 @@ function url(target: HermesBoxTarget, path: string): string {
 // The hosted proxy authenticates via the _port_auth cookie: passing `?_token`
 // only triggers a 302 that sets the cookie and strips the query, which
 // server-side fetch cannot follow. Send the cookie directly.
+export function hermesAuthHeaders(
+  target: HermesBoxTarget,
+  apiServerKey?: string
+): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiServerKey ?? target.apiServerKey}`,
+    Cookie: `_port_auth=${target.hostedToken}`,
+  };
+}
+
 function headers(target: HermesBoxTarget): HeadersInit {
   return {
-    Authorization: `Bearer ${target.apiServerKey}`,
-    Cookie: `_port_auth=${target.hostedToken}`,
+    ...hermesAuthHeaders(target),
     "Content-Type": "application/json",
   };
 }

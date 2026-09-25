@@ -5,14 +5,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/env";
-import type { BoxProvider } from "@/lib/box/client";
+import type { BoxProviderKind } from "@/lib/box/client";
 import { provisionUser } from "@/lib/provisioning/provision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-function isBoxProvider(value: string): value is BoxProvider {
+function isBoxProvider(value: string): value is BoxProviderKind {
   return value === "ascii" || value === "tenki";
 }
 
