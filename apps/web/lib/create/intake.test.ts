@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SpectrumSender } from "../spectrum/sender";
+import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 import { OWNER_ONLY_CARD_LINE } from "../miniapps/imessageCommand";
 import {
   INTAKE_EVENTS,
@@ -19,131 +19,70 @@ import {
   openIntake,
   provisionalAppname,
   type IntakeEvent,
-  type IntakeRow,
   type IntakeStage,
 } from "./intake";
 
 /* ------------------------------------------------------------ fake db */
 
-type Row = Record<string, unknown> & Partial<Record<keyof IntakeRow, unknown>>;
-
-const db = {
-  create_intakes: [] as Row[],
-  mini_apps: [] as Row[],
-  /** Table → error message injected into the next call on that table. */
-  failNext: new Map<string, string>(),
-  /** Every insert/update payload, for the "no content" sweep. */
-  writes: [] as Row[],
-  seq: 0,
-};
-
-function fakeSupabase(): SupabaseClient {
-  return { from: (table: string) => query(table) } as unknown as SupabaseClient;
-}
-
-function query(table: string) {
-  const state = {
-    op: "select" as "select" | "insert" | "update",
-    values: null as Row | null,
-    filters: [] as ((row: Row) => boolean)[],
-    order: null as { column: string; ascending: boolean } | null,
-    limit: null as number | null,
-  };
-  const exec = async (mode: "many" | "maybe" | "single") => {
-    const injected = db.failNext.get(table);
-    if (injected) {
-      db.failNext.delete(table);
-      return { data: null, error: { message: injected } };
-    }
-    const rows = (db as unknown as Record<string, Row[]>)[table] ?? [];
-    let out: Row[];
-    if (state.op === "insert") {
-      const values = state.values ?? {};
-      db.writes.push(values);
-      const open = (row: Row) => !TERMINAL_STAGES.has(row.stage as IntakeStage);
-      if (
-        table === "create_intakes" &&
-        open(values) &&
-        rows.some((row) => open(row) && row.user_id === values.user_id && row.appname === values.appname)
-      ) {
-        return { data: null, error: { code: "23505", message: "duplicate key" } };
-      }
-      db.seq += 1;
-      const row: Row = {
-        id: `intake-${db.seq}`,
-        app_id: null,
-        appname: null,
-        template: null,
-        questions_asked: 0,
-        revisions: 0,
-        plan_sha256: null,
-        goal_sha256: null,
-        builds: 0,
-        failed_builds: 0,
-        mirror_error: null,
-        opened_at: new Date(Date.UTC(2026, 0, 1, 0, 0, db.seq)).toISOString(),
-        confirmed_at: null,
-        dev_ready_at: null,
-        production_at: null,
-        last_owner_message_at: null,
-        updated_at: "2026-01-01T00:00:00.000Z",
-        ...values,
-      };
-      rows.push(row);
-      out = [row];
-    } else {
-      out = rows.filter((row) => state.filters.every((f) => f(row)));
-      if (state.op === "update") {
-        db.writes.push(state.values ?? {});
-        for (const row of out) Object.assign(row, state.values);
-      }
-      if (state.order) {
-        const { column, ascending } = state.order;
-        out = [...out].sort((a, b) =>
-          String(a[column]).localeCompare(String(b[column])) * (ascending ? 1 : -1)
-        );
-      }
-      if (state.limit !== null) out = out.slice(0, state.limit);
-    }
-    if (mode === "many") return { data: out, error: null };
-    if (mode === "maybe") return { data: out[0] ?? null, error: null };
-    return out[0]
-      ? { data: out[0], error: null }
-      : { data: null, error: { message: "no rows" } };
-  };
-  const builder = {
-    select: () => builder,
-    insert: (values: Row) => ((state.op = "insert"), (state.values = values), builder),
-    update: (values: Row) => ((state.op = "update"), (state.values = values), builder),
-    eq: (column: string, value: unknown) => (state.filters.push((row) => row[column] === value), builder),
-    in: (column: string, values: readonly unknown[]) => (
-      state.filters.push((row) => values.includes(row[column])), builder
-    ),
-    lt: (column: string, value: string) => (
-      state.filters.push((row) => typeof row[column] === "string" && (row[column] as string) < value),
-      builder
-    ),
-    order: (column: string, options: { ascending: boolean }) => (
-      (state.order = { column, ascending: options.ascending }), builder
-    ),
-    limit: (n: number) => ((state.limit = n), builder),
-    maybeSingle: () => exec("maybe"),
-    single: () => exec("single"),
-    then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
-      exec("many").then(resolve, reject),
-  };
-  return builder;
-}
-
-const supabase = fakeSupabase();
+const db = new FakeSupabase();
+const supabase = db.client();
 const PROMPT = "a countdown page for my tour, dark and cinematic, show date Oct 3";
 
+/** Table → error message injected into the next call on that table. */
+const failNext = new Map<string, string>();
+let intakeSeq = 0;
+
+/** Every insert/update payload, for the "no content" sweep. */
+const writes = (): Row[] => [
+  ...db.inserts.map((i) => i.row),
+  ...db.updates.map((u) => u.patch),
+];
+
 beforeEach(() => {
-  db.create_intakes = [];
-  db.mini_apps = [];
-  db.failNext.clear();
-  db.writes = [];
-  db.seq = 0;
+  db.reset();
+  failNext.clear();
+  intakeSeq = 0;
+  // Postgres column defaults: `opened_at`/`updated_at`/counters are supplied
+  // by the schema, not the insert payload — parseIntakeRow requires them.
+  db.defaults["create_intakes"] = () => ({
+    app_id: null,
+    appname: null,
+    template: null,
+    questions_asked: 0,
+    revisions: 0,
+    plan_sha256: null,
+    goal_sha256: null,
+    builds: 0,
+    failed_builds: 0,
+    mirror_error: null,
+    opened_at: new Date(Date.UTC(2026, 0, 1, 0, 0, ++intakeSeq)).toISOString(),
+    confirmed_at: null,
+    dev_ready_at: null,
+    production_at: null,
+    last_owner_message_at: null,
+    updated_at: "2026-01-01T00:00:00.000Z",
+  });
+  db.resolve = (q) => {
+    const injected = failNext.get(q.table);
+    if (injected) {
+      failNext.delete(q.table);
+      return { error: { message: injected } };
+    }
+    // Partial unique index: one open (user_id, appname) intake at a time.
+    if (q.table === "create_intakes" && q.mode === "insert") {
+      const values = q.args[0] as Row;
+      const open = (row: Row) => !TERMINAL_STAGES.has(row["stage"] as IntakeStage);
+      if (
+        open(values) &&
+        db.rows("create_intakes").some(
+          (row) => open(row) && row["user_id"] === values["user_id"] && row["appname"] === values["appname"],
+        )
+      ) {
+        return { error: { code: "23505", message: "duplicate key" } };
+      }
+    }
+    return undefined;
+  };
   vi.restoreAllMocks();
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -306,14 +245,14 @@ describe("openIntake", () => {
       revisions: 0,
     });
     expect(row.last_owner_message_at).not.toBeNull();
-    const dumped = JSON.stringify(db.writes);
+    const dumped = JSON.stringify(writes());
     expect(dumped).not.toContain("cinematic");
     expect(dumped).not.toContain("Oct 3");
     expect(dumped).not.toContain("prompt");
   });
 
   it("links the existing draft app and skips names the owner already uses", async () => {
-    db.mini_apps.push({ id: "app-1", owner_user_id: "user-alice", appname: "countdown-tour-dark" });
+    db.tables["mini_apps"] = [{ id: "app-1", owner_user_id: "user-alice", appname: "countdown-tour-dark" }];
     const first = await openIntake(supabase, "user-alice", { source: "web", prompt: PROMPT });
     expect(first.appname).toBe("countdown-tour-dark-2");
     expect(first.app_id).toBeNull();
@@ -335,7 +274,7 @@ describe("openIntake", () => {
       url: "https://github.com/acme/tour-site",
     });
     expect(row.appname).toBe("tour-site");
-    expect(JSON.stringify(db.writes)).not.toContain("github.com");
+    expect(JSON.stringify(writes())).not.toContain("github.com");
   });
 
   it("refuses a second open intake for the same explicit appname and bad names", async () => {
@@ -356,13 +295,13 @@ describe("openIntake", () => {
   });
 
   it("maps a unique-index race to 409 and a ledger outage to 503", async () => {
-    db.create_intakes.push({
+    db.tables["create_intakes"] = [{
       id: "x", user_id: "user-alice", appname: "promo", stage: "asking", source: "web",
       opened_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z",
-    });
+    }];
     // The pre-check is skipped when the lookup misses (simulate the race by
     // failing the lookup path's read... simplest: inject on insert only).
-    db.failNext.set("mini_apps", "boom");
+    failNext.set("mini_apps", "boom");
     await expect(
       openIntake(supabase, "user-alice", { source: "web", prompt: "promo" })
     ).rejects.toMatchObject({ status: 503 });
@@ -423,17 +362,17 @@ describe("advanceIntake", () => {
 
   it("surfaces an illegal move as IllegalTransitionError without writing", async () => {
     await opened();
-    const writes = db.writes.length;
+    const before = writes().length;
     await expect(
       advanceIntake(supabase, "user-alice", "promo", "confirm")
     ).rejects.toMatchObject({ from: "asking", event: "confirm", status: 409 });
-    expect(db.writes.length).toBe(writes);
+    expect(writes().length).toBe(before);
   });
 
   it("stop leaves the stage but records the owner message", async () => {
     await opened();
     const before = (await getIntake(supabase, "user-alice", "promo"))!;
-    db.create_intakes[0]!.last_owner_message_at = "2020-01-01T00:00:00.000Z";
+    db.tables["create_intakes"]![0]!["last_owner_message_at"] = "2020-01-01T00:00:00.000Z";
     const row = await advanceIntake(supabase, "user-alice", "promo", "stop");
     expect(row.stage).toBe(before.stage);
     expect(row.last_owner_message_at).not.toBe("2020-01-01T00:00:00.000Z");
@@ -516,7 +455,7 @@ describe("advanceIntake", () => {
     await expect(
       advanceIntake(supabase, "user-bob", "promo", "owner_reply")
     ).rejects.toMatchObject({ status: 404 });
-    db.failNext.set("create_intakes", "down");
+    failNext.set("create_intakes", "down");
     await expect(
       advanceIntake(supabase, "user-alice", "promo", "owner_reply")
     ).rejects.toMatchObject({ status: 503 });
@@ -530,7 +469,7 @@ describe("advanceIntake", () => {
     let calls = 0;
     vi.spyOn(supabase, "from").mockImplementation((table: string) => {
       if (table === "create_intakes" && calls++ === 1) {
-        db.create_intakes[0]!.stage = "planning";
+        db.tables["create_intakes"]![0]!["stage"] = "planning";
       }
       return original(table);
     });
@@ -547,15 +486,15 @@ describe("abandonStale (§5.1, 7 days)", () => {
     await opened("old");
     await opened("fresh");
     await opened("done");
-    const old = db.create_intakes.find((row) => row.appname === "old")!;
-    old.last_owner_message_at = new Date(Date.now() - 8 * 86_400_000).toISOString();
-    const done = db.create_intakes.find((row) => row.appname === "done")!;
-    done.stage = "production";
-    done.last_owner_message_at = old.last_owner_message_at;
+    const old = db.rows("create_intakes").find((row) => row["appname"] === "old")!;
+    old["last_owner_message_at"] = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    const done = db.rows("create_intakes").find((row) => row["appname"] === "done")!;
+    done["stage"] = "production";
+    done["last_owner_message_at"] = old["last_owner_message_at"];
     expect(await abandonStale(supabase, 7)).toBe(1);
-    expect(old.stage).toBe("abandoned");
-    expect(done.stage).toBe("production");
-    expect(db.create_intakes.find((row) => row.appname === "fresh")!.stage).toBe("asking");
+    expect(old["stage"]).toBe("abandoned");
+    expect(done["stage"]).toBe("production");
+    expect(db.rows("create_intakes").find((row) => row["appname"] === "fresh")!["stage"]).toBe("asking");
     expect(await abandonStale(supabase)).toBe(0);
   });
 });
@@ -575,7 +514,7 @@ describe("maybeOpenIntake (flush.ts hook)", () => {
   it("ignores prose and the bare /create card command", async () => {
     expect(await maybeOpenIntake(supabase, sender, job, "hello there")).toBeNull();
     expect(await maybeOpenIntake(supabase, sender, job, "/create")).toBeNull();
-    expect(db.create_intakes).toHaveLength(0);
+    expect(db.rows("create_intakes")).toHaveLength(0);
   });
 
   it("opens the row for the owner and returns the marker line", async () => {
@@ -585,7 +524,7 @@ describe("maybeOpenIntake (flush.ts hook)", () => {
       appname: "countdown-tour-dark",
       line: "[create-intake countdown-tour-dark stage=asking questions_max=3]",
     });
-    expect(db.create_intakes[0]).toMatchObject({ source: "imessage", stage: "asking" });
+    expect(db.rows("create_intakes")[0]).toMatchObject({ source: "imessage", stage: "asking" });
     expect(sender.sendText).not.toHaveBeenCalled();
   });
 
@@ -597,7 +536,7 @@ describe("maybeOpenIntake (flush.ts hook)", () => {
       "Build me that landing page for the tour"
     );
     expect(result).toMatchObject({ kind: "owner", appname: "landing-tour" });
-    expect(db.create_intakes[0]).toMatchObject({ source: "imessage", stage: "asking" });
+    expect(db.rows("create_intakes")[0]).toMatchObject({ source: "imessage", stage: "asking" });
   });
 
   it("sends the owner-only line to anyone else and opens nothing", async () => {
@@ -609,11 +548,11 @@ describe("maybeOpenIntake (flush.ts hook)", () => {
     );
     expect(result).toEqual({ kind: "non_owner" });
     expect(sender.sendText).toHaveBeenCalledWith("space-1", "+15550001", OWNER_ONLY_CARD_LINE);
-    expect(db.create_intakes).toHaveLength(0);
+    expect(db.rows("create_intakes")).toHaveLength(0);
   });
 
   it("lets the turn run without a marker when the row cannot be opened", async () => {
-    db.failNext.set("mini_apps", "down");
+    failNext.set("mini_apps", "down");
     expect(await maybeOpenIntake(supabase, sender, job, "/create a thing")).toBeNull();
     expect(console.error).toHaveBeenCalled();
     expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("a thing");
