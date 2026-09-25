@@ -1,0 +1,1236 @@
+{"id":"x-406","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-28T08:06:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-407","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-28T08:20:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-408","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-28T08:27:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-409","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-28T08:41:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-410","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-28T08:52:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-156","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-28T11:20:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-157","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-28T11:29:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-158","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-28T11:39:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-159","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-28T11:53:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-841","chat_id":"chat-mum","chat":"Mum","ts":"2026-06-28T13:16:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-842","chat_id":"chat-mum","chat":"Mum","ts":"2026-06-28T13:20:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-1051","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-28T18:51:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1052","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-28T18:53:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1053","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-28T18:59:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1054","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-28T19:07:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1055","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-29T07:22:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1056","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-29T07:33:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1057","chat_id":"chat-dana","chat":"Dana","ts":"2026-06-29T07:35:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-972","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-06-29T09:52:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"x-973","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-06-29T09:56:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"rent receipt attached — thank you"}
+{"id":"x-160","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:04:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-161","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:09:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-162","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:21:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-163","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:35:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-164","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:37:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-165","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:47:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-166","chat_id":"chat-alex","chat":"Alex","ts":"2026-06-29T11:57:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-411","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T12:27:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-412","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T12:37:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-413","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T12:41:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-414","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T12:51:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-415","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T12:55:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-416","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T12:59:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-417","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T13:10:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-418","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T13:15:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-419","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-29T13:25:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-0","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-29T16:32:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-1","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-29T16:33:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-997","chat_id":"chat-riley","chat":"Riley","ts":"2026-06-29T17:54:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-998","chat_id":"chat-riley","chat":"Riley","ts":"2026-06-29T18:07:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-999","chat_id":"chat-riley","chat":"Riley","ts":"2026-06-29T18:11:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1000","chat_id":"chat-riley","chat":"Riley","ts":"2026-06-29T18:19:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-2","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-30T09:08:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-3","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-30T09:20:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-4","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-30T09:26:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-5","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-30T09:38:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-6","chat_id":"chat-priya","chat":"Priya","ts":"2026-06-30T09:49:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-420","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:15:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-421","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:21:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-422","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:24:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-423","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:26:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-424","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:31:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-425","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:42:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-426","chat_id":"chat-sam","chat":"Sam","ts":"2026-06-30T11:54:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-427","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-01T08:31:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-428","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-01T08:43:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-429","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-01T08:50:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-430","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-01T09:04:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-1058","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-01T13:16:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1059","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-01T13:28:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1060","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-01T13:41:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1061","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-01T13:44:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1062","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-01T13:48:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-7","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-01T14:35:00.000Z","from":"me","is_from_me":true,"text":"the venue moved load-in to 4"}
+{"id":"x-8","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-01T14:47:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-9","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-02T17:16:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-10","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-02T17:22:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-11","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-02T17:24:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-12","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-02T17:38:00.000Z","from":"me","is_from_me":true,"text":"the venue moved load-in to 4"}
+{"id":"x-431","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-02T18:21:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-432","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-02T18:25:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-433","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-02T18:29:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-1063","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-02T18:37:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1064","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-02T18:40:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1065","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-02T18:41:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-974","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-03T07:16:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-950","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-07-03T08:42:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-951","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-07-03T08:44:00.000Z","from":"me","is_from_me":true,"text":"Your insurance claim has been processed"}
+{"id":"x-13","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-03T10:00:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-14","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-03T10:02:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-15","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-03T10:12:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-167","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-03T11:43:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-168","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-03T11:55:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-169","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-03T12:05:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-170","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-03T12:09:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-171","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-03T12:18:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-434","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-03T18:41:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-435","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-03T18:47:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-436","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-03T18:48:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-437","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-03T18:53:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-438","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-03T19:07:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-439","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-03T19:14:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-975","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-04T07:14:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-976","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-04T07:27:00.000Z","from":"me","is_from_me":true,"text":"the hallway paint crew starts Monday"}
+{"id":"x-16","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-04T10:54:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-17","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-04T11:01:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-18","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-04T11:08:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-19","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-04T11:16:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-440","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-05T07:16:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-441","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-05T07:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-442","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-05T07:36:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-20","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-05T12:17:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-21","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-05T12:24:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-22","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-05T12:33:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-23","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-05T12:34:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-172","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-05T16:45:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-173","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-05T16:50:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-174","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-05T16:52:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-175","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-05T17:06:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-1066","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-05T19:42:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1067","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-05T19:54:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1068","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-05T20:03:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1069","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-05T20:08:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-24","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-06T07:22:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-25","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-06T07:28:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-26","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-06T07:37:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-27","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-06T07:42:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-28","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-06T07:54:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-443","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-06T12:40:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-444","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-06T12:48:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-445","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-06T12:50:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-446","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-06T12:53:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-447","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-06T13:07:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-843","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-06T15:46:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-844","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-06T15:48:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-176","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-06T16:55:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-177","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-06T17:00:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"m-alex-baby","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-06T17:01:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"Maya had the baby — name is Noor, 7lb 4oz"}
+{"id":"x-178","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-06T17:04:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-179","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-06T17:16:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-448","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-07T07:45:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-449","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-07T07:55:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-450","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-07T08:08:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-977","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-07T16:04:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"rent receipt attached — thank you"}
+{"id":"x-978","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-07T16:15:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-180","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T17:20:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-181","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T17:32:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-182","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T17:37:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-183","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T17:43:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-184","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T17:45:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-185","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T17:54:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-186","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-07T18:06:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-187","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-08T13:32:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-188","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-08T13:37:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-189","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-08T13:42:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-1070","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-09T09:21:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1071","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-09T09:33:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1072","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-09T09:40:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1073","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-09T09:46:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-451","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-09T09:52:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-452","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-09T09:55:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-453","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-09T10:07:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-454","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-09T10:18:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-455","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-09T10:22:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-1001","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-09T14:58:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-1002","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-09T15:08:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-1003","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-09T15:21:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"m-coffee-order","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T14:56:00.000Z","from":"Sam Chen","is_from_me":false,"text":"usual order is the 2lb medium roast espresso beans from Temple — repeats every ~6 weeks"}
+{"id":"x-456","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T15:05:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-457","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T15:17:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-458","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T15:18:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-459","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T15:22:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"m-sam-decaf","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T15:25:00.000Z","from":"Sam Chen","is_from_me":false,"text":"order the Decaf Colombia too this time — guests complained"}
+{"id":"x-460","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-10T15:26:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-461","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-11T11:08:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-462","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-11T11:12:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-463","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-11T11:22:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-845","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-11T13:38:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-846","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-11T13:45:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-847","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-11T13:48:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-848","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-11T13:53:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-190","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-11T14:47:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-191","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-11T14:54:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-192","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-11T15:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-29","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-12T12:01:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-30","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-12T12:03:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-31","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-12T12:08:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-464","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-12T16:04:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-465","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-12T16:16:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-466","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-12T16:25:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-32","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-13T09:26:00.000Z","from":"me","is_from_me":true,"text":"the venue moved load-in to 4"}
+{"id":"x-33","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-13T09:33:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-467","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-13T13:15:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-468","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-13T13:20:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-469","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-13T13:29:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-470","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-13T13:34:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-471","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-13T13:35:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"m-riley-size","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-13T13:45:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"frame size stays 56cm — same as last fit"}
+{"id":"x-193","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-13T14:36:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-194","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-13T14:48:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-195","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-13T14:55:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-196","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-13T14:56:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-197","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-13T15:08:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-198","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-13T15:17:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-849","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-13T17:19:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-850","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-13T17:21:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-851","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-13T17:35:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-852","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-13T17:37:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-853","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-13T17:47:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-199","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:04:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-200","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:11:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-201","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:15:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-202","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:23:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-203","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:24:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-204","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:25:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-205","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:30:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-206","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-14T07:39:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-854","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-14T13:17:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-855","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-14T13:25:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-472","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-14T18:56:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-473","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-14T18:59:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-474","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-14T19:11:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-475","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-14T19:13:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-476","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-14T19:20:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-477","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-14T19:33:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-207","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-15T09:52:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-208","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-15T09:55:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-209","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-15T09:58:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-478","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T16:57:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-479","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T17:07:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-480","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T17:21:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-481","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T17:26:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-482","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T17:31:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-483","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T17:41:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-484","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T17:55:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-485","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T18:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-486","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-15T18:07:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-487","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-16T08:55:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-488","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-16T09:07:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-489","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-16T09:16:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-490","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-16T09:20:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-491","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-16T09:31:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-34","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-17T09:49:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-35","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-17T09:54:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-36","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-17T09:57:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-37","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-17T10:06:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-38","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-17T10:17:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-39","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-17T10:23:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-492","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T13:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-493","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T13:58:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-494","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T14:08:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-495","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T14:18:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-496","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T14:19:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-497","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T14:29:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-498","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-17T14:39:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-952","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-07-17T15:43:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-953","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-07-17T15:52:00.000Z","from":"me","is_from_me":true,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-856","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-17T18:23:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-857","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-17T18:34:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-858","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-17T18:47:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-859","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-17T18:55:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-860","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-17T19:08:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-40","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-18T08:20:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-41","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-18T08:30:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-42","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-18T08:42:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-861","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-18T11:27:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-862","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-18T11:35:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"m-door-code","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-18T15:17:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"door code for the unit is 4471 now — changed after the panel swap"}
+{"id":"m-wifi-pass","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-07-18T15:27:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"guest wifi: Willow5G / maple-crest-2210"}
+{"id":"x-863","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-20T07:18:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-864","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-20T07:27:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-499","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-20T19:11:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-500","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-20T19:18:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-501","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-20T19:21:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"m-dentist-insurance","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-07-20T19:41:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Delta Dental PPO on file, member DD-5541287"}
+{"id":"x-502","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T07:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-503","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T07:32:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-504","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T07:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-505","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T07:57:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-506","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T07:59:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-507","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T08:06:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-508","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T08:17:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-509","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T08:20:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-510","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-21T08:26:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-210","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:09:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-211","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:13:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-212","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:15:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-213","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:18:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-214","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:24:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-215","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:36:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-216","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:49:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-217","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-21T15:57:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-1074","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-21T16:31:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1075","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-21T16:33:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-43","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-22T10:03:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-44","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-22T10:08:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-45","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-22T10:20:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-218","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-22T12:45:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-219","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-22T12:49:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-220","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-22T13:02:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-46","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-23T13:10:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-47","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-23T13:18:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-48","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-23T13:21:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-49","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-23T13:22:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-50","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-23T13:28:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-51","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-23T13:30:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-221","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T15:33:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-222","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T15:45:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-223","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T15:49:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-224","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T16:00:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-225","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T16:14:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-226","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T16:23:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-227","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-23T16:26:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-511","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-23T19:34:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-512","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-23T19:41:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-513","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-23T19:50:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-514","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-23T19:55:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-515","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-23T20:07:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-1076","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-24T09:51:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1077","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-24T10:05:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1078","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-24T10:09:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1079","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-24T10:19:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-865","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-24T13:42:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-866","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-24T13:53:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-867","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-24T14:05:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-868","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-24T14:07:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-869","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-24T14:09:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"m-alex-mix","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-24T17:14:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"final mix notes: bring the chorus up 2dB, delay the bridge vocal 1/8"}
+{"id":"x-1004","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-24T17:38:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-1005","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-24T17:39:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-1006","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-24T17:40:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-516","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-24T19:06:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-517","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-24T19:14:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-518","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-24T19:18:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-519","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-24T19:20:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-1080","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-25T08:46:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1081","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-25T08:52:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1082","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-25T09:03:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1083","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-25T09:12:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1084","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-25T09:20:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-520","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-25T13:34:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-521","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-25T13:41:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-522","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-25T13:55:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-523","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-25T14:08:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-524","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-25T14:12:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-525","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-25T14:21:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-228","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-25T17:30:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-229","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-25T17:39:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-230","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-25T17:40:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-231","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-25T17:48:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-232","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-25T17:57:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-870","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-26T07:55:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-871","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-26T08:02:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-52","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-26T08:42:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-53","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-26T08:48:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-1007","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-26T11:00:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-1008","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-26T11:07:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-1009","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-26T11:14:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1010","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-26T11:22:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-1085","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-26T12:42:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1086","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-26T12:45:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1087","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-26T12:51:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1088","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-26T13:02:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1089","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-26T13:14:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-526","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:09:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-527","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:18:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-528","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-529","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:32:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-530","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:34:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-531","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:36:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-532","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:48:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-533","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-26T19:55:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-233","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-234","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:14:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-235","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:23:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-236","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:25:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-237","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:39:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-238","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:49:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-239","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-27T08:53:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-534","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-27T10:01:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-535","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-27T10:05:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-536","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-27T10:11:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-537","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-27T10:12:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-538","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-27T10:17:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-539","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-27T10:31:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-872","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-27T19:51:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-873","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-27T20:00:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-540","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-28T09:12:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-541","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-28T09:17:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-542","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-28T09:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"m-mum-recipe","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-28T13:18:00.000Z","from":"Mum","is_from_me":false,"text":"the lentil soup needs cumin, coriander, and the smoked paprika — not regular"}
+{"id":"x-1011","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-28T15:50:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-543","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-29T07:04:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-544","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-29T07:05:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-545","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-29T07:18:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-546","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-29T07:31:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-547","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-29T07:40:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-548","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-29T07:48:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-1090","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-29T11:00:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1091","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-29T11:14:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1092","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-29T11:19:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1093","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-29T11:23:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1012","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-29T12:45:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-1013","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-29T12:50:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-874","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-29T12:54:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-875","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-29T12:57:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-1014","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-29T12:58:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-876","chat_id":"chat-mum","chat":"Mum","ts":"2026-07-29T12:59:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-1015","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-29T13:08:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-549","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:16:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-550","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:26:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-551","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-552","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:29:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-553","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:31:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-554","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-555","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-30T08:53:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-54","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-30T11:14:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-55","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-30T11:20:00.000Z","from":"me","is_from_me":true,"text":"the venue moved load-in to 4"}
+{"id":"x-56","chat_id":"chat-priya","chat":"Priya","ts":"2026-07-30T11:31:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-1094","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-30T11:36:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1095","chat_id":"chat-dana","chat":"Dana","ts":"2026-07-30T11:50:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-240","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T19:50:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-241","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T19:54:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-242","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T20:06:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-243","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T20:13:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-244","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T20:17:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-245","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T20:18:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-246","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T20:19:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-247","chat_id":"chat-alex","chat":"Alex","ts":"2026-07-30T20:27:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-556","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T07:37:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-557","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T07:42:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-558","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T07:48:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-559","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T08:01:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-560","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T08:14:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-561","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T08:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-562","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T08:29:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-563","chat_id":"chat-sam","chat":"Sam","ts":"2026-07-31T08:35:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-1016","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-31T13:28:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1017","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-31T13:34:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-1018","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-31T13:37:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"m-shoe-size","chat_id":"chat-riley","chat":"Riley","ts":"2026-07-31T13:50:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"your On Cloud 6 in black is size 10.5 — I'll hold a pair when restocked"}
+{"id":"x-1019","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-01T08:01:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-1020","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-01T08:07:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"x-1021","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-01T08:11:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1022","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-01T08:18:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-564","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T09:57:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-565","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T10:10:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-566","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T10:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-567","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T10:30:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-568","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T10:42:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-569","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T10:45:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-570","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T10:51:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-571","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-01T11:02:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-1096","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-01T14:37:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1097","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-01T14:45:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1098","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-01T14:55:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-248","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-01T15:23:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-249","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-01T15:34:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-877","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-01T15:34:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-250","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-01T15:36:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-878","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-01T15:36:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-879","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-01T15:40:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-251","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-01T15:42:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-954","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-02T14:25:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-955","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-02T14:28:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Your insurance claim has been processed"}
+{"id":"x-252","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-02T15:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-253","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-02T15:06:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-254","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-02T15:09:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-572","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T12:39:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-573","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T12:43:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-574","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T12:52:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-575","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T12:56:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-576","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T13:06:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-577","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T13:17:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-578","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-03T13:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-1099","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-03T14:35:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1100","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-03T14:36:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1101","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-03T14:43:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"m-riley-fit","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-03T18:25:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"cleat position moved 4mm back — knee pain should ease"}
+{"id":"x-1102","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-04T11:35:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1103","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-04T11:36:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1104","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-04T11:48:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-579","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-04T18:57:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-580","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-04T19:08:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-581","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-04T19:13:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-582","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-04T19:16:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-1105","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-05T09:43:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1106","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-05T09:54:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1107","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-05T10:01:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1108","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-05T10:12:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-255","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-256","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:10:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-257","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:12:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-258","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:24:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-259","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:32:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-260","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:42:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-261","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-05T15:45:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-1023","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-05T16:26:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1024","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-05T16:32:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1025","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-05T16:42:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-880","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-05T18:37:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-881","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-05T18:43:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-882","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-05T18:52:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-1109","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-06T07:30:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1110","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-06T07:37:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1111","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-06T07:47:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1112","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-06T07:53:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1113","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-06T07:58:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-979","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-06T10:50:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-980","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-06T10:58:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"x-981","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-06T11:00:00.000Z","from":"me","is_from_me":true,"text":"the hallway paint crew starts Monday"}
+{"id":"x-583","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T11:05:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-584","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T11:07:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-585","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T11:18:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-586","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T11:31:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-587","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T11:35:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-588","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T11:46:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-589","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T12:00:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-590","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-06T12:14:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-883","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-06T15:17:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-884","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-06T15:27:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-885","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-06T15:28:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-886","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-06T15:35:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-887","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-06T15:46:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-262","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-06T16:31:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-263","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-06T16:45:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-264","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-06T16:53:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"m-license-renewal","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-07T08:54:00.000Z","from":"Mum","is_from_me":false,"text":"your driver's license renewal is due Nov 15 — DMV site says allow 6 weeks"}
+{"id":"x-888","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-07T09:04:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-591","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T09:12:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-889","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-07T09:14:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-592","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T09:19:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-593","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T09:23:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-594","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T09:35:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-595","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T09:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-596","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T09:55:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-597","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T10:05:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-598","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T10:07:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-599","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-07T10:18:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-1026","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-07T12:13:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-1027","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-07T12:23:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1028","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-07T12:25:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"x-57","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-07T17:49:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-58","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-07T17:53:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-59","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-07T17:55:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-60","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-07T18:04:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-61","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-07T18:09:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-600","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-08T08:29:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-601","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-08T08:30:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-602","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-08T08:39:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-603","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-08T08:44:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-604","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-08T08:46:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-605","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-08T08:47:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-890","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-08T08:49:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-891","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-08T09:03:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-1029","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-08T13:10:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-1030","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-08T13:17:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"x-1031","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-08T13:23:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1032","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-08T13:27:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-265","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:23:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-266","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:36:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-267","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:37:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-268","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:43:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-269","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:47:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-270","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:49:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-271","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-08T15:51:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-272","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-09T10:22:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-273","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-09T10:36:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-274","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-09T10:47:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-275","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-09T10:49:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-62","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-09T14:23:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-63","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-09T14:30:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-606","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T14:33:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-64","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-09T14:35:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-65","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-09T14:41:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-607","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T14:46:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-608","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T14:47:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-66","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-09T14:50:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-609","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T14:57:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-610","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T15:02:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-611","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T15:16:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-612","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T15:19:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-613","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T15:24:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-614","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-09T15:26:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-615","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-10T10:35:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-616","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-10T10:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-617","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-10T10:48:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-618","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-10T10:58:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-619","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-10T11:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-620","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-10T11:10:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-1114","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-10T13:53:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1115","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-10T14:02:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1116","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-10T14:14:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1117","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-10T14:22:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1118","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-10T14:36:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-892","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-10T17:55:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-893","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-10T18:02:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-1119","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-11T13:11:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1120","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-11T13:25:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-621","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-11T17:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-622","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-11T17:56:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-623","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-11T18:04:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-624","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-11T18:17:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-982","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-11T19:02:00.000Z","from":"me","is_from_me":true,"text":"rent receipt attached — thank you"}
+{"id":"x-983","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-11T19:16:00.000Z","from":"me","is_from_me":true,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"x-67","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-11T19:58:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-68","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-11T20:11:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"m-priya-reimburse","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-11T20:18:00.000Z","from":"Priya Shah","is_from_me":false,"text":"I owe you $180 for the merch run — zelle you Friday"}
+{"id":"x-69","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-11T20:21:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-70","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-11T20:24:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-71","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-11T20:38:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-625","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-12T08:47:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-626","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-12T08:54:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-627","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-12T08:58:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-628","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-12T09:11:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-629","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-12T09:12:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-276","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-12T09:39:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-277","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-12T09:40:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-278","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-12T09:43:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-279","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-12T09:53:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-72","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-12T16:14:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-73","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-12T16:19:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-74","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-12T16:20:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-956","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-13T10:01:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-957","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-13T10:12:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-1121","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-13T12:18:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1122","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-13T12:25:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1123","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-13T12:31:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1124","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-13T12:45:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-630","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-13T19:51:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-631","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-13T20:02:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-632","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-13T20:03:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-633","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-13T20:11:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-634","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-13T20:22:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-635","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-13T20:31:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"m-chain-lube","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-14T08:04:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"your chain is past due — I used Dumonde Lite; next swap due in ~400 miles"}
+{"id":"x-958","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-14T08:29:00.000Z","from":"me","is_from_me":true,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-959","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-14T08:32:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-1125","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-14T14:45:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1126","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-14T14:56:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-984","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-14T18:24:00.000Z","from":"me","is_from_me":true,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"x-636","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-637","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:12:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-638","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:23:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-639","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:36:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-640","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:39:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-641","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:53:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-642","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-14T19:57:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-75","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-15T13:27:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-76","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-15T13:32:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-280","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-15T13:38:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-77","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-15T13:40:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-281","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-15T13:46:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-282","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-15T13:59:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-1127","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-15T15:52:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1128","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-15T16:00:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1129","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-15T16:01:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-643","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T19:13:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-960","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-15T19:15:00.000Z","from":"me","is_from_me":true,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-644","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T19:19:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-645","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T19:33:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-646","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T19:41:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-647","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T19:47:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-648","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T19:49:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-649","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-15T20:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-650","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-16T09:07:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-651","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-16T09:16:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-652","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-16T09:24:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-653","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-16T09:37:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-283","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-16T09:44:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-654","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-16T09:47:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-655","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-16T09:51:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-284","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-16T09:58:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-285","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-16T10:02:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-286","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-16T10:06:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-961","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-16T11:00:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-78","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-16T12:24:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-79","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-16T12:33:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-80","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-16T12:38:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-81","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-16T12:52:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-82","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-16T12:54:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-894","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-16T19:14:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-895","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-16T19:17:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-896","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-16T19:30:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-897","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-16T19:37:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-287","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-17T16:06:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-288","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-17T16:16:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-289","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-17T16:24:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-290","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-17T16:35:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-1033","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-17T16:40:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-291","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-17T16:41:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-292","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-17T16:43:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-1034","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-17T16:49:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-1035","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-17T17:03:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"x-1036","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-17T17:05:00.000Z","from":"me","is_from_me":true,"text":"bike's ready for pickup"}
+{"id":"x-656","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T17:50:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-657","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T17:52:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-658","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T17:58:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-659","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T18:07:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-660","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T18:11:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-661","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T18:15:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-662","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T18:19:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-663","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T18:21:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-664","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-17T18:32:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"m-mum-meds","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-18T11:17:00.000Z","from":"Mum","is_from_me":false,"text":"dad's cardiology follow-up is Nov 3 at UCSF, he wants you on the call"}
+{"id":"x-665","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-18T15:01:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-666","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-18T15:09:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-667","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-18T15:17:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-668","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-18T15:24:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-669","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-18T15:31:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-985","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-18T15:36:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"rent receipt attached — thank you"}
+{"id":"x-670","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-18T15:43:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-83","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-18T16:08:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-84","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-18T16:17:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-85","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-18T16:20:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-86","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-18T16:27:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-671","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T11:36:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-672","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T11:37:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-673","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T11:49:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-674","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T12:01:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-675","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T12:03:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-676","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T12:06:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-677","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-19T12:14:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-87","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-19T14:54:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-88","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-19T15:00:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-89","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-19T15:10:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-90","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-19T15:14:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-91","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-19T15:26:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-293","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-20T14:35:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-294","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-20T14:36:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-295","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-20T14:38:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-296","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-20T14:45:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-297","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-20T14:57:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-962","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-20T15:08:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Your insurance claim has been processed"}
+{"id":"x-963","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-08-20T15:14:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-678","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T15:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-679","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T15:32:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-680","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T15:42:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-681","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T15:49:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-682","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T15:51:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-683","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T15:55:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-684","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T16:05:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-685","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-20T16:11:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-92","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-20T18:14:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-93","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-20T18:15:00.000Z","from":"me","is_from_me":true,"text":"the venue moved load-in to 4"}
+{"id":"x-94","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-20T18:20:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-1130","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-21T14:14:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1131","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-21T14:24:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1132","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-21T14:36:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-686","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T17:17:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-687","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T17:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-898","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-21T17:32:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-688","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T17:38:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-899","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-21T17:38:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-689","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T17:49:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-690","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T17:57:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-691","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T18:10:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-692","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T18:15:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-693","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-21T18:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-694","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T11:40:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-95","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-22T11:42:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-96","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-22T11:47:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-695","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T11:54:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-97","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-22T11:56:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-696","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T11:59:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-697","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T12:05:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-698","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T12:17:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-699","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T12:26:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-700","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T12:40:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-701","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-22T12:47:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-298","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-22T19:02:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-299","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-22T19:14:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"m-rehearsal-day","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-22T19:22:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"rehearsals move to Thursdays starting October, 7pm at the Lockout"}
+{"id":"x-300","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-22T19:28:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-1133","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-22T19:35:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-301","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-22T19:37:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-1134","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-22T19:39:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1135","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-23T07:40:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1136","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-23T07:45:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1137","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-23T07:49:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1138","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-23T08:01:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-98","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-23T14:29:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-99","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-23T14:41:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-100","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-23T14:42:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-101","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-23T14:51:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-102","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-23T15:05:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-302","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-23T16:52:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-303","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-23T16:54:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-304","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-23T16:55:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-305","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-23T17:00:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-306","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-23T17:11:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-702","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T18:43:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-703","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T18:47:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-704","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T18:53:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-705","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T19:04:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-706","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T19:05:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-707","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T19:12:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-708","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T19:17:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-709","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-23T19:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-307","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T12:13:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-308","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T12:26:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-309","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T12:40:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-310","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T12:41:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-311","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T12:45:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-312","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T12:56:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-313","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-24T13:01:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-1139","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-24T14:07:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1140","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-24T14:21:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1141","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-24T14:30:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1142","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-24T14:41:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-103","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-25T15:07:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-104","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-25T15:20:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"m-dana-splits","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-25T15:23:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"splits for the tour: you 70%, TM 15%, agent 15% — confirms the sheet"}
+{"id":"x-105","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-25T15:33:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-900","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-26T08:56:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-901","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-26T08:57:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-902","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-26T08:58:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-903","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-26T09:12:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-904","chat_id":"chat-mum","chat":"Mum","ts":"2026-08-26T09:25:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-1037","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-26T18:38:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"x-106","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-26T18:40:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-1143","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-26T18:46:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-107","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-26T18:49:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-1038","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-26T18:49:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1039","chat_id":"chat-riley","chat":"Riley","ts":"2026-08-26T18:51:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"try the pressure we set last time first"}
+{"id":"x-1144","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-26T18:53:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1145","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-26T19:07:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1146","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-26T19:19:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1147","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-26T19:29:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-710","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-27T08:56:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"m-monitor-return","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-27T09:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"monitor return window closes Oct 12 — must drop it at FedEx before then"}
+{"id":"x-711","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-27T09:03:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-712","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-27T09:08:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-986","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-27T10:05:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-987","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-27T10:14:00.000Z","from":"me","is_from_me":true,"text":"the hallway paint crew starts Monday"}
+{"id":"x-314","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:02:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-315","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-316","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:13:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-317","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:20:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-318","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:34:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-319","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:40:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-320","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T11:51:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-321","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-27T12:00:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-1148","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-27T15:17:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1149","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-27T15:20:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1150","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-27T15:28:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-988","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-08-28T07:43:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-713","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-28T07:54:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-714","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-28T08:06:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-715","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-28T08:09:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-716","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-28T08:15:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-322","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:09:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-323","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:12:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-324","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:15:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-325","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:24:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-326","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:36:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-327","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:40:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-328","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-28T14:43:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-329","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-29T15:44:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-330","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-29T15:52:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-331","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-29T15:59:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-332","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-29T16:08:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"m-priya-call","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-29T16:48:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call before the SJ show — want to lock the guest list by Wednesday"}
+{"id":"x-108","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-30T16:31:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-109","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-30T16:43:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-110","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-30T16:48:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-111","chat_id":"chat-priya","chat":"Priya","ts":"2026-08-30T17:01:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-1151","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-31T08:09:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1152","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-31T08:19:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1153","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-31T08:22:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1154","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-31T08:34:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1155","chat_id":"chat-dana","chat":"Dana","ts":"2026-08-31T08:39:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-333","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T09:30:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-334","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T09:43:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-335","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T09:55:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-336","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T10:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-337","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T10:13:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-338","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T10:17:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-339","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T10:29:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-340","chat_id":"chat-alex","chat":"Alex","ts":"2026-08-31T10:32:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-717","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-31T13:55:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-718","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-31T13:57:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-719","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-31T14:01:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-720","chat_id":"chat-sam","chat":"Sam","ts":"2026-08-31T14:09:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-1040","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-01T11:56:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-1041","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-01T12:07:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1042","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-01T12:18:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-1043","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-01T12:31:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-964","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-01T14:35:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Reminder: cleaning scheduled — reply C to confirm"}
+{"id":"x-965","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-01T14:37:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"Your insurance claim has been processed"}
+{"id":"x-341","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-01T16:38:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-342","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-01T16:39:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-343","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-01T16:45:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-344","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-01T16:56:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-345","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-01T17:07:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-346","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-01T17:10:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-721","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-01T17:14:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-722","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-01T17:19:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-723","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-01T17:28:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-724","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-01T17:38:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-1156","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-01T17:43:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"m-dana-venue","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-01T17:53:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"The Independent wants the 12/04 date — hold fee $800, contract by Friday"}
+{"id":"x-1157","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-01T17:55:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1158","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-01T18:08:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1159","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-01T18:15:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1160","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-01T18:24:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1161","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-02T09:29:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1162","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-02T09:32:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1163","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-02T09:34:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1164","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-02T09:42:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"m-mum-birthday","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-02T16:38:00.000Z","from":"Mum","is_from_me":false,"text":"your aunt's 70th is Nov 8 — we're doing brunch at Zazie"}
+{"id":"x-725","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:00:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-966","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-03T11:05:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-112","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-03T11:06:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-726","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:11:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-113","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-03T11:13:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-727","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:16:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-728","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:17:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-967","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-03T11:17:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-729","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:26:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-730","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:34:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-731","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:40:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-732","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:41:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-733","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-03T11:51:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-1165","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-03T15:48:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1166","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-03T15:53:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1167","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-03T15:58:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1168","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-03T16:04:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1169","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-03T16:08:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-905","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-03T18:12:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-906","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-03T18:23:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-734","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-04T12:37:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-735","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-04T12:46:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-736","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-04T12:48:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-737","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-04T13:02:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-738","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-04T13:13:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-114","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-04T14:22:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-115","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-04T14:33:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-116","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-04T14:46:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-1170","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-04T19:57:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1171","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-04T20:05:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1172","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-04T20:07:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1173","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-04T20:16:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-739","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-05T16:02:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-740","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-05T16:05:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-741","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-05T16:19:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-742","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-05T16:26:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-907","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-05T19:07:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-347","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-05T19:10:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-348","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-05T19:17:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-908","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-05T19:18:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-349","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-05T19:21:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-909","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-05T19:25:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-350","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-05T19:30:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-910","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-05T19:31:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-911","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-05T19:36:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-351","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-05T19:42:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-352","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-05T19:46:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-912","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-06T09:01:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-913","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-06T09:09:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"m-dentist-ref","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-06T12:54:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"appointment Sep 29 10:15, ref APT-77312"}
+{"id":"x-743","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T09:28:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-744","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T09:33:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-745","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T09:34:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-746","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T09:39:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-747","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T09:42:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-748","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T09:49:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-749","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T10:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-750","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-07T10:14:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-117","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-07T16:27:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-118","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-07T16:34:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-119","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-07T16:40:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-120","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-07T16:44:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-121","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-07T16:54:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"m-alex-van","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-07T17:31:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"van needs new brake pads before the run — booked Oct 9 at Don's"}
+{"id":"x-353","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-08T08:15:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-354","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-08T08:16:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-355","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-08T08:28:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-356","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-08T08:32:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-914","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-08T14:12:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-915","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-08T14:22:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-916","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-08T14:28:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-917","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-08T14:29:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-751","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-08T16:15:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-752","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-08T16:22:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-753","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-08T16:23:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-754","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-08T16:25:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-755","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-08T16:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-357","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-09T14:31:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-358","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-09T14:33:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-359","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-09T14:43:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-360","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-09T14:52:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-361","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-09T15:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-362","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-09T15:05:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-122","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-09T17:40:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-123","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-09T17:41:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-1174","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-09T17:47:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1175","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-09T17:53:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-756","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-09T18:28:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-757","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-09T18:42:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-758","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-09T18:53:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-759","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-09T19:06:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-1176","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-10T12:25:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1177","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-10T12:30:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1044","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-10T17:28:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-1045","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-10T17:29:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"bike's ready for pickup"}
+{"id":"x-989","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-10T19:25:00.000Z","from":"me","is_from_me":true,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"x-990","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-10T19:36:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"m-sam-anniversary","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-10T19:41:00.000Z","from":"Sam Chen","is_from_me":false,"text":"anniversary dinner is Oct 18 — I booked Liholiho, 8pm"}
+{"id":"x-363","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T08:29:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-364","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T08:39:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-365","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T08:49:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-366","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T09:03:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-367","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T09:12:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-368","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T09:13:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-369","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T09:27:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-370","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-11T09:33:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-918","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-11T10:24:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-919","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-11T10:31:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-920","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-11T10:37:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-124","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-11T13:59:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-125","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-11T14:10:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-126","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-11T14:21:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-127","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-11T14:30:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-128","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-11T14:39:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-991","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-11T15:53:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-1178","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-11T16:26:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1179","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-11T16:35:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1180","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-11T16:46:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1181","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-11T16:57:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-760","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T19:14:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-761","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T19:23:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-762","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T19:25:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-763","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T19:31:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-764","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T19:44:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-765","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T19:55:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-766","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T20:04:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-767","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-11T20:16:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-768","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T11:54:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-769","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:02:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-770","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:10:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-771","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:12:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-772","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:16:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-129","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-12T12:27:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-773","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:28:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-774","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:30:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-130","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-12T12:35:00.000Z","from":"me","is_from_me":true,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-131","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-12T12:36:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-775","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-12T12:42:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-1182","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-12T15:09:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1183","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-12T15:19:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"m-landlord-lease","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-12T15:46:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"lease renewal paper goes out Oct 20 — same terms, +3%"}
+{"id":"x-968","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-13T10:03:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-969","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-13T10:15:00.000Z","from":"me","is_from_me":true,"text":"Your insurance claim has been processed"}
+{"id":"x-776","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-13T13:29:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-777","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-13T13:33:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-921","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-13T13:35:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-778","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-13T13:36:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-779","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-13T13:40:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-922","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-13T13:43:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-923","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-13T13:52:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-371","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-14T07:05:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-372","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-14T07:17:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-373","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-14T07:21:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-374","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-14T07:22:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"m-priya-flight","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-14T08:05:00.000Z","from":"Priya Shah","is_from_me":false,"text":"I'm landing Sep 30 at 18:40 on UA1142 — pickup?"}
+{"id":"m-priya-conf","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-14T08:13:00.000Z","from":"Priya Shah","is_from_me":false,"text":"confirmation code for the flight is XKJV92"}
+{"id":"x-1184","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-14T09:30:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1185","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-14T09:36:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1186","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-14T09:49:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1187","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-14T10:03:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-992","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-14T11:24:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"the hallway paint crew starts Monday"}
+{"id":"x-993","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-14T11:33:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"water shutoff Tuesday 10-noon for the stack repair"}
+{"id":"x-994","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-14T11:35:00.000Z","from":"me","is_from_me":true,"text":"the hallway paint crew starts Monday"}
+{"id":"x-780","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T16:39:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-781","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T16:47:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-782","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T17:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-783","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T17:12:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-784","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T17:19:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-785","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T17:29:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-786","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-14T17:34:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-787","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T11:58:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-788","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T12:04:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-789","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T12:17:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-790","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T12:29:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-791","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T12:43:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-792","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T12:54:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-793","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T13:06:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-794","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-15T13:07:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-1046","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-15T13:53:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-1047","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-15T13:58:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1048","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-15T14:08:00.000Z","from":"me","is_from_me":true,"text":"try the pressure we set last time first"}
+{"id":"x-132","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-16T19:06:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-133","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-16T19:18:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"m-dana-settime","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-16T19:19:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"set time 21:00, 75 min, soundcheck 17:30"}
+{"id":"x-134","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-16T19:32:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-135","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-16T19:33:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-136","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-16T19:36:00.000Z","from":"Priya Shah","is_from_me":false,"text":"the venue moved load-in to 4"}
+{"id":"x-137","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-16T19:42:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-795","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-17T11:31:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-796","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-17T11:37:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-797","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-17T11:41:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-798","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-17T11:51:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"m-landlord-plumber","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-18T11:03:00.000Z","from":"Mr Okafor","is_from_me":false,"text":"plumber comes Oct 2 between 9–12 for the kitchen tap"}
+{"id":"x-799","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-18T17:33:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-800","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-18T17:45:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-801","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-18T17:58:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-802","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-18T18:04:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-803","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-18T18:13:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-1188","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-18T19:48:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1189","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-18T19:57:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1190","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-18T19:58:00.000Z","from":"me","is_from_me":true,"text":"counter came back — $1,900 guarantee on the 21st"}
+{"id":"x-1191","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-18T20:12:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1192","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-18T20:14:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-804","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-19T07:29:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-805","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-19T07:30:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-806","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-19T07:31:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-807","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-19T07:43:00.000Z","from":"me","is_from_me":true,"text":"movie night Friday?"}
+{"id":"x-808","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-19T07:55:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-809","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-19T08:03:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-138","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-19T12:14:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-139","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-19T12:24:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-140","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-19T12:32:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-924","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-19T12:48:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-925","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-19T12:49:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-926","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-19T13:01:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-927","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-19T13:02:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-928","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-19T13:11:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-995","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-19T14:36:00.000Z","from":"me","is_from_me":true,"text":"rent receipt attached — thank you"}
+{"id":"x-996","chat_id":"chat-landlord","chat":"Mr Okafor","ts":"2026-09-19T14:38:00.000Z","from":"me","is_from_me":true,"text":"rent receipt attached — thank you"}
+{"id":"x-375","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-19T18:40:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-376","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-19T18:42:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-377","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-19T18:47:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-929","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-20T13:29:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-930","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-20T13:33:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-931","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-20T13:42:00.000Z","from":"Mum","is_from_me":false,"text":"dad says hi"}
+{"id":"x-810","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-20T14:24:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-811","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-20T14:31:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-812","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-20T14:34:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-378","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-20T17:17:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-379","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-20T17:29:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-380","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-20T17:36:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-381","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-20T17:50:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-932","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-21T08:24:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-933","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-21T08:38:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-934","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-21T08:40:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-935","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-21T08:49:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-936","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-21T08:52:00.000Z","from":"Mum","is_from_me":false,"text":"did the tomatoes take"}
+{"id":"x-382","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T15:58:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-383","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:05:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-384","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:08:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-385","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:15:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-386","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:25:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"that take from Tuesday was the one"}
+{"id":"x-387","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:31:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-388","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:45:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-813","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T16:46:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-389","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-21T16:48:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-814","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T16:52:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-815","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T17:00:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-816","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T17:03:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-817","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T17:11:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your package arrived — left it inside"}
+{"id":"x-818","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T17:22:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-819","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T17:30:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-820","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-21T17:34:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-141","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-21T18:50:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-142","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-21T18:59:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-143","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-21T19:00:00.000Z","from":"me","is_from_me":true,"text":"lunch next week?"}
+{"id":"x-390","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-22T09:56:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-391","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-22T10:03:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-392","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-22T10:16:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-970","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-22T14:56:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-971","chat_id":"chat-dentist","chat":"Bright Smile Dental","ts":"2026-09-22T14:57:00.000Z","from":"Bright Smile Dental","is_from_me":false,"text":"We have a cancellation Friday morning if you'd like it"}
+{"id":"x-1193","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-22T16:58:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1194","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-22T17:01:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1195","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-22T17:06:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1196","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-22T17:08:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"poster proof attached — approve today if possible"}
+{"id":"x-937","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-22T18:14:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-938","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-22T18:23:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-939","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-22T18:32:00.000Z","from":"me","is_from_me":true,"text":"call your aunt when you get a chance"}
+{"id":"x-144","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-22T19:23:00.000Z","from":"Priya Shah","is_from_me":false,"text":"call when you're free — label thing"}
+{"id":"x-145","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-22T19:33:00.000Z","from":"me","is_from_me":true,"text":"call when you're free — label thing"}
+{"id":"x-146","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-22T19:46:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-821","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-22T19:52:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-822","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-22T20:01:00.000Z","from":"Sam Chen","is_from_me":false,"text":"out with Dana tonight, back by 11"}
+{"id":"x-823","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-22T20:05:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"m-sam-passport","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-22T20:18:00.000Z","from":"Sam Chen","is_from_me":false,"text":"your passport expires Mar 2027 — the Mexico trip needs it renewed"}
+{"id":"x-824","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-22T20:22:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-1197","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-23T08:46:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"routing sheet updated for the second leg"}
+{"id":"x-1198","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-23T09:00:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-147","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-23T11:39:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-148","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-23T11:42:00.000Z","from":"me","is_from_me":true,"text":"did the merch numbers come in"}
+{"id":"x-149","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-23T11:53:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-150","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-23T11:56:00.000Z","from":"me","is_from_me":true,"text":"send me the new stems when you have them"}
+{"id":"x-151","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-23T12:04:00.000Z","from":"Priya Shah","is_from_me":false,"text":"send me the new stems when you have them"}
+{"id":"x-940","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-23T12:15:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-825","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-23T12:17:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-941","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-23T12:17:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}
+{"id":"x-826","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-23T12:22:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-942","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-23T12:27:00.000Z","from":"me","is_from_me":true,"text":"did the tomatoes take"}
+{"id":"x-827","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-23T12:30:00.000Z","from":"Sam Chen","is_from_me":false,"text":"movie night Friday?"}
+{"id":"x-828","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-23T12:38:00.000Z","from":"me","is_from_me":true,"text":"picking up groceries on the way"}
+{"id":"x-829","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-23T12:40:00.000Z","from":"me","is_from_me":true,"text":"your package arrived — left it inside"}
+{"id":"x-830","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-23T12:49:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-393","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-23T17:21:00.000Z","from":"me","is_from_me":true,"text":"that take from Tuesday was the one"}
+{"id":"x-394","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-23T17:33:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-395","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-23T17:34:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"drummer can't make Thursday"}
+{"id":"x-396","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-23T17:35:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-397","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-23T17:39:00.000Z","from":"me","is_from_me":true,"text":"setlist order draft in the folder"}
+{"id":"x-1199","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-24T10:04:00.000Z","from":"me","is_from_me":true,"text":"hotel block is confirmed for crew"}
+{"id":"x-1200","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-24T10:09:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1201","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-24T10:23:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-1202","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-24T10:29:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-152","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-24T14:55:00.000Z","from":"Priya Shah","is_from_me":false,"text":"lunch next week?"}
+{"id":"x-153","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-24T14:58:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-154","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-24T15:04:00.000Z","from":"Priya Shah","is_from_me":false,"text":"did the merch numbers come in"}
+{"id":"x-155","chat_id":"chat-priya","chat":"Priya","ts":"2026-09-24T15:16:00.000Z","from":"Priya Shah","is_from_me":false,"text":"remind me to flag the ticketing add-on"}
+{"id":"x-943","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-24T17:55:00.000Z","from":"Mum","is_from_me":false,"text":"Sunday lunch still on?"}
+{"id":"x-944","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-24T18:03:00.000Z","from":"me","is_from_me":true,"text":"sending photos from the garden"}
+{"id":"x-1049","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-24T18:26:00.000Z","from":"Riley (Bike Shop)","is_from_me":false,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-1050","chat_id":"chat-riley","chat":"Riley","ts":"2026-09-24T18:36:00.000Z","from":"me","is_from_me":true,"text":"swapped the cassette — wear was worse than it looked"}
+{"id":"x-831","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-24T19:40:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-832","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-24T19:42:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-833","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-24T19:48:00.000Z","from":"Sam Chen","is_from_me":false,"text":"picking up groceries on the way"}
+{"id":"x-834","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-24T19:59:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-1203","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-25T07:15:00.000Z","from":"Dana Reyes","is_from_me":false,"text":"hotel block is confirmed for crew"}
+{"id":"x-1204","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-25T07:19:00.000Z","from":"me","is_from_me":true,"text":"poster proof attached — approve today if possible"}
+{"id":"x-1205","chat_id":"chat-dana","chat":"Dana","ts":"2026-09-25T07:28:00.000Z","from":"me","is_from_me":true,"text":"routing sheet updated for the second leg"}
+{"id":"x-835","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-25T11:13:00.000Z","from":"me","is_from_me":true,"text":"out with Dana tonight, back by 11"}
+{"id":"x-836","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-25T11:22:00.000Z","from":"me","is_from_me":true,"text":"did you see the kitchen light flicker again"}
+{"id":"x-837","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-25T11:35:00.000Z","from":"me","is_from_me":true,"text":"plants watered"}
+{"id":"x-838","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-25T11:40:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-839","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-25T11:45:00.000Z","from":"Sam Chen","is_from_me":false,"text":"plants watered"}
+{"id":"x-840","chat_id":"chat-sam","chat":"Sam","ts":"2026-09-25T11:50:00.000Z","from":"Sam Chen","is_from_me":false,"text":"did you see the kitchen light flicker again"}
+{"id":"x-398","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T13:23:00.000Z","from":"me","is_from_me":true,"text":"we're loud enough lol"}
+{"id":"x-399","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T13:36:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"new demo is up — bridge is different"}
+{"id":"x-400","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T13:43:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"we're loud enough lol"}
+{"id":"x-401","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T13:47:00.000Z","from":"me","is_from_me":true,"text":"new demo is up — bridge is different"}
+{"id":"x-402","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T13:55:00.000Z","from":"me","is_from_me":true,"text":"drummer can't make Thursday"}
+{"id":"x-403","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T14:07:00.000Z","from":"me","is_from_me":true,"text":"borrow your DI box Saturday?"}
+{"id":"x-404","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T14:21:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"setlist order draft in the folder"}
+{"id":"x-405","chat_id":"chat-alex","chat":"Alex","ts":"2026-09-25T14:30:00.000Z","from":"Alex Rivera","is_from_me":false,"text":"borrow your DI box Saturday?"}
+{"id":"x-945","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-25T15:07:00.000Z","from":"me","is_from_me":true,"text":"Sunday lunch still on?"}
+{"id":"x-946","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-25T15:16:00.000Z","from":"Mum","is_from_me":false,"text":"call your aunt when you get a chance"}
+{"id":"x-947","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-25T15:30:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-948","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-25T15:38:00.000Z","from":"Mum","is_from_me":false,"text":"sending photos from the garden"}
+{"id":"x-949","chat_id":"chat-mum","chat":"Mum","ts":"2026-09-25T15:50:00.000Z","from":"me","is_from_me":true,"text":"dad says hi"}

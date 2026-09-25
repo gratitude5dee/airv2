@@ -23,6 +23,35 @@ Agent time (excludes reconciliation), n=109/109: mean **60.8s**, p50 **44.3s**, 
 > call. `box_seconds` is written by the box sweeper on stop, so it reads 0 for
 > a box that stayed awake across the whole suite.
 
+## Why the jump vs run 1 (routing 39% → 97%)
+
+Run 1 (`2026-09-11T-tenki-run1`, earlier the same day) scored routing at 39%
+on 266 traced gateway calls, $1.9699 spend, 17,131 completion tokens, mean
+agent time 6.2s. Between the two runs three changes landed in the gateway:
+
+- **PR #398** (`33ef8c1e` "gateway: serve OpenAI reasoning models via
+  /responses; retire ox-alpha", merged `1a0bd0d0` ~16:34 UTC) switched the
+  OpenAI lane from `/chat/completions` to `/v1/responses`. On
+  `/chat/completions`, gpt-5.6 rejects function tools at any reasoning effort
+  other than `none`, so every tool-bearing turn in run 1 was silently pinned
+  to `reasoning_effort=none` — luna effectively ran with reasoning off. On
+  `/responses`, the effort actually applies.
+- The same PR flipped `DEFAULT_MODEL_FAMILY` from `ox-alpha` to `openai`
+  (ox-alpha removed from `ModelFamily`, pricing, and family options). Run 1
+  ran `gpt-5.6-luna` under the ox-alpha fallback path; run 2 is the `openai`
+  family direct — zero fallbacks.
+- **`MODEL_REASONING_FAST` default went `low` → `xhigh`** in #398, and
+  PR #399 (`5eec19a7`, `cb4d6370`, `711e86a1`, `7ade7f98`, ~16:37–18:07 UTC)
+  made reasoning continuation survive across the tool-call loop.
+
+That is the whole jump: the 97% is the same suite with reasoning actually
+enabled, not a routing improvement. The cost signature matches — reasoning
+tokens are billed as completion, so completion tokens went 17k → 640k and
+spend $1.97 → $21.47 (10.9×) while calls went 266 → 1536 (each tool-bearing
+turn now carries reasoning continuation requests), and mean agent time went
+6.2s → 60.8s. Compare routing scores across these two runs only against the
+model config that produced them.
+
 ## Per-category pass rates
 
 | Category | n | routing | execution | gating | context use | honesty |
