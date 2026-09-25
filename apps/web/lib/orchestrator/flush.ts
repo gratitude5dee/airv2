@@ -1534,7 +1534,10 @@ async function runFlushInner(
       await streamBubbles(sender, job.spaceId, job.phone, remainder());
     }
 
-    if (!cancelled && stripped.files.length > 0) {
+    // Files are owner-scoped like cards: a tier-1 burst must never pull
+    // bytes off the box, even an outbox file. There is no per-sender
+    // deliverable lane yet — until one exists the whole lane stays closed.
+    if (!cancelled && stripped.files.length > 0 && job.senderTier === 0) {
       await deliverSendFiles(
         sender,
         box.boxId,
