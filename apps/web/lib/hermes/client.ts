@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
+import { log } from "../log";
 import {
   parseRawMessages,
   sanitizeConversation,
@@ -50,6 +51,10 @@ export interface RunRequest {
   /** Extra system instructions for this run (Create injects the Kit's
    * system prompt + project context here, §9.2). */
   instructions?: string;
+  /** Stable dedup key for the unit of work the run answers: a retried
+   * burst resends the same key so the run endpoint cannot start a second
+   * run while the first is still alive (R-ARCH-06). */
+  idempotencyKey?: string;
 }
 
 const RunResponseSchema = z.object({ run_id: z.string() });
@@ -134,7 +139,14 @@ export async function loadConversationTranscript(
     if (!response.ok) return { rows: 0, history: [] };
     const raw = parseRawMessages(await response.json());
     return { rows: raw.length, history: sanitizeConversation(raw) };
-  } catch {
+  } catch (error) {
+    // An empty history here is silent amnesia for the turn — log it so the
+    // amnesia shows up in the control plane (R-ARCH-06).
+    log.error("conversation transcript load failed", {
+      box_id: null,
+      session_id: sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { rows: 0, history: [] };
   }
 }
@@ -169,6 +181,9 @@ export async function createRun(
       ...(request.metadata ? { metadata: request.metadata } : {}),
       ...(request.model ? { model: request.model } : {}),
       ...(request.instructions ? { instructions: request.instructions } : {}),
+      ...(request.idempotencyKey
+        ? { idempotency_key: request.idempotencyKey }
+        : {}),
     }),
   });
 }

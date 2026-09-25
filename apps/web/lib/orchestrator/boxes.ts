@@ -16,6 +16,7 @@ import {
   type HostedRoute,
 } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
+import { log } from "../log";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import { recordBoxStateEvent } from "../box/events";
 import { boxTarget } from "../compute/runtime";
@@ -448,8 +449,15 @@ export async function ensureBoxAwake(
   } catch (error) {
     // The deadline was cleared above and the caller's re-arm will never run
     // for a wake that throws — restore it so the sweeper can still stop the
-    // box.
-    await armStopAfter(supabase, userId).catch(() => undefined);
+    // box. A swallowed failure here keeps the box awake ~30 min — log it so
+    // the leak is visible (R-ARCH-06).
+    await armStopAfter(supabase, userId).catch((error: unknown) =>
+      log.error("arm stop_after after wake failure failed", {
+        user_id: userId,
+        box_id: boxId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
     // A wake that dies after the "starting" write (waitForBox throwing, the
     // health loop deadline) must not park the row in a transitional state
     // the UI has no controls for: persist the provider's real state.
