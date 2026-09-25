@@ -115,6 +115,8 @@ async function deliverHeldBurst(
     space_id: request.space_id,
     phone: request.phone,
     sender_id: request.sender_address,
+    // Location requests are only ever opened for owner intents.
+    sender_tier: 0,
     message_id: `${idPrefix}${index}`,
     body,
   }));

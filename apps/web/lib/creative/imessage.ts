@@ -94,11 +94,14 @@ export async function maybeRunCreativeLane(
   const startedAtMs = Number.isFinite(job.receivedAtMs)
     ? Number(job.receivedAtMs)
     : Date.now();
-  // Strip debounce framing so the parser sees only the user's words.
+  // Strip debounce framing — the carried prefix and the R-SEC-02 sender
+  // labels — so the parser sees only the user's words.
   const attachmentIds: string[] = [];
   const text = rawInput
     .split("\n")
-    .map((line) => line.replace(/^\[Earlier message\] /, ""))
+    .map((line) =>
+      line.replace(/^(?:\[Earlier message\] )?(?:\[from [^\]]*\] )?/, "")
+    )
     .join("\n")
     .replace(ATTACHMENT_MARKER, (_, ids: string) => {
       attachmentIds.push(...ids.split(",").filter(Boolean));
