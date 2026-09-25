@@ -3,7 +3,7 @@
  * ledger write logging without throwing.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AdminFakeDb } from "./testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { adminAuditRow, recordAdminAudit } from "./audit";
 
 const app = { id: "app-1", slug: "alice-promo", owner_user_id: "user-alice" };
@@ -30,7 +30,7 @@ describe("adminAuditRow", () => {
 
 describe("recordAdminAudit", () => {
   it("inserts one admin_audit row", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     expect(await recordAdminAudit(db.client(), { action: "dev_revoke", app })).toBe(true);
     expect(db.inserts).toHaveLength(1);
     expect(db.inserts[0]).toMatchObject({
@@ -40,7 +40,7 @@ describe("recordAdminAudit", () => {
   });
 
   it("logs and returns false when the ledger write fails", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.errors["admin_audit"] = { message: "relation does not exist" };
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(await recordAdminAudit(db.client(), { action: "suspend", app })).toBe(false);

@@ -9,6 +9,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 type BoxRow = {
   user_id: string;
@@ -19,8 +20,7 @@ type BoxRow = {
 };
 
 const db = vi.hoisted(() => ({
-  box: null as BoxRow | null,
-  error: null as { message: string } | null,
+  fake: null as unknown as FakeSupabase,
 }));
 
 const replaceBox = vi.hoisted(() => vi.fn());
@@ -42,18 +42,7 @@ const ReplaceInProgressError = vi.hoisted(
 );
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: () => {
-      const chain: Record<string, unknown> = {};
-      chain["select"] = vi.fn(() => chain);
-      chain["eq"] = vi.fn(() => chain);
-      chain["maybeSingle"] = vi.fn(async () => ({
-        data: db.error || !db.box ? null : { ...db.box },
-        error: db.error,
-      }));
-      return chain;
-    },
-  }),
+  serviceClient: () => db.fake.client(),
 }));
 
 vi.mock("@/lib/provisioning/provision", () => ({
@@ -95,10 +84,13 @@ const row = (overrides: Partial<BoxRow> = {}): BoxRow => ({
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
-  db.box = null;
-  db.error = null;
+  db.fake = new FakeSupabase();
   replaceBox.mockReset();
 });
+
+const seedBox = (box: BoxRow | null) => {
+  db.fake.tables["boxes"] = box ? [{ ...box }] : [];
+};
 
 describe("POST /api/admin/boxes/reprovision", () => {
   it("401s without the admin key", async () => {
@@ -134,7 +126,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("500s when the box lookup fails", async () => {
-    db.error = { message: "db down" };
+    db.fake.errors["boxes"] = { message: "db down" };
     const response = await POST(post({ user_id: "u1", box_id: "bx_old" }));
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "db down" });
@@ -142,14 +134,14 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("409s when box_id is not the user's current box", async () => {
-    db.box = row({ provider_box_id: "bx_new" });
+    seedBox(row({ provider_box_id: "bx_new" }));
     const response = await POST(post({ user_id: "u1", box_id: "bx_old" }));
     expect(response.status).toBe(409);
     expect(replaceBox).not.toHaveBeenCalled();
   });
 
   it("409s while another call holds the replacement lease, whatever state says", async () => {
-    db.box = row({ state: "starting" });
+    seedBox(row({ state: "starting" }));
     replaceBox.mockRejectedValue(new ReplaceInProgressError("bx_old"));
     const response = await POST(post({ user_id: "u1", box_id: "bx_old" }));
     expect(response.status).toBe(409);
@@ -159,7 +151,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("rebuilds the named box in its own environment through the lease", async () => {
-    db.box = row({ environment: "omarchy", state: "idle" });
+    seedBox(row({ environment: "omarchy", state: "idle" }));
     replaceBox.mockResolvedValue(result("omarchy"));
     const response = await POST(post({ user_id: "u1", box_id: "bx_old" }));
     expect(response.status).toBe(200);
@@ -180,7 +172,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("falls back to the default environment on a pre-migration row", async () => {
-    db.box = row({ environment: null });
+    seedBox(row({ environment: null }));
     replaceBox.mockResolvedValue(result("ubuntu"));
     expect((await POST(post({ user_id: "u1", box_id: "bx_old" }))).status).toBe(
       200,
@@ -195,7 +187,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("switches an Ubuntu box to Tenki only when explicitly requested", async () => {
-    db.box = row();
+    seedBox(row());
     replaceBox.mockResolvedValue({
       ...result("ubuntu"),
       boxId: "tk_new",
@@ -221,7 +213,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("preserves the current provider when provider is omitted", async () => {
-    db.box = row({ provider: "tenki", provider_box_id: "tk_old" });
+    seedBox(row({ provider: "tenki", provider_box_id: "tk_old" }));
     replaceBox.mockResolvedValue({
       ...result("ubuntu"),
       boxId: "tk_new",
@@ -239,11 +231,11 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("preserves namespace for a macOS replacement when provider is omitted", async () => {
-    db.box = row({
+    seedBox(row({
       provider: "namespace",
       provider_box_id: "mac_old",
       environment: "macos",
-    });
+    }));
     replaceBox.mockResolvedValue({
       ...result("macos"),
       boxId: "mac_new",
@@ -269,11 +261,11 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("rejects provider overrides for macOS replacements", async () => {
-    db.box = row({
+    seedBox(row({
       provider: "namespace",
       provider_box_id: "mac_old",
       environment: "macos",
-    });
+    }));
     const response = await POST(
       post({ user_id: "u1", box_id: "mac_old", provider: "ascii" }),
     );
@@ -285,7 +277,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("rejects Tenki for a non-Ubuntu environment before replacement", async () => {
-    db.box = row({ environment: "omarchy" });
+    seedBox(row({ environment: "omarchy" }));
     const response = await POST(
       post({ user_id: "u1", box_id: "bx_old", provider: "tenki" }),
     );
@@ -297,7 +289,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("500s when the fork fails before the row moves", async () => {
-    db.box = row({ state: "stopped" });
+    seedBox(row({ state: "stopped" }));
     replaceBox.mockRejectedValue(new Error("fork failed"));
     const response = await POST(post({ user_id: "u1", box_id: "bx_old" }));
     expect(response.status).toBe(500);
@@ -305,7 +297,7 @@ describe("POST /api/admin/boxes/reprovision", () => {
   });
 
   it("reports the committed box when setup fails after the row moved", async () => {
-    db.box = row();
+    seedBox(row());
     replaceBox.mockRejectedValue(new SwitchSetupError("bx_new"));
     const response = await POST(post({ user_id: "u1", box_id: "bx_old" }));
     expect(response.status).toBe(500);

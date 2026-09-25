@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const db = vi.hoisted(() => ({ fake: null as unknown as { client(): unknown } }));
@@ -74,12 +74,12 @@ function version(overrides: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-let fake: AdminFakeDb;
+let fake: FakeSupabase;
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
   delete process.env["VERCEL_GIT_COMMIT_SHA"];
-  fake = new AdminFakeDb();
+  fake = new FakeSupabase();
   db.fake = fake;
   lane.ready = false;
   functions.loadFunctions.mockResolvedValue(null);
