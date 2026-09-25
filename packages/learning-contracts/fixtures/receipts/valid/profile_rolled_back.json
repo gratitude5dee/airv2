@@ -1,0 +1,13 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "profile_rolled_back",
+  "idempotency_key": "aa11bb22cc33dd44ee55ff6600112233",
+  "occurred_at": "2026-09-21T11:58:02Z",
+  "profile_id": "prof_7e1c9a04d2f8",
+  "status": "rolled_back",
+  "rollback_reason": "hard_gate",
+  "aggregate": {
+    "hard_gate_failures": 2,
+    "sample_count": 31
+  }
+}
