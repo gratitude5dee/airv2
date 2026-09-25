@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   check:
-    name: check (${{ matrix.worker }})
+    name: check (${{ matrix.worker.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
