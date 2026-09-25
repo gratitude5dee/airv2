@@ -233,6 +233,36 @@ async function sendInitialReply(
     if (markerId && !sent) {
       await dropQuickAckMarker(supabase, message.spaceId, markerId);
     }
+    // R-PERF-08: durable TTFK receipt on the agent_runs ledger — one row per
+    // burst-start send attempt so the fast-lane vs fixed-template decision
+    // can read a week of outcomes instead of ephemeral log lines.
+    // ttfk_met is delivered AND inside the SLA window; ttfk_lane is the
+    // initialResponse source ('acknowledgement' | 'arithmetic' | 'context' |
+    // 'gmi' | 'fallback').
+    const elapsedMs = Date.now() - receivedAtMs;
+    const { error: receiptError } = await supabase
+      .from("agent_runs")
+      .insert({
+        user_id: message.userId,
+        hermes_run_id: null,
+        trigger: "imessage",
+        started_at: new Date(receivedAtMs).toISOString(),
+        ended_at: new Date().toISOString(),
+        outcome: sent ? "first_bubble" : "first_bubble_failed",
+        ttfk_ms: elapsedMs,
+        ttfk_met: sent && elapsedMs <= INITIAL_REPLY_SLA_MS,
+        ttfk_lane: response.source,
+      });
+    if (receiptError) {
+      console.error(
+        JSON.stringify({
+          msg: "imessage ttfk receipt write failed",
+          user_id: message.userId,
+          space_id: message.spaceId,
+          error: receiptError.message,
+        })
+      );
+    }
   }
 }
 
