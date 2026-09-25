@@ -20,14 +20,11 @@ import { command, writeFile } from "../box/client";
 import {
   createRun,
   ensureSession,
-  loadConversationTranscript,
   MAIN_SESSION,
   MAIN_SESSION_TITLE,
   runEvents,
   stopRun,
-  type HermesBoxTarget,
 } from "../hermes/client";
-import type { ConversationMessage } from "../hermes/history";
 import { isStateDatabaseError, logStateDatabaseHealth } from "../hermes/stateHealth";
 import { maybeRecoverStateDatabase } from "../hermes/stateRecovery";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
@@ -662,84 +659,6 @@ async function notifyFirstRetry(
 }
 
 /**
- * Explicit, observable history replay for an iMessage turn.
- *
- * createRun replays the transcript itself when `conversationHistory` is
- * omitted, but that load degrades to an empty history on any error — an
- * unreachable box or an odd payload silently starts the turn blank and the
- * agent re-asks for what the human already sent. Doing it here makes the
- * degradation visible: the session is ensured first (so a first turn
- * persists its transcript) and an empty replay against a session the box
- * already had is logged as a dropped replay. Counts only — transcript
- * content never enters control-plane logs (C4).
- *
- * Returns null when an existing session returns no transcript rows even
- * after a retry — running that turn would answer with total amnesia, so the
- * caller should hold the burst and try again rather than reply blank. A
- * transcript whose rows sanitise to nothing replayable (user inputs with no
- * assistant reply yet) is not amnesia: the store is hydrated, so the turn
- * proceeds with an empty history.
- */
-export async function replayHistory(
-  target: HermesBoxTarget,
-  sessionId: string,
-  context: {
-    userId: string;
-    spaceId: string;
-    title: string;
-    /** Set when the caller already ensured the session this turn. */
-    firstTurn?: boolean;
-  }
-): Promise<ConversationMessage[] | null> {
-  let firstTurn = context.firstTurn ?? false;
-  try {
-    if (context.firstTurn === undefined) {
-      firstTurn = (await ensureSession(target, sessionId, context.title))
-        .created;
-    }
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "session ensure failed before run",
-        user_id: context.userId,
-        space_id: context.spaceId,
-        session_id: sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
-  }
-  let transcript = await loadConversationTranscript(target, sessionId);
-  if (transcript.rows === 0 && !firstTurn) {
-    // One immediate retry: the load is best-effort and a transient proxy
-    // hiccup or a box mid-resume often clears within a moment.
-    transcript = await loadConversationTranscript(target, sessionId);
-  }
-  if (transcript.rows === 0 && !firstTurn) {
-    console.error(
-      JSON.stringify({
-        msg: "history replay empty on existing session",
-        user_id: context.userId,
-        space_id: context.spaceId,
-        session_id: sessionId,
-      })
-    );
-    return null;
-  }
-  console.log(
-    JSON.stringify({
-      msg: "history replayed",
-      user_id: context.userId,
-      space_id: context.spaceId,
-      session_id: sessionId,
-      rows: transcript.rows,
-      messages: transcript.history.length,
-      first_turn: firstTurn,
-    })
-  );
-  return transcript.history;
-}
-
-/**
  * Run one debounced turn for a chat. Called after the claim succeeds; owns
  * drain → resume → run → stream → stop_after re-arm.
  */
@@ -1320,25 +1239,26 @@ async function runFlushInner(
       );
     }
 
-    const replayed = await replayHistory(runTarget, runSession, {
-      userId: job.userId,
-      spaceId: job.spaceId,
-      title: runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : BOT_CHAT_TITLE,
-      // The delegation branch above already ensured the bot chat session.
-      ...(botSessionCreated === undefined
-        ? {}
-        : { firstTurn: botSessionCreated }),
-    });
-    if (replayed === null && job.attempts < MAX_ATTEMPTS) {
-      // An existing session replayed empty: running now would answer with
-      // total amnesia. Hold the burst and retry, same as a wake failure.
-      await carryMessages(supabase, job.userId, job.spaceId, drained);
-      await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
-      return;
+    // No control-plane transcript replay: the run goes into a session
+    // Hermes itself hydrates, so fetching and replaying the transcript here
+    // only cost a round-trip per turn while truncating the box's own view.
+    // The session is still ensured so a first turn has somewhere to
+    // persist; the bot branch ensured its own session above.
+    if (botSessionCreated === undefined) {
+      try {
+        await ensureSession(runTarget, runSession, MAIN_SESSION_TITLE);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "session ensure failed before run",
+            user_id: job.userId,
+            space_id: job.spaceId,
+            session_id: runSession,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+      }
     }
-    // At max attempts a degraded (blank-context) answer beats dropping the
-    // burst on the floor.
-    const conversationHistory = replayed ?? [];
 
     const initialResponseDeadlineAt = Date.now() + INITIAL_RESPONSE_DEADLINE_MS;
     const finalResponseDeadlineAt = Date.now() + FINAL_RESPONSE_DEADLINE_MS;
@@ -1348,7 +1268,6 @@ async function runFlushInner(
         createRun(runTarget, {
           input: runInput,
           sessionId: runSession,
-          conversationHistory,
           metadata: { channel: "imessage" },
         }),
         initialResponseDeadlineAt,

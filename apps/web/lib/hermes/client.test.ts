@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadConversationHistory, loadConversationTranscript } from "./client";
+import {
+  HermesApiError,
+  loadConversationHistory,
+  loadConversationTranscript,
+} from "./client";
 
 const target = {
   hostedUrl: "https://box.example",
@@ -7,10 +11,15 @@ const target = {
   apiServerKey: "key",
 };
 
-function respond(body: unknown, ok = true): void {
+function respond(body: unknown, status = 200): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({ ok, json: async () => body }))
+    vi.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+      text: async () => JSON.stringify(body),
+    }))
   );
 }
 
@@ -43,13 +52,37 @@ describe("loadConversationTranscript", () => {
     });
   });
 
-  it("reports zero rows when the box has no transcript or the load fails", async () => {
+  it("reports zero rows when the box has no transcript", async () => {
     respond({ messages: [] });
-    expect(await loadConversationTranscript(target, "air-main")).toEqual({ rows: 0, history: [] });
-    respond({}, false);
-    expect(await loadConversationTranscript(target, "air-main")).toEqual({ rows: 0, history: [] });
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
-    expect(await loadConversationTranscript(target, "air-main")).toEqual({ rows: 0, history: [] });
+    expect(await loadConversationTranscript(target, "air-main")).toEqual({
+      rows: 0,
+      history: [],
+    });
+  });
+
+  it("treats a 404 as an unhydrated session, not a load failure", async () => {
+    respond({ detail: "no such session" }, 404);
+    expect(await loadConversationTranscript(target, "air-main")).toEqual({
+      rows: 0,
+      history: [],
+    });
+  });
+
+  it("fails loudly instead of degrading to an empty transcript", async () => {
+    respond({ detail: "state store unavailable" }, 503);
+    await expect(
+      loadConversationTranscript(target, "air-main")
+    ).rejects.toThrow(HermesApiError);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("socket hang up");
+      })
+    );
+    await expect(
+      loadConversationTranscript(target, "air-main")
+    ).rejects.toThrow("socket hang up");
   });
 
   it("keeps loadConversationHistory as the history-only view", async () => {

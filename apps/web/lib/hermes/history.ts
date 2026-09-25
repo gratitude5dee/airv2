@@ -1,11 +1,11 @@
 /**
- * Session history replay for /v1/runs. Hermes' runs endpoint treats
- * `session_id` as a persistence/correlation scope only — it does NOT load
- * the stored transcript into the model context (unlike
- * /api/sessions/{id}/chat, which does). Without replay, every turn starts
- * blank and the agent re-asks for details the human already gave. We load
- * the persisted messages ourselves and pass them as `conversation_history`,
- * mirroring what the session-chat endpoint does server-side.
+ * Session history replay for /v1/runs. Hermes loads the session's stored
+ * transcript itself whenever `conversation_history` is absent (or empty),
+ * so the normal path sends no replay at all. The one explicit replay site
+ * left is the web chat path: a `conversation_history` it sends replaces
+ * the box's own view, so the window it produces is what matters here —
+ * sanitised to a strictly-alternating user/assistant tail the runs
+ * endpoint accepts.
  */
 import { z } from "zod";
 

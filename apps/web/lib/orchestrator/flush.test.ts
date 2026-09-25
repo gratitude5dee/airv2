@@ -20,7 +20,6 @@ import {
 import {
   createRun,
   ensureSession,
-  loadConversationTranscript,
   runEvents,
   stopRun,
 } from "../hermes/client";
@@ -34,7 +33,6 @@ vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
   createRun: vi.fn(),
   ensureSession: vi.fn(),
-  loadConversationTranscript: vi.fn(),
   MAIN_SESSION: "air-main",
   MAIN_SESSION_TITLE: "Air",
   runEvents: vi.fn(),
@@ -494,7 +492,6 @@ describe("runFlush history replay", () => {
   beforeEach(() => {
     vi.mocked(createRun).mockClear();
     vi.mocked(ensureSession).mockClear();
-    vi.mocked(loadConversationTranscript).mockClear();
     vi.mocked(stopRun).mockClear();
     vi.mocked(stopRun).mockResolvedValue(undefined);
     vi.mocked(createSpectrumSender).mockResolvedValue({
@@ -521,12 +518,7 @@ describe("runFlush history replay", () => {
     });
   });
 
-  it("replays prior turns for a bare follow-up value", async () => {
-    const history = [
-      { role: "user" as const, content: "here's the ZIP" },
-      { role: "assistant" as const, content: "what ZIP code should I use?" },
-    ];
-    vi.mocked(loadConversationTranscript).mockResolvedValue({ rows: 2, history });
+  it("runs the turn into an ensured air-main session with no transcript replay", async () => {
     await runFlush(
       fakeSupabase([{ id: "q1", message_id: "m1", body: "94587" }]),
       job,
@@ -536,19 +528,19 @@ describe("runFlush history replay", () => {
       "air-main",
       "Air",
     ]);
-    expect(vi.mocked(loadConversationTranscript)).toHaveBeenCalledWith(
-      target,
-      "air-main"
-    );
+    // Hermes hydrates the run from its own session transcript — the
+    // control plane neither fetches nor replays it.
     expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
       input: "94587",
       sessionId: "air-main",
-      conversationHistory: history,
     });
+    expect(vi.mocked(createRun).mock.calls[0]?.[1]).not.toHaveProperty(
+      "conversationHistory"
+    );
   });
 
-  it("retries once, then holds the burst when an existing session replays empty", async () => {
-    vi.mocked(loadConversationTranscript).mockResolvedValue({ rows: 0, history: [] });
+  it("still runs the turn when the session ensure fails", async () => {
+    vi.mocked(ensureSession).mockRejectedValue(new Error("box unreachable"));
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     await runFlush(
       fakeSupabase([{ id: "q1", message_id: "m1", body: "94587" }]),
@@ -557,63 +549,16 @@ describe("runFlush history replay", () => {
     );
     expect(
       errors.mock.calls.some((call) =>
-        String(call[0]).includes("history replay empty on existing session")
+        String(call[0]).includes("session ensure failed before run")
       )
     ).toBe(true);
     errors.mockRestore();
-    // Load attempted twice (retry), and the amnesiac run never started.
-    expect(vi.mocked(loadConversationTranscript)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(createRun)).not.toHaveBeenCalled();
-  });
-
-  it("proceeds now when the transcript has rows but nothing replayable (user-only session)", async () => {
-    // A first run that died after Hermes persisted the input leaves a
-    // user-only transcript; sanitising drops trailing user rows, but the
-    // store is hydrated so this is not amnesia.
-    vi.mocked(loadConversationTranscript).mockResolvedValue({ rows: 1, history: [] });
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    await runFlush(
-      fakeSupabase([{ id: "q1", message_id: "m1", body: "94587" }]),
-      job,
-      new Date().toISOString()
-    );
-    expect(
-      errors.mock.calls.some((call) =>
-        String(call[0]).includes("history replay empty on existing session")
-      )
-    ).toBe(false);
-    errors.mockRestore();
-    expect(vi.mocked(loadConversationTranscript)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
-      sessionId: "air-main",
-      conversationHistory: [],
-    });
-  });
-
-  it("runs blank rather than dropping the burst once retries are exhausted", async () => {
-    vi.mocked(loadConversationTranscript).mockResolvedValue({ rows: 0, history: [] });
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    await runFlush(
-      fakeSupabase([{ id: "q1", message_id: "m1", body: "94587" }]),
-      { ...job, attempts: 5 },
-      new Date().toISOString()
-    );
-    errors.mockRestore();
-    expect(vi.mocked(createRun).mock.calls[0]?.[1].conversationHistory).toEqual(
-      []
-    );
+    expect(vi.mocked(createRun)).toHaveBeenCalledTimes(1);
   });
 
   it("lets a response that has started finish beyond the initial 45-second deadline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T17:00:00.000Z"));
-    vi.mocked(loadConversationTranscript).mockResolvedValue({
-      rows: 2,
-      history: [
-        { role: "user", content: "build a landing page" },
-        { role: "assistant", content: "What is it for?" },
-      ],
-    });
     const encoder = new TextEncoder();
     vi.mocked(runEvents).mockResolvedValue(
       new ReadableStream<Uint8Array>({
@@ -657,13 +602,6 @@ describe("runFlush history replay", () => {
   it("stops and durably retries a run that does not complete its response by the full deadline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T17:00:00.000Z"));
-    vi.mocked(loadConversationTranscript).mockResolvedValue({
-      rows: 2,
-      history: [
-        { role: "user", content: "plan the trip" },
-        { role: "assistant", content: "Where from?" },
-      ],
-    });
     const encoder = new TextEncoder();
     vi.mocked(runEvents).mockResolvedValue(
       new ReadableStream<Uint8Array>({
@@ -710,13 +648,6 @@ describe("runFlush history replay", () => {
   it("notifies the user at the deadline without waiting for a slow Hermes stop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-15T20:23:12.000Z"));
-    vi.mocked(loadConversationTranscript).mockResolvedValue({
-      rows: 2,
-      history: [
-        { role: "user", content: "find the latest drop" },
-        { role: "assistant", content: "I’m checking." },
-      ],
-    });
     const encoder = new TextEncoder();
     vi.mocked(runEvents).mockResolvedValue(
       new ReadableStream<Uint8Array>({
@@ -768,13 +699,6 @@ describe("runFlush history replay", () => {
   });
 
   it("logs receipt write failures without suppressing the delivered answer", async () => {
-    vi.mocked(loadConversationTranscript).mockResolvedValue({
-      rows: 2,
-      history: [
-        { role: "user", content: "hi" },
-        { role: "assistant", content: "hey" },
-      ],
-    });
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await runFlush(
@@ -812,13 +736,6 @@ describe("runFlush history replay", () => {
 
     beforeEach(() => {
       vi.mocked(sendMarkedCards).mockClear();
-      vi.mocked(loadConversationTranscript).mockResolvedValue({
-        rows: 2,
-        history: [
-          { role: "user", content: "hi" },
-          { role: "assistant", content: "hey" },
-        ],
-      });
       vi.mocked(runEvents).mockResolvedValue(
         sse([
           {
