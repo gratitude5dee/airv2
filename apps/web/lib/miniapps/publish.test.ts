@@ -9,7 +9,7 @@ const deploy = vi.hoisted(() => ({
       this.name = "AppOriginRefusedError";
     }
   },
-  promoteVersion: vi.fn(async () => null),
+  promoteVersion: vi.fn(async (_supabase: unknown, _app: unknown, _version: string) => null),
   syncManifest: vi.fn(async () => true),
 }));
 vi.mock("../functions/deploy", () => deploy);
