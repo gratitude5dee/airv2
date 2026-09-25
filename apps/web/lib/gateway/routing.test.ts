@@ -52,7 +52,7 @@ describe("openingUserTurnText", () => {
 
 describe("gmiRoutineTurn", () => {
   afterEach(() => {
-    delete process.env.GMI_ROUTINE_FAST;
+    delete process.env["GMI_ROUTINE_FAST"];
   });
 
   it("classifies a short plain ask as routine", () => {
@@ -92,7 +92,7 @@ describe("gmiRoutineTurn", () => {
   });
 
   it("honors the GMI_ROUTINE_FAST=off kill switch", () => {
-    process.env.GMI_ROUTINE_FAST = "off";
+    process.env["GMI_ROUTINE_FAST"] = "off";
     expect(
       gmiRoutineTurn({
         messages: [{ role: "user", content: "check the weather" }],
@@ -136,17 +136,17 @@ describe("gmiFastToolContinuation", () => {
 
 describe("gatewayModelFamilyOverride", () => {
   afterEach(() => {
-    delete process.env.GATEWAY_MODEL_FAMILY_OVERRIDE;
+    delete process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"];
   });
 
   it("returns the family when the override names a known one", () => {
-    process.env.GATEWAY_MODEL_FAMILY_OVERRIDE = "gmi";
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "gmi";
     expect(gatewayModelFamilyOverride()).toBe("gmi");
   });
 
   it("returns null for unset or unknown values", () => {
     expect(gatewayModelFamilyOverride()).toBeNull();
-    process.env.GATEWAY_MODEL_FAMILY_OVERRIDE = "not-a-family";
+    process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] = "not-a-family";
     expect(gatewayModelFamilyOverride()).toBeNull();
   });
 });
