@@ -8,8 +8,7 @@
  * tokens are cached only in this warm process and refreshed before expiry;
  * no bearer is persisted or logged.
  */
-import { createGrpcClient } from "@photon-ai/advanced-imessage/grpc";
-import { cloud, type TokenData } from "spectrum-ts";
+import type { TokenData } from "spectrum-ts";
 import { env } from "../env";
 
 const DEFAULT_IMESSAGE_ADDRESS = "imessage.spectrum.photon.codes:443";
@@ -30,10 +29,12 @@ async function issueTokenData(): Promise<TokenData> {
     return tokenCache.data;
   }
   if (!tokenRequest) {
-    tokenRequest = cloud
-      .issueImessageTokens(
-        env.spectrumProjectId(),
-        env.spectrumProjectSecret(),
+    tokenRequest = import("spectrum-ts")
+      .then(({ cloud }) =>
+        cloud.issueImessageTokens(
+          env.spectrumProjectId(),
+          env.spectrumProjectSecret(),
+        )
       )
       .then((data) => {
         tokenCache = {
@@ -100,6 +101,9 @@ export async function createFastReactionSender(
     token = dedicatedToken;
     address = `${server}.imsg.photon.codes:443`;
   }
+  const { createGrpcClient } = await import(
+    "@photon-ai/advanced-imessage/grpc"
+  );
   const client = createGrpcClient({
     address,
     autoIdempotency: true,

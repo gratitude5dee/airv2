@@ -4,7 +4,6 @@
  * are edited in place on update.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { UnsupportedError } from "spectrum-ts";
 import { env } from "../env";
 import {
   createSpectrumSender,
@@ -39,6 +38,12 @@ import { getJob } from "../create/job";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
+
+/** spectrum-ts only loads when a send actually ran — the error path pays it. */
+async function isUnsupportedError(error: unknown): Promise<boolean> {
+  const { UnsupportedError } = await import("spectrum-ts");
+  return error instanceof UnsupportedError;
+}
 
 /**
  * Inline mini-UI: the card bubble is a static layout preview (never
@@ -407,7 +412,7 @@ async function sendCheckoutHandoffCard(
         message
       );
     } catch (error) {
-      if (!(error instanceof UnsupportedError)) throw error;
+      if (!(await isUnsupportedError(error))) throw error;
       console.info(
         JSON.stringify({
           msg: "checkout native card unsupported; using browser handoff",
@@ -691,7 +696,7 @@ export async function updateMiniAppCard(
     }
     return "updated";
   } catch (error) {
-    if (error instanceof UnsupportedError) {
+    if (await isUnsupportedError(error)) {
       await deleteMiniAppCardSession(
         supabase,
         userId,

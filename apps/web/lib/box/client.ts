@@ -14,7 +14,7 @@ import { z } from "zod";
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import { shellQuote } from "./shell";
-import * as tenki from "./tenki";
+import { isTenkiBoxId, isTenkiTemplateRef } from "./tenki-refs";
 import {
   BoxApiError,
   BoxSchema,
@@ -32,8 +32,8 @@ export type { Box, BoxState, CommandResult, ForkOptions } from "./types";
 export type BoxProvider = "ascii" | "tenki";
 
 export function providerOf(idOrTemplateRef: string): BoxProvider {
-  return tenki.isTenkiBoxId(idOrTemplateRef) ||
-    tenki.isTenkiTemplateRef(idOrTemplateRef)
+  return isTenkiBoxId(idOrTemplateRef) ||
+    isTenkiTemplateRef(idOrTemplateRef)
     ? "tenki"
     : "ascii";
 }
@@ -154,7 +154,7 @@ export async function fork(options: ForkOptions): Promise<Box> {
     }
   }
   if (providerOf(options.templateId) === "tenki") {
-    return tenki.fork(options);
+    return (await import("./tenki")).fork(options);
   }
   const envelope = await boxFetch(
     `/boxes/${options.templateId}/fork`,
@@ -177,7 +177,9 @@ export async function fork(options: ForkOptions): Promise<Box> {
 
 /** Set the box's display name in the ascii dashboard (max 120 chars). */
 export async function renameBox(boxId: string, name: string): Promise<Box> {
-  if (providerOf(boxId) === "tenki") return tenki.renameBox(boxId, name);
+  if (providerOf(boxId) === "tenki") {
+    return (await import("./tenki")).renameBox(boxId, name);
+  }
   const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema, {
     method: "PATCH",
     body: JSON.stringify({ name }),
@@ -189,7 +191,9 @@ export async function resume(
   boxId: string,
   options?: { timeoutMs?: number }
 ): Promise<Box> {
-  if (providerOf(boxId) === "tenki") return tenki.resume(boxId);
+  if (providerOf(boxId) === "tenki") {
+    return (await import("./tenki")).resume(boxId);
+  }
   const envelope = await boxFetch(`/boxes/${boxId}/resume`, BoxEnvelopeSchema, {
     method: "POST",
     body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
@@ -202,7 +206,9 @@ export async function resume(
 
 /** Never pass force — a refused stop means the snapshot is failing (C6). */
 export async function stop(boxId: string): Promise<Box> {
-  if (providerOf(boxId) === "tenki") return tenki.stop(boxId);
+  if (providerOf(boxId) === "tenki") {
+    return (await import("./tenki")).stop(boxId);
+  }
   const envelope = await boxFetch(`/boxes/${boxId}/stop`, BoxEnvelopeSchema, {
     method: "POST",
   });
@@ -215,7 +221,9 @@ export async function stop(boxId: string): Promise<Box> {
  * X-Ascii-Confirm-Delete.
  */
 export async function deleteBox(boxId: string): Promise<void> {
-  if (providerOf(boxId) === "tenki") return tenki.deleteBox(boxId);
+  if (providerOf(boxId) === "tenki") {
+    return (await import("./tenki")).deleteBox(boxId);
+  }
   await boxFetch(`/boxes/${boxId}`, z.unknown(), {
     method: "DELETE",
     headers: { "X-Ascii-Confirm-Delete": boxId },
@@ -231,7 +239,9 @@ export async function requestDesktop(
   boxId: string,
   options?: { vnc?: boolean; timeoutMs?: number }
 ): Promise<string | undefined> {
-  if (providerOf(boxId) === "tenki") return tenki.requestDesktop(boxId);
+  if (providerOf(boxId) === "tenki") {
+    return (await import("./tenki")).requestDesktop(boxId);
+  }
   const query = options?.vnc ? "?vnc=1" : "?theme=light";
   const envelope = await boxFetch(
     `/boxes/${boxId}/desktop${query}`,
@@ -251,7 +261,9 @@ export async function getBox(
   boxId: string,
   options?: { timeoutMs?: number }
 ): Promise<Box> {
-  if (providerOf(boxId) === "tenki") return tenki.getBox(boxId);
+  if (providerOf(boxId) === "tenki") {
+    return (await import("./tenki")).getBox(boxId);
+  }
   const envelope = await boxFetch(
     `/boxes/${boxId}`,
     BoxEnvelopeSchema,
@@ -285,7 +297,7 @@ export async function command(
   timeoutSeconds = 60
 ): Promise<CommandResult> {
   if (providerOf(boxId) === "tenki") {
-    return tenki.command(boxId, cmd, timeoutSeconds);
+    return (await import("./tenki")).command(boxId, cmd, timeoutSeconds);
   }
   // The box-side command runs up to timeoutSeconds; give the HTTP round
   // trip that budget plus margin.
@@ -371,7 +383,7 @@ export async function hostRoute(
   options?: { timeoutSeconds?: number }
 ): Promise<HostedRoute> {
   if (providerOf(boxId) === "tenki") {
-    const route = await tenki.hostRoute(boxId, port);
+    const route = await (await import("./tenki")).hostRoute(boxId, port);
     return { url: route.url, token: "" };
   }
   const timeoutSeconds = options?.timeoutSeconds ?? 180;
@@ -456,7 +468,7 @@ export async function writeFile(
   content: string
 ): Promise<void> {
   if (providerOf(boxId) === "tenki") {
-    return tenki.writeFile(boxId, path, content);
+    return (await import("./tenki")).writeFile(boxId, path, content);
   }
   await boxFetch(`/boxes/${boxId}/files`, z.unknown(), {
     method: "PUT",
