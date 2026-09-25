@@ -242,15 +242,56 @@ function parseOrValue(raw: string): unknown {
   return raw.replace(/^"|"$/g, "");
 }
 
+function splitTopLevel(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of s) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (ch === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts.map((p) => p.trim()).filter(Boolean);
+}
+
+function orTerm(term: string): (row: Row) => boolean {
+  const trimmed = term.trim().replace(/^\((.*)\)$/, "$1");
+  const andMatch = trimmed.match(/^and\((.*)\)$/);
+  if (andMatch) {
+    const inner = splitTopLevel(andMatch[1] ?? "");
+    const preds = inner.map(orTerm);
+    return (row) => preds.every((p) => p(row));
+  }
+  const orMatch = trimmed.match(/^or\((.*)\)$/);
+  if (orMatch) {
+    const inner = splitTopLevel(orMatch[1] ?? "");
+    const preds = inner.map(orTerm);
+    return (row) => preds.some((p) => p(row));
+  }
+  const notMatch = trimmed.match(/^(.+?)\.not\.(.+)$/);
+  if (notMatch) {
+    const [, column, rest] = notMatch;
+    const [op, ...valueParts] = rest!.split(".");
+    const inner = makePredicate(column!.trim(), op!, parseOrValue(valueParts.join(".")));
+    return (row) => !inner(row);
+  }
+  const [column, op, ...valueParts] = trimmed.split(".");
+  const raw = valueParts.join(".");
+  const value = raw.startsWith("(") && raw.endsWith(")")
+    ? splitTopLevel(raw.slice(1, -1)).map(parseOrValue)
+    : parseOrValue(raw);
+  return makePredicate(column!.trim(), op!, value);
+}
+
 function orPredicate(clause: string): (row: Row) => boolean {
-  const inner = clause.replace(/^or=\(?/, "").replace(/\)+$/, "").replace(/^\(/, "");
-  const parts = inner.split(",").map((part) => part.trim()).filter(Boolean);
-  const predicates = parts.map((part) => {
-    const [column, op, ...rest] = part.split(".");
-    const raw = rest.join(".");
-    const value = parseOrValue(raw.startsWith("(") ? raw : raw);
-    return makePredicate(column, op, raw.startsWith("(") ? raw.slice(1, -1).split(",") : value);
-  });
+  const inner = clause.replace(/^or=/, "").replace(/^\((.*)\)$/, "$1");
+  const predicates = splitTopLevel(inner).map(orTerm);
   return (row) => predicates.some((p) => p(row));
 }
 

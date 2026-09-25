@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const session = vi.hoisted(() => ({
@@ -13,19 +13,10 @@ vi.mock("@/lib/auth/box", () => box);
 
 // imessage_destinations is the only table this route touches directly.
 const db = vi.hoisted(() => ({
-  destination: { space_id: "space-1", phone: "+15550001" } as
-    | { space_id: string; phone: string }
-    | null,
+  fake: null as unknown as FakeSupabase,
 }));
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: db.destination, error: null }) }),
-        }),
-      }),
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.fake.client(),
 }));
 
 vi.mock("@/lib/orchestrator/boxes", async (importOriginal) => ({
@@ -80,7 +71,10 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   box.boxUserId.mockResolvedValue("user-alice");
   session.storeSessionUserId.mockReturnValue(null);
-  db.destination = { space_id: "space-1", phone: "+15550001" };
+  db.fake = new FakeSupabase();
+  db.fake.tables["imessage_destinations"] = [
+    { user_id: "user-alice", space_id: "space-1", phone: "+15550001" },
+  ];
   compute.readComputeFile.mockResolvedValue(PLAN);
   limits.overLimit.mockResolvedValue(false);
 });
@@ -171,10 +165,12 @@ describe("POST /api/create/plan/deliver", () => {
   });
 
   it("409 when the owner has no iMessage thread; 429 over the plan limit", async () => {
-    db.destination = null;
+    db.fake.tables["imessage_destinations"] = [];
     expect((await POST(post({ appname: "promo", path: "plan.md" }))).status).toBe(409);
     expect(compute.readComputeFile).not.toHaveBeenCalled();
-    db.destination = { space_id: "space-1", phone: "+15550001" };
+    db.fake.tables["imessage_destinations"] = [
+      { user_id: "user-alice", space_id: "space-1", phone: "+15550001" },
+    ];
     limits.overLimit.mockResolvedValueOnce(true);
     expect((await POST(post({ appname: "promo", path: "plan.md" }))).status).toBe(429);
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(expect.anything(), "rate_limited", "user-alice", "plan");

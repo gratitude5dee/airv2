@@ -9,7 +9,7 @@
  * the metered cost or is released when nothing was metered.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase, type RecordedQuery } from "@/lib/testing/fakeSupabase";
 import type { FunctionsRow } from "@/lib/functions/backend";
 import type { RuntimePrincipal } from "@/lib/functions/runtime";
 
@@ -51,11 +51,33 @@ const state: {
 
 const meteredRows: Record<string, unknown>[] = [];
 const opsRows: Record<string, unknown>[] = [];
+
+const db = new FakeSupabase();
+// The reserve/settle ledger and insert capture stay faithful to the migration
+// RPCs while the shared fake owns the table reads and recording.
+db.resolve = (q: RecordedQuery) => {
+  if (q.mode === "insert" && q.table === "agent_runs") meteredRows.push(q.args[0] as Record<string, unknown>);
+  if (q.mode === "insert" && q.table === "ops_events") opsRows.push(q.args[0] as Record<string, unknown>);
+  return undefined;
+};
+
+const seedEntitlements = () => {
+  db.tables["entitlements"] = [
+    {
+      user_id: "user-1",
+      speed_tier: "balanced",
+      model_family: "openai",
+      monthly_cap_usd: 100,
+      spend_mtd_usd: state.monthlySpend,
+      spend_period_start: new Date().toISOString(),
+      suspended_reason: null,
+    },
+  ];
+};
 /** Settlements (miniapp_fn_settle) in order; usd 0 is a release. */
 const appSpend: { appId: string; usd: number }[] = [];
 /** The miniapp_functions counters the RPCs update atomically. */
 const ledger: Record<string, { spent: number; reserved: number }> = {};
-let reserveFails = false;
 /** The ledger's UTC day (`now() at time zone 'utc'`), advanced by a test. */
 let ledgerDay = today;
 /** ai_spend_day per app; a counter from another day reads as zero. */
@@ -72,72 +94,28 @@ function counters(appId: string): { spent: number; reserved: number } {
 }
 
 /** miniapp_fn_reserve / miniapp_fn_settle with the migration's semantics. */
-async function rpc(
-  fn: string,
-  args: Record<string, unknown>
-): Promise<{ data?: unknown; error: { message: string } | null }> {
-  if (fn === "miniapp_fn_reserve") {
-    if (reserveFails) return { error: { message: "connection refused" } };
-    const row = counters(String(args["p_app_id"]));
-    if (row.spent + row.reserved < Number(args["p_cap"])) {
-      row.reserved += Number(args["p_usd"]);
-      return { data: ledgerDay, error: null };
-    }
-    return { data: null, error: null };
+db.rpcResults["miniapp_fn_reserve"] = (args: unknown) => {
+  const a = args as Record<string, unknown>;
+  const row = counters(String(a["p_app_id"]));
+  if (row.spent + row.reserved < Number(a["p_cap"])) {
+    row.reserved += Number(a["p_usd"]);
+    return ledgerDay;
   }
-  if (fn === "miniapp_fn_settle") {
-    const appId = String(args["p_app_id"]);
-    const row = counters(appId);
-    row.spent += Number(args["p_usd"]);
-    const bookedToday = args["p_day"] === ledgerDay;
-    row.reserved = Math.max(row.reserved - (bookedToday ? Number(args["p_reserved"]) : 0), 0);
-    appSpend.push({ appId, usd: Number(args["p_usd"]) });
-    return { data: row.spent, error: null };
-  }
-  return { error: null };
-}
-
-function table(name: string): Record<string, unknown> {
-  const answer = (): { data: unknown } => {
-    switch (name) {
-      case "boxes":
-        return { data: null };
-      case "entitlements":
-        return {
-          data: {
-            speed_tier: "balanced",
-            model_family: "openai",
-            monthly_cap_usd: 100,
-            spend_mtd_usd: state.monthlySpend,
-            spend_period_start: new Date().toISOString(),
-            suspended_reason: null,
-          },
-        };
-      default:
-        return { data: null };
-    }
-  };
-  const builder: Record<string, unknown> = {};
-  for (const f of ["select", "eq", "like", "not", "is", "or", "gte", "order", "limit"]) {
-    builder[f] = () => builder;
-  }
-  builder["maybeSingle"] = async () => answer();
-  builder["then"] = (resolve: (v: unknown) => unknown) =>
-    Promise.resolve(answer()).then(resolve);
-  builder["insert"] = async (row: Record<string, unknown>) => {
-    if (name === "agent_runs") meteredRows.push(row);
-    if (name === "ops_events") opsRows.push(row);
-    return { error: null };
-  };
-  return builder;
-}
+  return null;
+};
+db.rpcResults["miniapp_fn_settle"] = (args: unknown) => {
+  const a = args as Record<string, unknown>;
+  const appId = String(a["p_app_id"]);
+  const row = counters(appId);
+  row.spent += Number(a["p_usd"]);
+  const bookedToday = a["p_day"] === ledgerDay;
+  row.reserved = Math.max(row.reserved - (bookedToday ? Number(a["p_reserved"]) : 0), 0);
+  appSpend.push({ appId, usd: Number(a["p_usd"]) });
+  return row.spent;
+};
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: (name: string) => table(name),
-      rpc,
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.client(),
 }));
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -243,13 +221,14 @@ describe("gateway app principal (MC5 §11.3)", () => {
       art_b: principal("app-b", "alice-poll"),
     };
     state.monthlySpend = 0;
+    seedEntitlements();
     meteredRows.length = 0;
     opsRows.length = 0;
     appSpend.length = 0;
     for (const key of Object.keys(ledger)) delete ledger[key];
     for (const key of Object.keys(ledgerDays)) delete ledgerDays[key];
     ledgerDay = today;
-    reserveFails = false;
+    delete db.rpcErrors["miniapp_fn_reserve"];
     providerKeys.getProviderKey.mockResolvedValue(null);
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -330,6 +309,7 @@ describe("gateway app principal (MC5 §11.3)", () => {
 
   it("still honors the owner's monthly cap after the app cap", async () => {
     state.monthlySpend = 100;
+    seedEntitlements();
     const { response } = await complete("art_a", { model: "fast", messages: [] });
     expect(response.status).toBe(429);
     expect(opsRows).toHaveLength(0);
@@ -570,7 +550,7 @@ describe("gateway app principal (MC5 §11.3)", () => {
     });
 
     it("refuses rather than dispatches unmetered when the ledger does not answer", async () => {
-      reserveFails = true;
+      db.rpcErrors["miniapp_fn_reserve"] = { message: "connection refused" };
       const { response, sent } = await complete("art_a", { model: "fast", messages: [] });
       expect(response.status).toBe(503);
       expect(await response.json()).toEqual({ error: "cap_unavailable", reason: "fn_reserve" });

@@ -1,45 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const state = vi.hoisted(() => ({
-  userId: "user-1" as string | null,
-  addresses: [
-    { agentmail_inbox_id: "inbox-primary", is_primary: true },
-    { agentmail_inbox_id: "inbox-secondary", is_primary: false },
-  ],
-  pending: null as { id: string } | null,
+  fake: null as unknown as FakeSupabase,
 }));
 
 const getDraft = vi.hoisted(() => vi.fn());
 const queueEmailDraftReview = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) => {
-      const chain: Record<string, (...args: unknown[]) => unknown> = {};
-      chain["select"] = () => chain;
-      chain["eq"] = () => chain;
-      chain["is"] = () => chain;
-      chain["maybeSingle"] = async () => {
-        if (table === "boxes") {
-          return {
-            data: state.userId ? { user_id: state.userId } : null,
-            error: null,
-          };
-        }
-        if (table === "decisions") {
-          return { data: state.pending, error: null };
-        }
-        throw new Error(`unexpected maybeSingle table: ${table}`);
-      };
-      chain["then"] = (resolve: unknown) =>
-        Promise.resolve({
-          data: table === "agent_addresses" ? state.addresses : [],
-          error: null,
-        }).then(resolve as (value: unknown) => unknown);
-      return chain;
-    },
-  }),
+  serviceClient: () => state.fake.client(),
 }));
 vi.mock("@/lib/agentmail/client", () => ({ getDraft }));
 vi.mock("@/lib/email/review", () => ({ queueEmailDraftReview }));
@@ -64,12 +35,12 @@ function reviewRequest(
 
 beforeEach(() => {
   process.env["MAIL_PROVIDER"] = "agentmail";
-  state.userId = "user-1";
-  state.addresses = [
-    { agentmail_inbox_id: "inbox-primary", is_primary: true },
-    { agentmail_inbox_id: "inbox-secondary", is_primary: false },
+  state.fake = new FakeSupabase();
+  state.fake.tables["boxes"] = [{ user_id: "user-1", gateway_token: "box-token" }];
+  state.fake.tables["agent_addresses"] = [
+    { user_id: "user-1", agentmail_inbox_id: "inbox-primary", is_primary: true, retired_at: null },
+    { user_id: "user-1", agentmail_inbox_id: "inbox-secondary", is_primary: false, retired_at: null },
   ];
-  state.pending = null;
   vi.mocked(mockedGetDraft).mockReset();
   vi.mocked(mockedQueue).mockReset();
   vi.mocked(mockedGetDraft).mockResolvedValue({
@@ -85,7 +56,7 @@ describe("POST /api/email/drafts/review", () => {
     ["missing bearer token", null],
     ["unknown bearer token", "unknown-token"],
   ])("rejects %s", async (_label, token) => {
-    if (token === "unknown-token") state.userId = null;
+    if (token === "unknown-token") state.fake.tables["boxes"] = [];
     const response = await POST(reviewRequest({ draft_id: "draft-1" }, token));
     expect(response.status).toBe(401);
   });
@@ -163,7 +134,9 @@ describe("POST /api/email/drafts/review", () => {
   });
 
   it("does not file a duplicate pending decision", async () => {
-    state.pending = { id: "decision-1" };
+    state.fake.tables["decisions"] = [
+      { id: "decision-1", user_id: "user-1", kind: "email_draft", ref: "draft-1", status: "pending" },
+    ];
     const response = await POST(reviewRequest({ draft_id: "draft-1" }));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
