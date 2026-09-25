@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   composeReferenceSheet,
   listIdentityReferenceAssetIds,
@@ -14,33 +14,21 @@ const image = async (rgb: { r: number; g: number; b: number }): Promise<Buffer> 
     .jpeg()
     .toBuffer();
 
-function selectionSupabase(rows: Array<{ asset_id: string; position: number }>): SupabaseClient {
-  const query: Record<string, unknown> = {};
-  const chain = (): typeof query => query;
-  query["select"] = chain;
-  query["eq"] = chain;
-  query["order"] = chain;
-  query["then"] = (resolve: (value: { data: typeof rows; error: null }) => unknown) =>
-    Promise.resolve({ data: rows, error: null }).then(resolve);
-  return {
-    from: () => query,
-  } as unknown as SupabaseClient;
-}
-
 describe("identity photo references", () => {
   it("returns persisted asset ids in their saved reference order", async () => {
-    const ids = await listIdentityReferenceAssetIds(
-      selectionSupabase([
-        { asset_id: "side", position: 1 },
-        { asset_id: "front", position: 0 },
-      ]),
-      "owner-1"
-    );
+    const db = new FakeSupabase();
+    // Seeded out of position order on purpose: the query's ORDER BY, not
+    // insertion order, decides the returned selection order.
+    db.tables["identity_reference_assets"] = [
+      { user_id: "owner-1", asset_id: "front", position: 1, created_at: "2026-09-02T00:00:00Z" },
+      { user_id: "owner-1", asset_id: "side", position: 0, created_at: "2026-09-01T00:00:00Z" },
+    ];
+    const ids = await listIdentityReferenceAssetIds(db.client(), "owner-1");
     expect(ids).toEqual(["side", "front"]);
   });
 
   it("rejects an empty or oversized selection before it can be persisted", async () => {
-    const supabase = selectionSupabase([]);
+    const supabase = new FakeSupabase().client();
     await expect(replaceIdentityReferences(supabase, "owner-1", [])).resolves.toEqual({
       ok: false,
       error: "Choose 1–6 photos.",
