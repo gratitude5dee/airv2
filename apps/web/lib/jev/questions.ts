@@ -31,7 +31,7 @@ export const ROUTE_OPTIONS = {
   "vault-use":
     "Store NOW or retrieve NOW a specific secret, credential, ID number, or payment card this turn; 'I keep X in the vault — pull it when Y' is a standing memory instruction, not a vault action (openviking-memory)",
   watch_for:
-    "Arm a persistent or condition-driven watch — site health or downtime, restocks, price drops, ticket or seat availability, releases, a counterpart's status, remind-me watches on external deadlines (return windows, expiry, closing dates), flag-when-a-message-arrives inbox topics — it fires when the condition does; a 'follow up with / nudge a PERSON if they haven't done X' turn is not a watch (it's email-draft-review or openviking-memory); a single 'check now' errand is kernel-browser; fixed-time calendar reminders go to calendar-native",
+    "Arm a persistent or condition-driven watch — site health or downtime, restocks, price drops, ticket or seat availability, releases, a counterpart's status, remind-me watches on external deadlines (return windows, expiry, closing dates), flag-when-a-message-arrives inbox topics, and mentions of the owner or their work on public sites, forums, or feeds (news, Hacker News, Reddit, social mentions) — it fires when the condition does; a 'follow up with / nudge a PERSON if they haven't done X' turn is not a watch (it's email-draft-review or openviking-memory); a single 'check now' errand is kernel-browser; fixed-time calendar reminders go to calendar-native",
   comms:
     "Send or act on direct 1:1 messages through the owner's messaging threads — iMessage/SMS/DM texts to a person; also turns driven by inbox or message content — pulling items (events, confirmations, promises) out of emails or texts and acting on them; not channel posts, not bare calendar ops",
   "email-draft-review":
@@ -39,7 +39,7 @@ export const ROUTE_OPTIONS = {
   "calendar-native":
     "The owner's own calendar and reminders — schedule, reschedule, recurring events, check the owner's availability, time-triggered nudges, and standing reminder rules anchored to an event or habit (check in 24h before each X, every time Y happens); not coordinating with other people's agents, and not watches that wait on an external condition or a pass-by deadline (watch_for)",
   "openviking-memory":
-    "Recall or store durable facts, preferences, and notes about the owner — things they told you before (contacts, addresses, sizes, their history, promises and commitments the owner made), recall questions about what the owner said, promised, or owes — the named source (sent mail, texts) is evidence, not the capability — and standing instructions about where reference facts are kept or what to apply later; credential and card writes belong to vault-use; mailbox routing rules belong to email; standing reminder rules belong to calendar-native",
+    "Recall or store durable facts, preferences, and notes about the owner — things they told you before (contacts, addresses, sizes, their history, promises and commitments the owner made), recall questions about what the owner said, promised, or owes — the named source (sent mail, texts) is evidence, not the capability — 'remember that X' or 'for next time' phrasing is a store instruction even when the remembered item feeds a later action, and standing instructions about where reference facts are kept or what to apply later; credential and card writes belong to vault-use; mailbox routing rules belong to email; standing reminder rules belong to calendar-native",
   "storefront-commerce":
     "Manage the owner's storefront — products, listings, pricing, publishing shop changes, and storefront metrics or sales reporting even when the report travels by email",
   "create-miniapp":
@@ -57,7 +57,7 @@ export const ROUTE_OPTIONS = {
   "browser-use":
     "Pure informational lookups that perform no action on a site and end in no errand — informational queries only",
   email:
-    "Read, search, triage, organize, or send directly from the owner's mailbox — inbox sweeps, spam review, folder cleanup, and mailbox rules that persist (auto-BCC, auto-forward, labeling) even when phrased as 'going forward'; acting on a site or link the email points to (unsubscribe, cancel) is kernel-browser; draft-and-approve flows go to email-draft-review instead",
+    "Read, search, triage, organize, or send directly from the owner's mailbox — inbox sweeps, spam review, folder cleanup, receipt and invoice handling, and mailbox rules that persist (auto-BCC, auto-forward, labeling) even when phrased as 'going forward'; acting on a site or link the email points to (unsubscribe, cancel) is kernel-browser; draft-and-approve flows go to email-draft-review instead",
   trade: "Stock or crypto trading, orders, or watchlist changes",
   wzrdmail: "Work in the owner's wzrdmail mailbox",
   none: "Plain conversation and questions, plus one-off local work no capability owns — scripts, batch or command-line utilities, fixes to existing pages or layouts; pick none for anything the listed capabilities don't cover",
