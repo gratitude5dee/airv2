@@ -13,5 +13,10 @@
   },
   "allowScripts": {
     "ffmpeg-static@5.2.0": true
+  },
+  "overrides": {
+    "js-yaml": "^4.3.2",
+    "postcss": "^8.5.26",
+    "ws": "^8.21.1"
   }
 }
