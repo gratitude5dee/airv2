@@ -15,6 +15,7 @@
  * names the owner app the card is for (V11 §13.5).
  */
 import { command } from "../box/client";
+import { log } from "../log";
 import type { SpectrumSender } from "../spectrum/sender";
 
 export const SEND_FILE_MARKER = /\[send-file:\s*([^\]\n]+)\]/g;
@@ -170,8 +171,14 @@ export async function deliverSendFiles(
         mimeType: MIME_BY_EXT[ext] ?? "application/octet-stream",
       });
       sent += 1;
-    } catch {
+    } catch (error) {
       // best-effort: skip this file
+      log.warn("send-file pull skipped", {
+        box_id: boxId,
+        space_id: spaceId,
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
   return sent;

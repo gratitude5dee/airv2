@@ -15,7 +15,9 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, writeFile } from "../box/client";
+import { db } from "../db";
 import { approveRun, type HermesBoxTarget } from "../hermes/client";
+import { log } from "../log";
 import { hostSupportsLink } from "../payments/link";
 import { appendVaultEvent, VaultCliError } from "./client";
 import {
@@ -286,6 +288,60 @@ export function dryRunHosts(): string[] {
 }
 
 /**
+ * Resume the run that parked on this decision. When the relay itself fails
+ * the run stays paused with no visible failure — log it, then mark the
+ * decision's payload so a sweeper can finish the job (R-ARCH-06). The
+ * marker rides `payload` (free jsonb) rather than `status`, whose CHECK
+ * constraint predates this failure state. Note: parallel finding R-SEC-05
+ * lands the sweeper for this marker; if it merges first its resume path
+ * supersedes this relay.
+ */
+async function relayApproval(
+  supabase: SupabaseClient,
+  userId: string,
+  decision: { id: string; ref: string | null; payload: unknown },
+  approved: boolean,
+  box: { boxId: string; target: HermesBoxTarget } | null
+): Promise<void> {
+  if (!decision.ref || !box) return;
+  try {
+    await approveRun(box.target, decision.ref, approved);
+    return;
+  } catch (error) {
+    log.error("purchase approval relay failed", {
+      user_id: userId,
+      box_id: box.boxId,
+      decision_id: decision.id,
+      approved,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const payload =
+    typeof decision.payload === "object" && decision.payload !== null
+      ? (decision.payload as Record<string, unknown>)
+      : {};
+  await db
+    .write(
+      supabase
+        .from("decisions")
+        .update({
+          payload: {
+            ...payload,
+            relay_approved: approved,
+            relay_failed_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", decision.id),
+      {
+        what: "mark purchase approval relay failure",
+        user_id: userId,
+        box_id: box.boxId,
+      }
+    )
+    .catch(() => undefined); // already logged inside db.write
+}
+
+/**
  * Resolve an owner decision on a purchase_review. Approve mints the fill
  * ticket, redeems its jti in the ledger (single use), delivers it to the
  * box, and resumes the paused run; deny writes the fill_denied receipt and
@@ -324,9 +380,7 @@ export async function resolvePurchaseReview(
       itemId || null,
       host ? `${host}:link_selected` : "link_selected"
     );
-    if (decision.ref && box) {
-      await approveRun(box.target, decision.ref, false).catch(() => undefined);
-    }
+    await relayApproval(supabase, userId, decision, false, box);
     return;
   }
 
@@ -338,9 +392,7 @@ export async function resolvePurchaseReview(
       itemId || null,
       host ? `${host}:owner_denied` : "owner_denied"
     );
-    if (decision.ref && box) {
-      await approveRun(box.target, decision.ref, false).catch(() => undefined);
-    }
+    await relayApproval(supabase, userId, decision, false, box);
     return;
   }
 
@@ -391,9 +443,7 @@ export async function resolvePurchaseReview(
     itemId,
     `${claims.host}:${band}`
   );
-  if (decision.ref) {
-    await approveRun(box.target, decision.ref, true).catch(() => undefined);
-  }
+  await relayApproval(supabase, userId, decision, true, box);
 }
 
 /**

@@ -8,6 +8,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
+import { log } from "@/lib/log";
 import {
   SpectrumWebhookError,
   parseInboundSpectrumMessage,
@@ -88,7 +89,15 @@ async function sendLineReply(
   try {
     const threaded = await sender
       .sendReply(spaceId, phone, messageId, text)
-      .catch(() => false);
+      .catch((error: unknown) => {
+        log.error("imessage threaded reply send failed", {
+          box_id: null,
+          space_id: spaceId,
+          message_id: messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      });
     if (!threaded) await sender.sendText(spaceId, phone, text);
   } finally {
     await sender.close().catch(() => undefined);
@@ -510,7 +519,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userId,
         text: body,
         messageId,
-      }).catch(() => ({ handled: true, reply: "Muse is temporarily unavailable. Try again shortly." }));
+      }).catch((error: unknown) => {
+        log.error("muse inbound handling failed", {
+          user_id: userId,
+          box_id: null,
+          space_id: spaceId,
+          message_id: messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          handled: true,
+          reply: "Muse is temporarily unavailable. Try again shortly.",
+        };
+      });
       if (result.reply) {
         await sendLineReply(spaceId, phone, messageId, result.reply, warmSenderPromise);
       } else {
@@ -560,7 +581,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             }),
           );
           await setSpectrumFlow(supabase, userId, "error").catch(
-            () => undefined,
+            (flowError: unknown) =>
+              log.error("spectrum flow error write failed", {
+                user_id: userId,
+                box_id: null,
+                space_id: relayInput.sessionId,
+                error:
+                  flowError instanceof Error
+                    ? flowError.message
+                    : String(flowError),
+              }),
           );
           return;
         }
@@ -581,7 +611,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             supabase,
             userId,
             result.shouldRouteNextMessage ? "pending" : "error",
-          ).catch(() => undefined);
+          ).catch((error: unknown) =>
+            log.error("spectrum flow state write failed", {
+              user_id: userId,
+              box_id: null,
+              space_id: relayInput.sessionId,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
         }
         if (result.reply && sender) {
           const threaded = await sender

@@ -15,6 +15,8 @@
  * set", so a stale flag cannot orphan a new chain.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { db } from "../db";
+import { log } from "../log";
 import { completeOperation } from "../migration/admission";
 import { command, writeFile } from "../box/client";
 import {
@@ -280,9 +282,15 @@ export async function enqueueInbound(
           (data ?? []).map((row) => String(row.body ?? ""))
         );
       }
-    } catch {
+    } catch (error) {
       // Scheduling remains correct (only slower) if this optional look-ahead
       // is unavailable during a rolling deployment.
+      log.warn("batch_queue lookahead failed", {
+        user_id: message.userId,
+        box_id: null,
+        space_id: message.spaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -569,14 +577,18 @@ async function carryMessages(
   messages: QueuedMessage[]
 ): Promise<void> {
   if (messages.length === 0) return;
-  await supabase.from("carried_messages").insert(
-    messages.map((message) => ({
-      user_id: userId,
-      space_id: spaceId,
-      sender_id: message.sender_id ?? null,
-      message_id: message.message_id,
-      body: message.body,
-    }))
+  // Unchecked this insert can drop a whole carried burst (R-ARCH-05).
+  await db.write(
+    supabase.from("carried_messages").insert(
+      messages.map((message) => ({
+        user_id: userId,
+        space_id: spaceId,
+        sender_id: message.sender_id ?? null,
+        message_id: message.message_id,
+        body: message.body,
+      }))
+    ),
+    { what: "carried_messages insert", user_id: userId }
   );
 }
 
@@ -588,15 +600,19 @@ async function requeueMessages(
   messages: QueuedMessage[]
 ): Promise<void> {
   if (messages.length === 0) return;
-  await supabase.from("batch_queue").insert(
-    messages.map((message) => ({
-      user_id: userId,
-      space_id: spaceId,
-      phone,
-      sender_id: message.sender_id ?? null,
-      message_id: message.message_id,
-      body: message.body,
-    }))
+  // Unchecked this insert can drop a whole requeued burst (R-ARCH-05).
+  await db.write(
+    supabase.from("batch_queue").insert(
+      messages.map((message) => ({
+        user_id: userId,
+        space_id: spaceId,
+        phone,
+        sender_id: message.sender_id ?? null,
+        message_id: message.message_id,
+        body: message.body,
+      }))
+    ),
+    { what: "batch_queue requeue insert", user_id: userId }
   );
 }
 
@@ -1256,8 +1272,14 @@ async function runFlushInner(
                   body: bridgeCarryMarker(bridged),
                 },
               ]);
-            } catch {
+            } catch (error) {
               // burst already carried above; retry owns the reply
+              log.warn("imessage bridged reply send failed", {
+                user_id: job.userId,
+                box_id: null,
+                space_id: job.spaceId,
+                error: error instanceof Error ? error.message : String(error),
+              });
             }
           } else {
             await sender
@@ -1266,7 +1288,15 @@ async function runFlushInner(
                 job.phone,
                 "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
               )
-              .catch(() => undefined);
+              .catch((error) =>
+                log.warn("imessage holding line send failed", {
+                  user_id: job.userId,
+                  box_id: null,
+                  space_id: job.spaceId,
+                  error:
+                    error instanceof Error ? error.message : String(error),
+                })
+              );
           }
         }
         await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
@@ -1342,6 +1372,86 @@ async function runFlushInner(
 
     const initialResponseDeadlineAt = Date.now() + INITIAL_RESPONSE_DEADLINE_MS;
     const finalResponseDeadlineAt = Date.now() + FINAL_RESPONSE_DEADLINE_MS;
+    // A retried attempt of this same burst may find the previous attempt's
+    // run still alive — a crash after createRun wrote its id to flush_jobs
+    // leaves it there (the row survives until a flush completes). Stop the
+    // stale run before starting a second so two side-effectful runs never
+    // overlap; a failed stop holds the burst for another retry instead
+    // (R-ARCH-06).
+    const { data: priorJob } = await supabase
+      .from("flush_jobs")
+      .select("hermes_run_id")
+      .eq("space_id", job.spaceId)
+      .maybeSingle();
+    const priorRunId = (priorJob?.hermes_run_id as string | null) ?? null;
+    if (priorRunId) {
+      const stopped = await stopRun(runTarget, priorRunId)
+        .then(() => true)
+        .catch((error: unknown) => {
+          log.error("imessage prior run stop failed", {
+            user_id: job.userId,
+            box_id: box.boxId,
+            space_id: job.spaceId,
+            hermes_run_id: priorRunId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        });
+      if (!stopped) {
+        // Mark the still-live run so a sweeper can finish it, and hold the
+        // burst — never start a second run over it.
+        await db
+          .write(
+            supabase
+              .from("agent_runs")
+              .update({
+                ended_at: new Date().toISOString(),
+                outcome: "stop_failed",
+              })
+              .eq("user_id", job.userId)
+              .eq("hermes_run_id", priorRunId),
+            {
+              what: "mark unstopped prior run",
+              user_id: job.userId,
+              box_id: box.boxId,
+            }
+          )
+          .catch((error: unknown) =>
+            log.error("imessage stop_failed receipt write failed", {
+              user_id: job.userId,
+              box_id: box.boxId,
+              space_id: job.spaceId,
+              hermes_run_id: priorRunId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          );
+        await carryMessages(supabase, job.userId, job.spaceId, drained);
+        await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+        return;
+      }
+      // Clear the stale id: a later retry must not hold the burst trying to
+      // stop a run that is already dead.
+      await db
+        .write(
+          supabase
+            .from("flush_jobs")
+            .update({ hermes_run_id: null })
+            .eq("space_id", job.spaceId),
+          {
+            what: "clear stopped hermes_run_id",
+            user_id: job.userId,
+            box_id: box.boxId,
+          }
+        )
+        .catch((error: unknown) =>
+          log.error("imessage hermes_run_id clear failed", {
+            user_id: job.userId,
+            box_id: box.boxId,
+            space_id: job.spaceId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+    }
     let run: Awaited<ReturnType<typeof createRun>>;
     try {
       run = await beforeDeadline(
@@ -1350,6 +1460,10 @@ async function runFlushInner(
           sessionId: runSession,
           conversationHistory,
           metadata: { channel: "imessage" },
+          // The first drained message id is stable across retries of this
+          // burst, so the run endpoint can dedup rather than start a second
+          // run while the first is alive (R-ARCH-06).
+          idempotencyKey: `imessage-flush:${job.spaceId}:${drained[0]?.message_id ?? chainStartedAt}`,
         }),
         initialResponseDeadlineAt,
         "Hermes did not create the run before the initial-response deadline"
@@ -1419,7 +1533,46 @@ async function runFlushInner(
             lastCancelCheck = Date.now();
             if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
               cancelled = true;
-              await stopRun(runTarget, run.run_id).catch(() => undefined);
+              const stopped = await stopRun(runTarget, run.run_id)
+                .then(() => true)
+                .catch((error: unknown) => {
+                  log.error("imessage stop run after cancel failed", {
+                    user_id: job.userId,
+                    box_id: box.boxId,
+                    space_id: job.spaceId,
+                    hermes_run_id: run.run_id,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  });
+                  return false;
+                });
+              if (!stopped) {
+                // The run may still be alive and side-effecting — mark it so
+                // a sweeper can finish the kill (R-ARCH-06).
+                await db
+                  .write(
+                    supabase
+                      .from("agent_runs")
+                      .update({ outcome: "stop_failed" })
+                      .eq("user_id", job.userId)
+                      .eq("hermes_run_id", run.run_id),
+                    {
+                      what: "mark unstopped cancelled run",
+                      user_id: job.userId,
+                      box_id: box.boxId,
+                    }
+                  )
+                  .catch((error: unknown) =>
+                    log.error("imessage stop_failed receipt write failed", {
+                      user_id: job.userId,
+                      box_id: box.boxId,
+                      space_id: job.spaceId,
+                      hermes_run_id: run.run_id,
+                      error:
+                        error instanceof Error ? error.message : String(error),
+                    })
+                  );
+              }
               return;
             }
           }
@@ -1468,12 +1621,26 @@ async function runFlushInner(
       // stop endpoint. The durable retry is still scheduled only after the
       // stop attempt settles, which prevents overlapping side-effectful runs.
       const statusAttempted = await notifyFirstRetry(job, sender);
-      await stopRun(runTarget, run.run_id).catch(() => undefined);
+      let stopFailed = false;
+      await stopRun(runTarget, run.run_id).catch((error: unknown) => {
+        stopFailed = true;
+        log.error("imessage stop run before retry failed", {
+          user_id: job.userId,
+          box_id: box.boxId,
+          space_id: job.spaceId,
+          hermes_run_id: run.run_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
       const { error: failReceiptError } = await supabase
         .from("agent_runs")
         .update({
           ended_at: new Date().toISOString(),
-          outcome: "first_response_failed",
+          // The retry creates a second run; when the stop itself failed the
+          // first may still be alive — mark it so a sweeper can finish the
+          // kill rather than leaving two overlapping side-effectful runs
+          // (R-ARCH-06).
+          outcome: stopFailed ? "stop_failed" : "first_response_failed",
         })
         .eq("user_id", job.userId)
         .eq("hermes_run_id", run.run_id);

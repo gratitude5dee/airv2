@@ -9,6 +9,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
+import { log } from "../log";
 import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
 import { createTerminalScanner } from "../hermes/terminal";
 import { routeTurn, routingInstructions } from "../jev/router";
@@ -63,7 +64,15 @@ export async function startChatRun(
   } finally {
     // ensureBoxAwake cleared the idle deadline; re-arm on success and
     // failure alike so a failed turn cannot leave the box running forever.
-    await armStopAfter(supabase, userId).catch(() => undefined);
+    // A swallowed failure here keeps the box awake ~30 min — log it so the
+    // leak is visible (the sweeper's NULL_DEADLINE_GRACE still backstops).
+    await armStopAfter(supabase, userId).catch((error: unknown) =>
+      log.error("arm stop_after failed", {
+        user_id: userId,
+        box_id: box.boxId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
   }
 }
 

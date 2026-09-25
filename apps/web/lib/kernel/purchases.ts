@@ -16,6 +16,7 @@ import type { Vaults } from "@onkernel/sdk/resources";
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import { safeCheckoutUrl } from "../checkout/handoffs";
+import { log } from "../log";
 import { amountBand } from "../vault/tickets";
 import { PurchaseError } from "../vault/purchase";
 import { mintApprovalUrl } from "../approvals/token";
@@ -910,9 +911,16 @@ export async function pollKernelPurchase(
       } else if (status === "declined" || status === "expired") {
         result.status = status;
       }
-    } catch {
+    } catch (error) {
       // A transient Kernel read must not strand the purchase as failed —
       // keep the stored status and let the box poll again.
+      log.warn("kernel purchase status read failed", {
+        user_id: userId,
+        box_id: null,
+        purchase_id: purchaseId,
+        item_key: purchase.item_key,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
   return result;
