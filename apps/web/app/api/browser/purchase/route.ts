@@ -24,12 +24,13 @@ import {
   recordPurchaseOutcome,
   PurchaseError,
   PURCHASE_OUTCOMES,
-  type PurchaseOutcome,
 } from "@/lib/vault/purchase";
 import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { mintApprovalUrl } from "@/lib/approvals/token";
+import { parseBody } from "@/lib/http/body";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,29 @@ export const maxDuration = 60;
 const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 // The card-field groups `air-vault type` can deliver — a closed set, so a
 // report line can never smuggle a value into the audit trail (C18).
-const FIELD_GROUPS = new Set(["number", "expiry", "cvv", "zip"]);
+const FIELD_GROUP = z.enum(["number", "expiry", "cvv", "zip"]);
+
+/** One action per call; the union keys on `action` so each variant types
+ * only the fields it consumes. */
+const Body = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("propose"),
+    host: z.string().min(1),
+    item_id: z.string().regex(ID_RE),
+    summary: z.string().trim().min(1).max(2000),
+    amount_usd: z.number(),
+  }),
+  z.object({
+    action: z.literal("report"),
+    item_id: z.string().regex(ID_RE),
+    host: z.string().min(1),
+    field_groups: z.array(FIELD_GROUP).min(1),
+  }),
+  z.object({
+    action: z.literal("outcome"),
+    outcome: z.enum(PURCHASE_OUTCOMES),
+  }),
+]);
 
 async function callingBox(
   supabase: SupabaseClient,
@@ -203,27 +226,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => null)) as {
-    action?: unknown;
-    host?: unknown;
-    item_id?: unknown;
-    summary?: unknown;
-    amount_usd?: unknown;
-    field_groups?: unknown;
-    outcome?: unknown;
-  } | null;
-  const action = typeof body?.action === "string" ? body.action : "";
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
-  if (action === "propose") {
-    const host = typeof body?.host === "string" ? body.host : "";
-    const itemId = typeof body?.item_id === "string" ? body.item_id : "";
-    const summary =
-      typeof body?.summary === "string" ? body.summary.trim() : "";
-    const amountUsd =
-      typeof body?.amount_usd === "number" ? body.amount_usd : NaN;
-    if (!host || !ID_RE.test(itemId) || !summary || summary.length > 2000) {
-      return NextResponse.json({ error: "invalid request" }, { status: 400 });
-    }
+  if (body.action === "propose") {
+    const { host, summary, amount_usd: amountUsd } = body;
+    const itemId = body.item_id;
     try {
       const result = await proposePurchaseReview(supabase, userId, {
         host,
@@ -257,20 +266,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  if (action === "report") {
-    const itemId = typeof body?.item_id === "string" ? body.item_id : "";
-    const rawHost = typeof body?.host === "string" ? body.host : "";
-    const groups = Array.isArray(body?.field_groups)
-      ? body.field_groups.filter(
-          (g): g is string => typeof g === "string" && FIELD_GROUPS.has(g)
-        )
-      : [];
-    if (!ID_RE.test(itemId) || !rawHost || groups.length === 0) {
-      return NextResponse.json({ error: "invalid request" }, { status: 400 });
-    }
+  if (body.action === "report") {
+    const itemId = body.item_id;
+    const groups = body.field_groups;
     let host: string;
     try {
-      host = normalizeHost(rawHost);
+      host = normalizeHost(body.host);
     } catch {
       return NextResponse.json({ error: "invalid request" }, { status: 400 });
     }
@@ -321,12 +322,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true });
   }
 
-  if (action === "outcome") {
-    const outcome = typeof body?.outcome === "string" ? body.outcome : "";
-    if (!(PURCHASE_OUTCOMES as readonly string[]).includes(outcome)) {
-      return NextResponse.json({ error: "invalid request" }, { status: 400 });
-    }
-    await recordPurchaseOutcome(supabase, userId, outcome as PurchaseOutcome);
+  if (body.action === "outcome") {
+    await recordPurchaseOutcome(supabase, userId, body.outcome);
     return NextResponse.json({ ok: true });
   }
 

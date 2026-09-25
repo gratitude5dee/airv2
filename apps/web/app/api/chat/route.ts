@@ -28,6 +28,8 @@ import { parseMention } from "@/lib/bots/mentions";
 import { listBots, toPublic, type BotRow } from "@/lib/bots/store";
 import { startBotChatRun } from "@/lib/bots/chat";
 import { attachmentMarker } from "@/lib/chat/attachments";
+import { parseBody } from "@/lib/http/body";
+import { z } from "zod";
 import { parseTradeCommand } from "@/lib/trade/parse";
 import { runTradeCommand } from "@/lib/trade/imessage";
 import { mintSignedLink } from "@/lib/miniapps/cards";
@@ -39,24 +41,36 @@ export const dynamic = "force-dynamic";
 // iMessage webhook's 800).
 export const maxDuration = 800;
 
+const Attachment = z.object({
+  path: z
+    .string()
+    .regex(/^\.hermes\/inbox\/\d+-[A-Za-z0-9._-]+$/, "bad attachment"),
+  mime: z.string().optional(),
+});
+
+/** The composer input is bounded (64k chars ≈ a large paste); session is
+ * the Hermes thread id; attachments ride the upload-route inbox paths. */
+const Body = z.object({
+  input: z.string().max(64_000).optional(),
+  via: z.enum(["voice", "web"]).optional(),
+  session: z.string().regex(CHAT_SESSION_RE, "bad session").optional(),
+  attachments: z.array(Attachment).max(5).optional(),
+});
+
+const MIME_RE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i;
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const userId = sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const body = (await request.json().catch(() => ({}))) as {
-    input?: string;
-    via?: string;
-    attachments?: unknown;
-    session?: unknown;
-  };
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   // Threads (spec §3): an optional Hermes session id. Omitted means the
   // shared air-main conversation — the pre-threads wire shape is unchanged.
   let session: string | undefined;
   if (body.session !== undefined) {
-    if (typeof body.session !== "string" || !CHAT_SESSION_RE.test(body.session)) {
-      return NextResponse.json({ error: "bad session" }, { status: 400 });
-    }
     // Create threads take turns only through /api/create/turn (Kit prompt,
     // create-<tier> model, project budget) — never as plain chat.
     if (isCreateSession(body.session)) {
@@ -68,20 +82,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // V8: uploads referenced by box path (from /api/chat/upload), the same
   // marker shape the iMessage path emits — never raw bytes (C4). The path
   // must match exactly what the upload route mints.
-  const attachments = Array.isArray(body.attachments)
-    ? (body.attachments as { path?: unknown; mime?: unknown }[]).slice(0, 5)
-    : [];
   const markers: string[] = [];
-  for (const attachment of attachments) {
-    if (
-      typeof attachment.path !== "string" ||
-      !/^\.hermes\/inbox\/\d+-[A-Za-z0-9._-]+$/.test(attachment.path)
-    ) {
-      return NextResponse.json({ error: "bad attachment" }, { status: 400 });
-    }
+  for (const attachment of body.attachments ?? []) {
     const mime =
-      typeof attachment.mime === "string" &&
-      /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(attachment.mime)
+      attachment.mime && MIME_RE.test(attachment.mime)
         ? attachment.mime
         : "application/octet-stream";
     markers.push(attachmentMarker(mime, attachment.path));

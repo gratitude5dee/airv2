@@ -8,13 +8,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { publishDueSlots } from "@/lib/publish/worker";
+import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 function authorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
+  const secret = env.cronSecret() ?? "";
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";

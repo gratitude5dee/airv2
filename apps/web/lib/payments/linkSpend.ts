@@ -12,6 +12,7 @@ import { safeCheckoutUrl } from "../checkout/handoffs";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { asRecord } from "../records";
 import { checkLinkAuth, LINK_CREDENTIALS_PATH } from "./linkAuth";
+import { env } from "../env";
 
 const LINK_CLI = "/home/user/.hermes/node/bin/link-cli";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
@@ -241,7 +242,7 @@ export async function createLinkSpendRequest(
   userId: string,
   input: CreateLinkSpendInput,
 ): Promise<LinkSpendResult> {
-  if (process.env["LINK_AGENT_PAYMENTS_ENABLED"] !== "true") {
+  if (!env.linkAgentPaymentsEnabled()) {
     throw new Error("Link agent payments are disabled");
   }
   const auth = await checkLinkAuth(supabase, userId);

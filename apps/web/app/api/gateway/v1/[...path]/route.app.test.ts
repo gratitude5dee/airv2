@@ -160,15 +160,19 @@ vi.mock("@/lib/providers/keys", () => ({
   getProviderKey: providerKeys.getProviderKey,
   PROVIDER_LABELS: { openrouter: "OpenRouter", venice: "Venice", gmi: "GMI" },
 }));
-vi.mock("@/lib/env", () => ({
+vi.mock("@/lib/env", async (importOriginal) => {
+  const { env: envReal } = await importOriginal<typeof import("@/lib/env")>();
+  return {
   env: {
+    ...envReal,
     modelProviderBaseUrl: () => "https://upstream.test/v1",
     modelProviderApiKey: () => "provider-key",
     openRouterBaseUrl: () => "https://openrouter.test/api/v1",
     openRouterApiKey: () => "openrouter-key",
     appOrigin: () => "https://app.test",
   },
-}));
+  };
+});
 
 import { NextRequest } from "next/server";
 import { appReserveUsd } from "@/lib/functions/runtime";

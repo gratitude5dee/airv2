@@ -212,9 +212,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({
     control_plane: {
-      git_sha: process.env["VERCEL_GIT_COMMIT_SHA"] ?? null,
-      deployed_at: process.env["VERCEL_DEPLOYMENT_CREATED_AT"] ?? null,
-      region: process.env["VERCEL_REGION"] ?? null,
+      git_sha: env.vercelGitCommitSha() ?? null,
+      deployed_at: env.vercelDeploymentCreatedAt() ?? null,
+      region: env.vercelRegion() ?? null,
     },
     kit: { version: kitVersion(), restricted_version: restrictedConfig()?.version ?? null },
     dispatcher,
