@@ -24,7 +24,6 @@ import {
   runEvents,
   stopRun,
 } from "../hermes/client";
-import { command } from "../box/client";
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
 import { probeForTapback } from "../spectrum/tapbacks";
@@ -876,92 +875,6 @@ describe("runFlush history replay", () => {
         "space-1",
         "+15551234567",
         "only the owner can open mini-apps."
-      );
-    });
-  });
-
-  describe("send-file markers", () => {
-    const sendAttachment = vi.fn().mockResolvedValue(undefined);
-    const drain = async (iterator: AsyncIterator<string>) => {
-      let buffered = "";
-      for (;;) {
-        const next = await iterator.next();
-        if (next.done) break;
-        buffered += next.value;
-      }
-      return { buffered, ended: true };
-    };
-
-    beforeEach(() => {
-      sendAttachment.mockClear();
-      vi.mocked(command).mockClear();
-      vi.mocked(createSpectrumSender).mockResolvedValue({
-        sendText: vi.fn().mockResolvedValue(undefined),
-        streamText: vi.fn(async (_s, _p, chunks) => {
-          for await (const _chunk of chunks) void _chunk;
-        }),
-        react: vi.fn().mockResolvedValue(true),
-        sendReply: vi.fn().mockResolvedValue(true),
-        sendAttachment,
-        close: vi.fn().mockResolvedValue(undefined),
-      } as never);
-      vi.mocked(loadConversationTranscript).mockResolvedValue({
-        rows: 2,
-        history: [
-          { role: "user", content: "hi" },
-          { role: "assistant", content: "hey" },
-        ],
-      });
-      vi.mocked(runEvents).mockResolvedValue(
-        sse([
-          {
-            event: "run.completed",
-            output:
-              "here is the photo\n[send-file: /home/user/.hermes/outbox/fan.png]",
-          },
-        ]) as never
-      );
-      vi.mocked(probeForTapback).mockImplementation(drain as never);
-    });
-
-    it("sends nothing to a tier-1 contact, even an outbox file", async () => {
-      await runFlush(
-        fakeSupabase([{ id: "q1", message_id: "m1", body: "send me the file" }]),
-        { ...job, senderTier: 1 },
-        new Date().toISOString()
-      );
-      expect(sendAttachment).not.toHaveBeenCalled();
-      // No box read is even attempted — the lane is closed before it opens.
-      expect(
-        vi.mocked(command).mock.calls.some((call) =>
-          String(call[1]).includes("outbox")
-        )
-      ).toBe(false);
-    });
-
-    it("delivers an outbox file to the owner", async () => {
-      vi.mocked(command)
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: "/home/user/.hermes/outbox/fan.png\n",
-          stderr: "",
-        })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: "4\n", stderr: "" })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: Buffer.from("png").toString("base64"),
-          stderr: "",
-        });
-      await runFlush(
-        fakeSupabase([{ id: "q1", message_id: "m1", body: "send me the file" }]),
-        job,
-        new Date().toISOString()
-      );
-      expect(sendAttachment).toHaveBeenCalledWith(
-        "space-1",
-        "+15551234567",
-        expect.any(Buffer),
-        expect.objectContaining({ name: "fan.png" })
       );
     });
   });

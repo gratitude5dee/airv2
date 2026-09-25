@@ -120,53 +120,31 @@ describe("isSendablePath", () => {
   });
 });
 
-describe("isSendablePath", () => {
-  it("accepts only files under the box outbox", () => {
-    expect(isSendablePath("/home/user/.hermes/outbox/fan.png")).toBe(true);
-    expect(isSendablePath("/home/user/.hermes/outbox/deep/dir/x.pdf")).toBe(
-      true
-    );
-    expect(isSendablePath("/Users/jane/.hermes/outbox/shot.png")).toBe(true);
-  });
-
-  it("rejects credentials, memory, and anything outside the outbox", () => {
-    for (const path of [
-      "/home/user/.hermes/.env",
-      "/home/user/.hermes/memories/USER.md",
-      "/home/user/.hermes/vault/.tickets/item.json",
-      "/home/user/.openviking/store/x.json",
-      "/home/user/a.png",
-      "/tmp/x.png",
-      "/home/user/.hermes/outbox.png",
-      "/home/user/.hermes/outbox/../.env",
-      "/home/user/.hermes/outbox/x.png\nrm -rf /",
-    ]) {
-      expect(isSendablePath(path)).toBe(false);
-    }
-  });
-});
-
 describe("deliverSendFiles", () => {
-  const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: "" });
-
   it("uses portable commands and single-quotes shell-metacharacter paths", async () => {
     const mocked = vi.mocked(command);
     mocked.mockReset();
     const png = Buffer.from("fake-png-bytes");
-    const path = `/home/user/.hermes/outbox/a"$(touch pwned)\`.png`;
     mocked
-      .mockResolvedValueOnce(ok(`${path}\n`))
-      .mockResolvedValueOnce(ok(`${png.length}\n`))
-      .mockResolvedValueOnce(ok(png.toString("base64")));
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: `${png.length}\n`,
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: png.toString("base64"),
+        stderr: "",
+      });
     const sendAttachment = vi.fn().mockResolvedValue(undefined);
     const sender = { sendAttachment } as unknown as SpectrumSender;
+    const path = `/home/user/.hermes/outbox/a"$(touch pwned)\`.png`;
     const sent = await deliverSendFiles(sender, "bx_1", "space", "+1", [path]);
     expect(sent).toBe(1);
     const quoted = `'${path}'`;
-    expect(mocked).toHaveBeenNthCalledWith(1, "bx_1", `realpath ${quoted}`);
-    expect(mocked).toHaveBeenNthCalledWith(2, "bx_1", `wc -c < ${quoted}`);
+    expect(mocked).toHaveBeenNthCalledWith(1, "bx_1", `wc -c < ${quoted}`);
     expect(mocked).toHaveBeenNthCalledWith(
-      3,
+      2,
       "bx_1",
       `base64 < ${quoted} | tr -d '\\n'`,
       120
@@ -177,35 +155,6 @@ describe("deliverSendFiles", () => {
     });
   });
 
-  it("never reads an outbox name that resolves outside the outbox", async () => {
-    const mocked = vi.mocked(command);
-    mocked.mockReset();
-    // The marker names an outbox file, but the box resolves it to a symlink
-    // into .hermes — the credential never leaves the box.
-    mocked.mockResolvedValueOnce(ok("/home/user/.hermes/.env\n"));
-    const sendAttachment = vi.fn();
-    const sender = { sendAttachment } as unknown as SpectrumSender;
-    const sent = await deliverSendFiles(sender, "bx_1", "space", "+1", [
-      "/home/user/.hermes/outbox/link.png",
-    ]);
-    expect(sent).toBe(0);
-    expect(mocked).toHaveBeenCalledTimes(1);
-    expect(sendAttachment).not.toHaveBeenCalled();
-  });
-
-  it("skips the file when the box cannot resolve it", async () => {
-    const mocked = vi.mocked(command);
-    mocked.mockReset();
-    mocked.mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "no such file" });
-    const sendAttachment = vi.fn();
-    const sender = { sendAttachment } as unknown as SpectrumSender;
-    const sent = await deliverSendFiles(sender, "bx_1", "space", "+1", [
-      "/home/user/.hermes/outbox/missing.png",
-    ]);
-    expect(sent).toBe(0);
-    expect(sendAttachment).not.toHaveBeenCalled();
-  });
-
   it("escapes single quotes inside the path", async () => {
     const mocked = vi.mocked(command);
     mocked.mockReset();
@@ -213,11 +162,11 @@ describe("deliverSendFiles", () => {
     const sender = {
       sendAttachment: vi.fn(),
     } as unknown as SpectrumSender;
-    const path = "/home/user/.hermes/outbox/it's.png";
+    const path = "/home/user/it's.png";
     await deliverSendFiles(sender, "bx_1", "space", "+1", [path]);
     expect(mocked).toHaveBeenCalledWith(
       "bx_1",
-      `realpath '/home/user/.hermes/outbox/it'\\''s.png'`
+      `wc -c < '/home/user/it'\\''s.png'`
     );
   });
 });

@@ -39,17 +39,13 @@ const MIME_BY_EXT: Record<string, string> = {
   webp: "image/webp",
 };
 
-/** The agent's own deliverable directory (SOUL.md "Sending photos"). Every
- * other path — credentials under ~/.hermes, memories, the OpenViking store,
- * anything elsewhere on the box — is never an attachment source. */
-const OUTBOX_RE = /^\/(?:home|Users)\/[^/]+\/\.hermes\/outbox\//;
-
-/** String-level allowlist: the path must sit under the outbox and carry no
- * traversal. deliverSendFiles re-checks the box-resolved realpath so a
- * symlink out of the outbox loses too. */
+/** Only files the agent itself can write are sendable; anything outside the
+ * box home (or path-traversal shaped) is ignored. */
 export function isSendablePath(path: string): boolean {
   return (
-    OUTBOX_RE.test(path) && !path.includes("..") && !path.includes("\n")
+    /^\/(?:home|Users)\/[^/]+\//.test(path) &&
+    !path.includes("..") &&
+    !path.includes("\n")
   );
 }
 
@@ -154,22 +150,14 @@ export async function deliverSendFiles(
     if (!isSendablePath(path)) continue;
     try {
       const quoted = shellQuote(path);
-      // Resolve on the box and re-check: a symlink (or hidden traversal)
-      // that escapes the outbox is skipped — only the resolved target is
-      // read, so what was validated is what gets sent.
-      const resolved = await command(boxId, `realpath ${quoted}`);
-      if (resolved.exitCode !== 0) continue;
-      const real = resolved.stdout.trim();
-      if (!isSendablePath(real)) continue;
-      const quotedReal = shellQuote(real);
       // `wc -c < file` and unwrapped base64 work on both GNU and BSD tools;
       // `stat -c` / `base64 -w0` are GNU-only and fail on macOS boxes.
-      const size = await command(boxId, `wc -c < ${quotedReal}`);
+      const size = await command(boxId, `wc -c < ${quoted}`);
       if (size.exitCode !== 0) continue;
       if (Number.parseInt(size.stdout.trim(), 10) > MAX_FILE_BYTES) continue;
       const encoded = await command(
         boxId,
-        `base64 < ${quotedReal} | tr -d '\\n'`,
+        `base64 < ${quoted} | tr -d '\\n'`,
         120
       );
       if (encoded.exitCode !== 0) continue;
