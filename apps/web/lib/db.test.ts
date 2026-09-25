@@ -2,18 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PostgrestError } from "@supabase/supabase-js";
 import { db, DbWriteError } from "./db";
 
 vi.mock("./log", () => ({
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
-const pgError = {
+const pgError = new PostgrestError({
   message: "duplicate key value violates unique constraint",
   code: "23505",
   details: "Key (id)=(1) already exists.",
-  hint: null,
-};
+  hint: "",
+});
 
 describe("db.write", () => {
   it("returns data when the query succeeds", async () => {
