@@ -290,6 +290,7 @@ describe("runFlush mini-app commands", () => {
         space_id: "space-1",
         phone: "+15551234567",
         sender_id: null,
+        sender_tier: null,
         message_id: "m1",
         body: "/image-editor",
       },

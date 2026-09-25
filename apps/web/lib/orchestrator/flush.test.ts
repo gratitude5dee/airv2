@@ -104,20 +104,66 @@ describe("beforeDeadline", () => {
 });
 
 describe("composeInput", () => {
-  it("prepends carried messages as history", () => {
+  it("prepends carried messages as history, labelled per sender", () => {
     const carried = [{ id: "1", message_id: "m1", body: "earlier text" }];
     const fresh = [
       { id: "2", message_id: "m2", body: "hey" },
       { id: "3", message_id: "m3", body: "actually — the real question" },
     ];
     expect(composeInput(carried, fresh)).toBe(
-      "[Earlier message] earlier text\nhey\nactually — the real question"
+      "[Earlier message] [from unknown] earlier text\n" +
+        "[from unknown] hey\n" +
+        "[from unknown] actually — the real question"
     );
   });
 
-  it("is just the batch when nothing was carried", () => {
+  it("is just the labelled batch when nothing was carried", () => {
     expect(composeInput([], [{ id: "1", message_id: "m", body: "hi" }])).toBe(
-      "hi"
+      "[from unknown] hi"
+    );
+  });
+
+  it("labels each body with its sender across a mixed-sender burst", () => {
+    const fresh = [
+      {
+        id: "1",
+        message_id: "m1",
+        body: "can you ask him about dinner?",
+        sender_id: "+19998887777",
+        sender_tier: 1,
+      },
+      {
+        id: "2",
+        message_id: "m2",
+        body: "and get me an uber too",
+        sender_id: "+15550000000",
+        sender_tier: 0,
+      },
+    ];
+    expect(composeInput([], fresh)).toBe(
+      "[from +19998887777] can you ask him about dinner?\n" +
+        "[from owner] and get me an uber too"
+    );
+  });
+
+  it("keeps bridge markers unlabelled — they are the agent's own output", () => {
+    const carried = [
+      {
+        id: "1",
+        message_id: "bridge:ack-1",
+        body: "[You already sent a brief acknowledgment]",
+      },
+      {
+        id: "2",
+        message_id: "m1",
+        body: "earlier text",
+        sender_id: "+19998887777",
+        sender_tier: 1,
+      },
+    ];
+    expect(composeInput(carried, [])).toBe(
+      "[Earlier message] [You already sent a brief acknowledgment]\n" +
+        "[Earlier message] [from +19998887777] earlier text"
     );
   });
 
@@ -134,6 +180,8 @@ describe("composeInput", () => {
       { id: "3", message_id: "m-zap", body: "/zap make it rain" },
     ];
 
+    // Response lanes keep the raw bodies: command parsers anchor on the
+    // user's own lines, never on sender labels.
     expect(composeResponseLaneInput(carried, fresh)).toBe(
       "[Earlier message] [attachment:att-photo]\n/zap make it rain"
     );
@@ -541,7 +589,7 @@ describe("runFlush history replay", () => {
       "air-main"
     );
     expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
-      input: "94587",
+      input: "[from unknown] 94587",
       sessionId: "air-main",
       conversationHistory: history,
     });
@@ -876,6 +924,135 @@ describe("runFlush history replay", () => {
         "+15551234567",
         "only the owner can open mini-apps."
       );
+    });
+  });
+
+  describe("sender trust (R-SEC-01, R-SEC-02)", () => {
+    it("stamps the burst's tier and sender ref on the owner's run", async () => {
+      vi.mocked(loadConversationTranscript).mockResolvedValue({
+        rows: 2,
+        history: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "hey" },
+        ],
+      });
+      await runFlush(
+        fakeSupabase([
+          {
+            id: "q1",
+            message_id: "m1",
+            body: "hello",
+            sender_id: "+15551234567",
+            sender_tier: 0,
+          },
+        ]),
+        job,
+        new Date().toISOString()
+      );
+      const request = vi.mocked(createRun).mock.calls[0]?.[1];
+      expect(request).toMatchObject({
+        sessionId: "air-main",
+        metadata: {
+          channel: "imessage",
+          sender_tier: "0",
+          sender_ref: "owner",
+        },
+      });
+      // Owner turns carry no turn-author override.
+      expect(request?.author).toBeUndefined();
+    });
+
+    it("runs a contact burst in its own session with no owner history", async () => {
+      // A first contact turn: the box has no contact:<id> session yet.
+      vi.mocked(ensureSession).mockResolvedValue({ created: true });
+      vi.mocked(loadConversationTranscript).mockResolvedValue({
+        rows: 0,
+        history: [],
+      });
+      await runFlush(
+        fakeSupabase([
+          {
+            id: "q1",
+            message_id: "m1",
+            body: "is he around?",
+            sender_id: "+19998887777",
+            sender_tier: 1,
+          },
+        ]),
+        { ...job, senderTier: 1 },
+        new Date().toISOString()
+      );
+      // air-main is never ensured or read: no owner history, no owner
+      // memory session — the turn runs in the contact's own.
+      for (const call of vi.mocked(ensureSession).mock.calls) {
+        expect(call[1]).not.toBe("air-main");
+      }
+      for (const call of vi.mocked(loadConversationTranscript).mock.calls) {
+        expect(call[1]).not.toBe("air-main");
+      }
+      expect(vi.mocked(ensureSession).mock.calls[0]?.slice(1)).toEqual([
+        "contact:+19998887777",
+        "contact:+19998887777",
+      ]);
+      const request = vi.mocked(createRun).mock.calls[0]?.[1];
+      expect(request).toMatchObject({
+        input: "[from +19998887777] is he around?",
+        sessionId: "contact:+19998887777",
+        conversationHistory: [],
+        metadata: {
+          channel: "imessage",
+          sender_tier: "1",
+          sender_ref: "contact:+19998887777",
+        },
+        author: {
+          id: "contact:+19998887777",
+          name: "+19998887777",
+          is_bot: false,
+        },
+      });
+    });
+
+    it("resolves a burst to its least-trusted sender when the owner's bubble lands last", async () => {
+      // R-SEC-02: contact first, owner second — the old code took the last
+      // message's tier (owner, 0) and ran the contact's text inside
+      // air-main. Even a stale job row still claiming tier 0 must not lift
+      // the burst: the rows decide.
+      vi.mocked(ensureSession).mockResolvedValue({ created: true });
+      vi.mocked(loadConversationTranscript).mockResolvedValue({
+        rows: 0,
+        history: [],
+      });
+      await runFlush(
+        fakeSupabase([
+          {
+            id: "q1",
+            message_id: "m1",
+            body: "can he come out tonight?",
+            sender_id: "+19998887777",
+            sender_tier: 1,
+          },
+          {
+            id: "q2",
+            message_id: "m2",
+            body: "yes tell him",
+            sender_id: "+15550000000",
+            sender_tier: 0,
+          },
+        ]),
+        { ...job, senderTier: 0 },
+        new Date().toISOString()
+      );
+      const request = vi.mocked(createRun).mock.calls[0]?.[1];
+      expect(request).toMatchObject({
+        input:
+          "[from +19998887777] can he come out tonight?\n" +
+          "[from owner] yes tell him",
+        sessionId: "contact:+19998887777",
+        metadata: {
+          sender_tier: "1",
+          sender_ref: "contact:+19998887777",
+        },
+      });
     });
   });
 });
