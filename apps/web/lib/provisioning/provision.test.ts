@@ -244,6 +244,8 @@ const bridgeCommand = vi.fn(async (_c: unknown, cmd: string) => {
   }
   return { exitCode: 0, stdout: "", stderr: "" };
 });
+const bridgeReadFile = vi.fn();
+const bridgeWriteFile = vi.fn();
 vi.mock("../namespace/client", () => ({
   BRIDGE_PORT: 8722,
   DASHBOARD_PORT: 9119,
@@ -258,8 +260,16 @@ vi.mock("../namespace/client", () => ({
   })),
   bridgeCommand: (...args: unknown[]) =>
     bridgeCommand(...(args as [unknown, string])),
-  bridgeReadFile: vi.fn(),
-  bridgeWriteFile: vi.fn(),
+  bridgeReadFile: (...args: unknown[]) => bridgeReadFile(...(args as [])),
+  bridgeWriteFile: (...args: unknown[]) => bridgeWriteFile(...(args as [])),
+  // The BoxProvider seam (R-ARCH-08): lib/compute/runtime dispatches through
+  // this adapter, so its methods forward to the same mocks.
+  provider: {
+    command: (...args: unknown[]) =>
+      bridgeCommand(...(args as [unknown, string])),
+    readFile: (...args: unknown[]) => bridgeReadFile(...(args as [])),
+    writeFile: (...args: unknown[]) => bridgeWriteFile(...(args as [])),
+  },
   suspendInstance: vi.fn(),
   destroyInstance: vi.fn(),
   wakeInstance: vi.fn(),
