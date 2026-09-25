@@ -37,6 +37,10 @@ def run(capsys, *argv):
     return code, captured.out, captured.err
 
 
+def scrub(output, item_id):
+    return output.replace(item_id, "")
+
+
 def create_card(home, capsys):
     inbox = vault_store.inbox_dir(home)
     inbox.mkdir(parents=True, exist_ok=True)
@@ -93,14 +97,15 @@ def test_ticketed_card_fill_types_and_cvv_burns(home, capsys, fake_browser):
         code, out, err = run(capsys, "type", item_id, "--field", field)
         assert code == 0, err
         assert out == f"typed {item_id}/{field} into amazon.com\n"
-        assert value not in out and value not in err
+        assert value not in scrub(out, item_id)
+        assert value not in scrub(err, item_id)
     assert path.is_file()
     code, out, err = run(capsys, "type", item_id, "--field", "cvv")
     assert code == 0, err
     # CVV last burns the ticket file.
     assert not path.exists()
     assert fake_browser["typed"] == [NUMBER, "11", "2031", "10001", CVV]
-    assert CVV not in out and CVV not in err
+    assert CVV not in scrub(out, item_id) and CVV not in scrub(err, item_id)
 
 
 def test_ticket_is_single_use_after_burn(home, capsys, fake_browser):
@@ -156,7 +161,8 @@ def test_host_mismatch_red_team_page_gets_nothing(home, capsys, fake_browser):
     assert code == 1
     assert json.loads(err)["error"] == "host_mismatch"
     assert fake_browser["typed"] == []
-    assert NUMBER not in out and NUMBER not in err
+    assert NUMBER not in scrub(out, item_id)
+    assert NUMBER not in scrub(err, item_id)
 
 
 def test_ticket_for_other_item_refuses(home, capsys, fake_browser):
@@ -236,4 +242,4 @@ def test_ticket_never_lands_in_receipt_or_errors(home, capsys, fake_browser):
     code, out, _ = run(capsys, "type", item_id, "--field", "number")
     assert code == 0
     assert "test-jti" not in out
-    assert fill_ticket.DRY_RUN_VALUES["number"] not in out
+    assert fill_ticket.DRY_RUN_VALUES["number"] not in scrub(out, item_id)
