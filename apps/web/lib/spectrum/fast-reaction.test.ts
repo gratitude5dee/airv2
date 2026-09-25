@@ -19,6 +19,7 @@ vi.mock("../env", () => ({
   env: {
     spectrumProjectId: () => "project-1",
     spectrumProjectSecret: () => "project-secret",
+    evalSpectrumRecordUrl: () => null,
   },
 }));
 
