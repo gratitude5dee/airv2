@@ -50,6 +50,11 @@ export interface RunRequest {
   /** Extra system instructions for this run (Create injects the Kit's
    * system prompt + project context here, §9.2). */
   instructions?: string;
+  /** Turn-author attribution (`author` on /v1/runs → hermes turn_author):
+   * a memory-attribution label for who wrote the user side — set on
+   * non-owner turns so memory writes are never credited to the owner.
+   * It grants nothing; omit it on owner turns. */
+  author?: { id: string; name: string; is_bot: boolean };
 }
 
 const RunResponseSchema = z.object({ run_id: z.string() });
@@ -167,6 +172,7 @@ export async function createRun(
       ...(request.sessionId ? { session_id: request.sessionId } : {}),
       ...(history.length > 0 ? { conversation_history: history } : {}),
       ...(request.metadata ? { metadata: request.metadata } : {}),
+      ...(request.author ? { author: request.author } : {}),
       ...(request.model ? { model: request.model } : {}),
       ...(request.instructions ? { instructions: request.instructions } : {}),
     }),

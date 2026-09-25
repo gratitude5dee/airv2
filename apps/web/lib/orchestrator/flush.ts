@@ -133,7 +133,26 @@ interface QueuedMessage {
   message_id: string;
   body: string;
   sender_id?: string | undefined;
+  /** The sender's resolved trust tier at enqueue (migration 0129). */
+  sender_tier?: number | null | undefined;
   received_at?: string | undefined;
+}
+
+/** A row whose tier was never recorded reads as least-trusted, never owner. */
+const UNKNOWN_SENDER_TIER = 2;
+
+/** Sender trust for a queued row: its own tier, else the job's scheduled one. */
+function burstRowTier(
+  row: QueuedMessage,
+  jobTier: number | null | undefined
+): number {
+  return row.sender_tier ?? jobTier ?? UNKNOWN_SENDER_TIER;
+}
+
+/** Who a queued row speaks for inside the composed input. */
+function senderLabel(row: QueuedMessage): string {
+  if (row.sender_tier === 0) return "owner";
+  return row.sender_id ?? "unknown";
 }
 
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
@@ -232,6 +251,7 @@ export async function enqueueInbound(
     space_id: message.spaceId,
     phone: message.phone,
     sender_id: message.senderId ?? null,
+    sender_tier: message.senderTier ?? null,
     message_id: message.messageId,
     body: message.body,
   });
@@ -351,7 +371,7 @@ async function drainTable(
 ): Promise<QueuedMessage[]> {
   const { data, error } = await supabase
     .from(table)
-    .select("id, message_id, body, sender_id, received_at")
+    .select("id, message_id, body, sender_id, sender_tier, received_at")
     .eq("space_id", spaceId)
     .order("received_at", { ascending: true });
   if (error) {
@@ -384,34 +404,52 @@ const drainCarried = (
 ): Promise<QueuedMessage[]> =>
   drainTable(supabase, "carried_messages", spaceId);
 
-/** Prior-chain remnants read as history, not fresh input. */
+/**
+ * Prior-chain remnants read as history, not fresh input. Every real body
+ * carries its sender (R-SEC-02): a mixed burst must never read as one
+ * undifferentiated voice — an owner bubble that lands after a contact's
+ * text stays labelled as the owner's, and vice versa. Synthetic bridge
+ * markers are the agent's own earlier output, not a sender, so they keep
+ * their marker shape unlabelled.
+ */
 export function composeInput(
   carried: QueuedMessage[],
   fresh: QueuedMessage[]
 ): string {
   const parts: string[] = [];
   for (const message of carried) {
-    parts.push(`[Earlier message] ${message.body}`);
+    parts.push(
+      isBridgeMarkerId(message.message_id)
+        ? `[Earlier message] ${message.body}`
+        : `[Earlier message] [from ${senderLabel(message)}] ${message.body}`
+    );
   }
   for (const message of fresh) {
-    parts.push(message.body);
+    parts.push(`[from ${senderLabel(message)}] ${message.body}`);
   }
   return parts.join("\n");
 }
 
 /**
  * Deterministic response lanes receive the user's burst, not acknowledgments
- * previously sent by the bridge. Real carried user rows keep their original
- * message ids, so they remain part of the command input.
+ * previously sent by the bridge — and not sender labels either: the lanes'
+ * command parsers are line-anchored on raw user text, so they keep seeing
+ * the unlabelled bodies the webhook wrote. Real carried user rows keep their
+ * original message ids, so they remain part of the command input.
  */
 export function composeResponseLaneInput(
   carried: QueuedMessage[],
   fresh: QueuedMessage[]
 ): string {
-  return composeInput(
-    carried.filter((message) => !isBridgeMarkerId(message.message_id)),
-    fresh
-  );
+  const parts: string[] = [];
+  for (const message of carried) {
+    if (isBridgeMarkerId(message.message_id)) continue;
+    parts.push(`[Earlier message] ${message.body}`);
+  }
+  for (const message of fresh) {
+    parts.push(message.body);
+  }
+  return parts.join("\n");
 }
 
 /** True when a cancellation stamped after this chain began. */
@@ -448,9 +486,11 @@ async function materializeAttachments(
 ): Promise<string> {
   const lines = await Promise.all(
     input.split("\n").map(async (line) => {
-      const match = ATTACHMENT_MARKER.exec(
-        line.replace(/^\[Earlier message\] /, "")
-      );
+      // Sender labels and the carried marker prefix the body (R-SEC-02);
+      // the marker match and the rewrite must skip both.
+      const prefix =
+        /^(?:\[Earlier message\] )?(?:\[from [^\]]*\] )?/.exec(line)?.[0] ?? "";
+      const match = ATTACHMENT_MARKER.exec(line.slice(prefix.length));
       if (!match?.[1]) return line;
       const parts: string[] = [];
       for (const id of match[1].split(",")) {
@@ -473,9 +513,7 @@ async function materializeAttachments(
           `[The user sent an attachment (${attachment.mimeType}); it is saved at /home/user/${path}]`
         );
       }
-      return line.startsWith("[Earlier message] ")
-        ? `[Earlier message] ${parts.join(" ")}`
-        : parts.join(" ");
+      return `${prefix}${parts.join(" ")}`;
     })
   );
   return lines.join("\n");
@@ -574,6 +612,7 @@ async function carryMessages(
       user_id: userId,
       space_id: spaceId,
       sender_id: message.sender_id ?? null,
+      sender_tier: message.sender_tier ?? null,
       message_id: message.message_id,
       body: message.body,
     }))
@@ -594,6 +633,7 @@ async function requeueMessages(
       space_id: spaceId,
       phone,
       sender_id: message.sender_id ?? null,
+      sender_tier: message.sender_tier ?? null,
       message_id: message.message_id,
       body: message.body,
     }))
@@ -798,6 +838,29 @@ async function runFlushInner(
       await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
       return;
     }
+    // R-SEC-02: the burst's trust is its least-trusted message — the highest
+    // tier number across every queued row — never the last message's. An
+    // owner bubble landing after a contact's text must not lift the burst
+    // back into the owner's session. Rows without a recorded tier (legacy
+    // rows, synthetic lane requeues) fall back to the job's scheduled tier,
+    // then to unknown.
+    const burstTier = drained.reduce(
+      (tier, row) => Math.max(tier, burstRowTier(row, job.senderTier)),
+      0
+    );
+    // The least-trusted sender still in the burst names the contact session.
+    const burstSenderId =
+      [...drained]
+        .reverse()
+        .find(
+          (row) =>
+            burstRowTier(row, job.senderTier) === burstTier && row.sender_id
+        )?.sender_id ??
+      [...drained].reverse().find((row) => row.sender_id)?.sender_id;
+    // R-SEC-01: run metadata carries the burst's tier and a sender ref —
+    // "owner" or contact:<sender_id>, the same ref that names the session.
+    const senderRef =
+      burstTier === 0 ? "owner" : `contact:${burstSenderId ?? "unknown"}`;
     let rawInput = composeInput(carried, fresh);
     const responseLaneInput = composeResponseLaneInput(carried, fresh);
     // Timed progress starts from the first fresh iMessage, not from when a
@@ -840,7 +903,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
         },
         responseLaneInput
       );
@@ -899,7 +962,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
         },
         responseLaneInput
       );
@@ -954,7 +1017,7 @@ async function runFlushInner(
     const intake = await maybeOpenIntake(
       supabase,
       sender,
-      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: job.senderTier },
+      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: burstTier },
       responseLaneInput
     );
     if (intake?.kind === "non_owner") {
@@ -982,7 +1045,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
         },
         responseLaneInput
       );
@@ -1034,7 +1097,9 @@ async function runFlushInner(
     // deterministically here — before any box wake. A bare `/trade` was
     // already carded by the mini-app branch above; freeform `/trade ...`
     // text falls through to the Hermes turn and the box-side trade skill.
-    const tradeCommand = parseTradeCommand(rawInput);
+    // Commands parse the unlabelled lane input, not the sender-labelled
+    // model input.
+    const tradeCommand = parseTradeCommand(responseLaneInput);
     if (tradeCommand) {
       try {
         const { handled } = await runTradeCommand(
@@ -1044,7 +1109,7 @@ async function runFlushInner(
             spaceId: job.spaceId,
             userId: job.userId,
             phone: job.phone,
-            senderTier: job.senderTier,
+            senderTier: burstTier,
           },
           tradeCommand
         );
@@ -1091,7 +1156,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
           ...(Number.isFinite(receivedAtMs) ? { receivedAtMs } : {}),
         },
         responseLaneInput
@@ -1189,10 +1254,12 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
           senderId: drained.find((row) => row.sender_id)?.sender_id,
         },
-        rawInput,
+        // Lane input is unlabelled: the share marker and intent regexes
+        // anchor on raw user lines.
+        responseLaneInput,
         drained[0]?.message_id ?? String(Date.now())
       );
       if (located.handled) {
@@ -1287,13 +1354,20 @@ async function runFlushInner(
     // that bot's canonical chat; the reply streams back attributed
     // ('\u{1F916} <name>: \u2026'). Unknown @words stay ordinary text for the
     // default agent. Roster read failures degrade to the default agent.
+    // R-SEC-01: delegation is owner-only — a contact's text never enters a
+    // bot's persistent chat either.
     let runTarget = box.target;
-    let runSession = MAIN_SESSION;
+    // R-SEC-01: a non-owner burst never mounts the owner's air-main — it
+    // runs in the contact's own session, so no owner history is replayed
+    // and no owner memory is attached to the turn. Its own transcript is
+    // replayed instead, keeping contact threads coherent across bursts.
+    let runSession = burstTier === 0 ? MAIN_SESSION : senderRef;
     let runInput = input;
     let botPrefix = "";
     let botSessionCreated: boolean | undefined;
     try {
-      const roster = await listBots(supabase, job.userId);
+      const roster =
+        burstTier === 0 ? await listBots(supabase, job.userId) : [];
       const hit = parseMention(
         input,
         roster.filter((b) => b.status === "ready").map((b) => b.name)
@@ -1323,7 +1397,12 @@ async function runFlushInner(
     const replayed = await replayHistory(runTarget, runSession, {
       userId: job.userId,
       spaceId: job.spaceId,
-      title: runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : BOT_CHAT_TITLE,
+      title:
+        runSession === MAIN_SESSION
+          ? MAIN_SESSION_TITLE
+          : runSession === BOT_CHAT_SESSION
+            ? BOT_CHAT_TITLE
+            : senderRef,
       // The delegation branch above already ensured the bot chat session.
       ...(botSessionCreated === undefined
         ? {}
@@ -1349,7 +1428,22 @@ async function runFlushInner(
           input: runInput,
           sessionId: runSession,
           conversationHistory,
-          metadata: { channel: "imessage" },
+          // R-SEC-01: the run declares who wrote it — the burst's minimum
+          // trust and the sender ref — so Hermes can attribute the turn.
+          metadata: {
+            channel: "imessage",
+            sender_tier: String(burstTier),
+            sender_ref: senderRef,
+          },
+          ...(burstTier > 0
+            ? {
+                author: {
+                  id: senderRef,
+                  name: burstSenderId ?? "unknown",
+                  is_bot: false,
+                },
+              }
+            : {}),
         }),
         initialResponseDeadlineAt,
         "Hermes did not create the run before the initial-response deadline"
@@ -1549,7 +1643,7 @@ async function runFlushInner(
     // minted into their thread. The reply text may still promise a card, so
     // the contact gets the same owner-only line as the explicit /<app> path.
     if (!cancelled && stripped.cards.length > 0) {
-      if (job.senderTier === 0) {
+      if (burstTier === 0) {
         await sendMarkedCards(
           supabase,
           { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
@@ -1757,7 +1851,7 @@ export async function flushAfterDebounce(
   if (!claim) return; // a later message owns the flush now
   const { data } = await supabase
     .from("flush_jobs")
-    .select("attempts")
+    .select("attempts, sender_tier")
     .eq("space_id", message.spaceId)
     .maybeSingle();
   await runFlush(
@@ -1767,7 +1861,12 @@ export async function flushAfterDebounce(
       userId: message.userId,
       phone: message.phone,
       attempts: (data?.attempts as number | undefined) ?? 0,
-      senderTier: message.senderTier ?? null,
+      // The job row's folded minimum trust (schedule_flush, migration 0129),
+      // not this caller's own tier — that was the last-message bug.
+      senderTier:
+        (data?.sender_tier as number | null | undefined) ??
+        message.senderTier ??
+        null,
     },
     claim.chainStartedAt
   );
