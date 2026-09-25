@@ -4,70 +4,26 @@
  * path (C10) keyed by the decision id.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendDraft } from "../agentmail/client";
 import { batchApproveEmailDrafts } from "./batch";
+import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 
 vi.mock("../agentmail/client", () => ({ sendDraft: vi.fn() }));
 
-interface Row {
-  [key: string]: unknown;
-}
+const db = new FakeSupabase();
+const supabase = db.client();
 
-function fakeSupabase(options: {
-  decisions: Row[];
-  inbox: string | null;
-  senders: Row[];
-}) {
-  const updates: Row[] = [];
-  const client = {
-    from(table: string) {
-      const builder = {
-        select() {
-          return builder;
-        },
-        in() {
-          return builder;
-        },
-        eq() {
-          return builder;
-        },
-        is() {
-          return builder;
-        },
-        update(values: Row) {
-          updates.push({ table, values });
-          return builder;
-        },
-        maybeSingle() {
-          return Promise.resolve({
-            data:
-              table === "agent_addresses" && options.inbox
-                ? { agentmail_inbox_id: options.inbox }
-                : null,
-          });
-        },
-        then(
-          resolve: (value: { data: Row[] }) => unknown,
-          reject?: (reason: unknown) => unknown
-        ) {
-          const data =
-            table === "decisions"
-              ? options.decisions
-              : table === "senders"
-                ? options.senders
-                : [];
-          return Promise.resolve({ data }).then(resolve, reject);
-        },
-      };
-      return builder;
-    },
-  };
-  return { client: client as unknown as SupabaseClient, updates };
+function seed(options: { decisions: Row[]; inbox: string | null; senders: Row[] }): void {
+  db.tables["decisions"] = options.decisions.map((row) => ({ ...row }));
+  db.tables["agent_addresses"] = options.inbox
+    ? [{ user_id: "user-1", agentmail_inbox_id: options.inbox, is_primary: true, retired_at: null }]
+    : [];
+  db.tables["senders"] = options.senders.map((row) => ({ ...row }));
 }
 
 const KNOWN = {
   id: "d1",
+  user_id: "user-1",
   kind: "email_draft",
   ref: "draft-1",
   status: "pending",
@@ -77,46 +33,48 @@ const KNOWN = {
 
 describe("batchApproveEmailDrafts", () => {
   beforeEach(() => {
+    db.reset();
     process.env["MAIL_PROVIDER"] = "agentmail";
     vi.mocked(sendDraft).mockReset().mockResolvedValue(undefined);
   });
 
   it("sends pending tier-1 drafts with the decision id as idempotency key", async () => {
-    const { client, updates } = fakeSupabase({
+    seed({
       decisions: [KNOWN],
       inbox: "inbox-1",
-      senders: [{ address: "friend@example.com", trust_tier: 1 }],
+      senders: [{ user_id: "user-1", platform: "email", address: "friend@example.com", trust_tier: 1 }],
     });
-    const result = await batchApproveEmailDrafts(client, "user-1", ["d1"]);
+    const result = await batchApproveEmailDrafts(supabase, "user-1", ["d1"]);
     expect(result.approved).toEqual(["d1"]);
     expect(result.skipped).toEqual([]);
     expect(vi.mocked(sendDraft)).toHaveBeenCalledWith("inbox-1", "draft-1", "d1");
-    expect(updates).toHaveLength(1);
+    expect(db.updates).toHaveLength(1);
+    expect(db.rows("decisions")[0]).toMatchObject({ status: "approved" });
   });
 
   it("skips tier-2 senders — unknown counterparties stay one-at-a-time", async () => {
-    const { client } = fakeSupabase({
+    seed({
       decisions: [KNOWN],
       inbox: "inbox-1",
-      senders: [{ address: "friend@example.com", trust_tier: 2 }],
+      senders: [{ user_id: "user-1", platform: "email", address: "friend@example.com", trust_tier: 2 }],
     });
-    const result = await batchApproveEmailDrafts(client, "user-1", ["d1"]);
+    const result = await batchApproveEmailDrafts(supabase, "user-1", ["d1"]);
     expect(result.approved).toEqual([]);
     expect(result.skipped).toEqual([{ id: "d1", reason: "sender is not tier 1" }]);
     expect(vi.mocked(sendDraft)).not.toHaveBeenCalled();
   });
 
   it("skips resolved rows, other kinds, and unknown ids without sending", async () => {
-    const { client } = fakeSupabase({
+    seed({
       decisions: [
         { ...KNOWN, id: "d2", status: "approved" },
         { ...KNOWN, id: "d3", kind: "social_post" },
         { ...KNOWN, id: "d4", ref: null },
       ],
       inbox: "inbox-1",
-      senders: [{ address: "friend@example.com", trust_tier: 1 }],
+      senders: [{ user_id: "user-1", platform: "email", address: "friend@example.com", trust_tier: 1 }],
     });
-    const result = await batchApproveEmailDrafts(client, "user-1", [
+    const result = await batchApproveEmailDrafts(supabase, "user-1", [
       "d2",
       "d3",
       "d4",
@@ -134,15 +92,16 @@ describe("batchApproveEmailDrafts", () => {
 
   it("a failed send skips that draft and leaves it pending", async () => {
     vi.mocked(sendDraft).mockRejectedValueOnce(new Error("503"));
-    const { client, updates } = fakeSupabase({
+    seed({
       decisions: [KNOWN, { ...KNOWN, id: "d6", ref: "draft-6" }],
       inbox: "inbox-1",
-      senders: [{ address: "friend@example.com", trust_tier: 1 }],
+      senders: [{ user_id: "user-1", platform: "email", address: "friend@example.com", trust_tier: 1 }],
     });
-    const result = await batchApproveEmailDrafts(client, "user-1", ["d1", "d6"]);
+    const result = await batchApproveEmailDrafts(supabase, "user-1", ["d1", "d6"]);
     expect(result.approved).toEqual(["d6"]);
     expect(result.skipped).toEqual([{ id: "d1", reason: "send failed" }]);
-    expect(updates).toHaveLength(1);
+    expect(db.updates).toHaveLength(1);
+    expect(db.rows("decisions").find((r) => r["id"] === "d1")).toMatchObject({ status: "pending" });
   });
 
   it("caps a batch at 20 unique ids", async () => {
@@ -151,13 +110,13 @@ describe("batchApproveEmailDrafts", () => {
       id: `d${i}`,
       ref: `draft-${i}`,
     }));
-    const { client } = fakeSupabase({
+    seed({
       decisions,
       inbox: "inbox-1",
-      senders: [{ address: "friend@example.com", trust_tier: 1 }],
+      senders: [{ user_id: "user-1", platform: "email", address: "friend@example.com", trust_tier: 1 }],
     });
     const result = await batchApproveEmailDrafts(
-      client,
+      supabase,
       "user-1",
       decisions.map((d) => d.id as string)
     );

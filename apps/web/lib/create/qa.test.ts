@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   QA_PASS_MATRIX,
   QA_THRESHOLDS,
@@ -138,49 +138,40 @@ describe("QaReportSchema", () => {
 });
 
 describe("recordQaScore (V12 §8.4 test counts)", () => {
-  function fakeSupabase(): { client: SupabaseClient; updates: Record<string, unknown>[] } {
-    const updates: Record<string, unknown>[] = [];
-    const client = {
-      from: (table: string) => {
-        expect(table).toBe("miniapp_versions");
-        return {
-          update: (patch: Record<string, unknown>) => {
-            updates.push(patch);
-            return { eq: async () => ({ error: null }) };
-          },
-        };
-      },
-    } as unknown as SupabaseClient;
-    return { client, updates };
-  }
+  const db = new FakeSupabase();
   const row = { id: "ver-1", version: "v1700000000001", qa_score: null };
+  const client = db.client();
+  /** Patches written to the ledger, in order. */
+  const updates = () => db.updates.map((u) => u.patch);
+  beforeEach(() => db.reset());
 
   it("stamps qa_score and the two counts, never the failed ids (CR21)", async () => {
+    db.tables["miniapp_versions"] = [{ ...row }];
     versions.getVersion.mockResolvedValueOnce(row);
-    const { client, updates } = fakeSupabase();
     const result = await recordQaScore(client, "app-1", report(fullMatrix()), {
       total: 4,
       passed: 3,
       failed_ids: ["rsvp-saves"],
     });
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({ qa_score: 100, tests_total: 4, tests_passed: 3 });
-    expect(JSON.stringify(updates[0])).not.toContain("rsvp-saves");
+    expect(updates()).toHaveLength(1);
+    expect(db.updates[0]?.table).toBe("miniapp_versions");
+    expect(updates()[0]).toMatchObject({ qa_score: 100, tests_total: 4, tests_passed: 3 });
+    expect(JSON.stringify(updates()[0])).not.toContain("rsvp-saves");
+    expect(db.rows("miniapp_versions")[0]?.["qa_score"]).toBe(100);
     expect(result.row).toMatchObject({ qa_score: 100, tests_total: 4, tests_passed: 3 });
   });
 
   it("leaves the counts alone when no test run came with the report", async () => {
+    db.tables["miniapp_versions"] = [{ ...row }];
     versions.getVersion.mockResolvedValueOnce(row);
-    const { client, updates } = fakeSupabase();
     await recordQaScore(client, "app-1", report(fullMatrix()));
-    expect(updates[0]).not.toHaveProperty("tests_total");
-    expect(updates[0]).not.toHaveProperty("tests_passed");
+    expect(updates()[0]).not.toHaveProperty("tests_total");
+    expect(updates()[0]).not.toHaveProperty("tests_passed");
   });
 
   it("404s an unknown version before writing anything", async () => {
     versions.getVersion.mockResolvedValueOnce(null);
-    const { client, updates } = fakeSupabase();
     await expect(recordQaScore(client, "app-1", report(fullMatrix()))).rejects.toBeInstanceOf(QaError);
-    expect(updates).toEqual([]);
+    expect(updates()).toEqual([]);
   });
 });
