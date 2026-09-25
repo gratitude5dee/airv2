@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   beforeDeadline,
   composeInput,
@@ -28,6 +27,7 @@ import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { sendMarkedCards } from "../miniapps/cards";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
@@ -196,62 +196,88 @@ describe("enqueueInbound scheduling", () => {
   };
 
   // Mirrors schedule_flush (migration 0082): the deadline is chosen under the
-  // row lock, so the fake serializes calls against one shared row.
+  // row lock, so the fake's rpc applies the same CAS to the real row.
   function fakeSupabase(
     existingRunAt: string | null,
     queuedBodies: readonly string[] = [],
   ) {
-    let current = existingRunAt ? Date.parse(existingRunAt) : null;
-    let cancelledAt: number | null = null;
-    const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
-    // Set to hold the next rpc until released, to reorder completions.
-    let gate: { held: Promise<void>; entered: () => void } | null = null;
-    const apply = (args: Record<string, unknown>) => {
+    const db = new FakeSupabase();
+    db.tables["flush_jobs"] = existingRunAt
+      ? [
+          {
+            space_id: "space-1",
+            user_id: "u1",
+            phone: "+15550001111",
+            sender_tier: 0,
+            run_at: existingRunAt,
+            cancelled_at: null,
+            chain_started_at: null,
+            attempts: 0,
+          },
+        ]
+      : [];
+    db.tables["batch_queue"] = queuedBodies.map((body, index) => ({
+      id: `queued-${index}`,
+      user_id: "u1",
+      space_id: "space-1",
+      sender_id: null,
+      message_id: `queued-${index}`,
+      body,
+      received_at: new Date(Date.now() - 1_000 + index).toISOString(),
+    }));
+    // PostgREST renders timestamptz with an offset, not a Z.
+    const render = (ms: number) =>
+      new Date(ms).toISOString().replace("Z", "+00:00");
+    db.rpcResults["schedule_flush"] = (args: Record<string, unknown>) => {
       const own = Date.parse(String(args["p_run_at"]));
       const windowEnd = Date.parse(String(args["p_window_end"]));
       const stamp = Date.parse(String(args["p_cancelled_at"]));
-      current =
+      const rows = db.rows("flush_jobs");
+      const row = rows.find((r) => r["space_id"] === args["p_space_id"]);
+      const current =
+        row?.["run_at"] != null ? Date.parse(String(row["run_at"])) : null;
+      const next =
         current !== null && current >= own && current <= windowEnd
           ? current + 1
           : own;
-      cancelledAt = cancelledAt === null ? stamp : Math.max(cancelledAt, stamp);
-      // PostgREST renders timestamptz with an offset, not a Z.
-      const rendered = new Date(current)
-        .toISOString()
-        .replace("Z", "+00:00");
-      return { data: rendered, error: null };
+      const cancelledAt =
+        row?.["cancelled_at"] != null
+          ? Math.max(Date.parse(String(row["cancelled_at"])), stamp)
+          : stamp;
+      if (row) {
+        row["run_at"] = render(next);
+        row["user_id"] = args["p_user_id"];
+        row["phone"] = args["p_phone"];
+        row["sender_tier"] = args["p_sender_tier"];
+        row["cancelled_at"] = render(cancelledAt);
+      } else {
+        rows.push({
+          space_id: args["p_space_id"],
+          user_id: args["p_user_id"],
+          phone: args["p_phone"],
+          sender_tier: args["p_sender_tier"],
+          run_at: render(next),
+          cancelled_at: render(cancelledAt),
+          chain_started_at: null,
+          attempts: 0,
+        });
+      }
+      return render(next);
     };
-    const supabase = {
-      from: (table: string) => {
-        const chain = {
-          insert: () => Promise.resolve({ error: null }),
-          upsert: () => Promise.resolve({ error: null }),
-          select: () => chain,
-          eq: () => chain,
-          order: () => chain,
-          limit: () => Promise.resolve({
-            data: table === "batch_queue"
-              ? queuedBodies.map((body) => ({ body }))
-              : [],
-            error: null,
-          }),
-        };
-        return chain;
-      },
-      rpc: (fn: string, args: Record<string, unknown>) => {
-        calls.push({ fn, args });
-        const held = gate;
-        gate = null;
-        if (!held) return Promise.resolve(apply(args));
-        held.entered();
-        return held.held.then(() => apply(args));
-      },
-    };
+    const supabase = db.client();
     return {
-      supabase: supabase as unknown as SupabaseClient,
-      calls,
-      rowRunAt: () => current,
-      rowCancelledAt: () => cancelledAt,
+      supabase,
+      calls: db.rpcCalls,
+      db,
+      rowRunAt: () => {
+        const runAt = db.rows("flush_jobs")[0]?.["run_at"];
+        return runAt == null ? null : Date.parse(String(runAt));
+      },
+      rowCancelledAt: () => {
+        const cancelled = db.rows("flush_jobs")[0]?.["cancelled_at"];
+        return cancelled == null ? null : Date.parse(String(cancelled));
+      },
+      // Hold the next rpc until released, to reorder completions.
       holdNextRpc: () => {
         let release = () => {};
         let entered = () => {};
@@ -261,7 +287,18 @@ describe("enqueueInbound scheduling", () => {
         const reached = new Promise<void>((resolve) => {
           entered = resolve;
         });
-        gate = { held, entered };
+        const client = supabase as unknown as {
+          rpc: (
+            fn: string,
+            args: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+        const original = client.rpc.bind(client);
+        client.rpc = (fn, args) => {
+          entered();
+          client.rpc = original;
+          return held.then(() => original(fn, args));
+        };
         return { reached, release };
       },
     };
@@ -348,17 +385,14 @@ describe("enqueueInbound scheduling", () => {
       senderTier: undefined,
       body: "hey",
     });
-    expect(calls[0]?.args["p_sender_tier"]).toBeNull();
+    expect(
+      (calls[0]?.args as Record<string, unknown>)["p_sender_tier"]
+    ).toBeNull();
   });
 
   it("fails loudly when the database does not return a deadline", async () => {
-    const supabase = {
-      from: () => ({
-        insert: () => Promise.resolve({ error: null }),
-        upsert: () => Promise.resolve({ error: null }),
-      }),
-      rpc: () => Promise.resolve({ data: null, error: null }),
-    } as unknown as SupabaseClient;
+    const { supabase, db } = fakeSupabase(null);
+    db.rpcResults["schedule_flush"] = () => undefined;
     await expect(
       enqueueInbound(supabase, { ...message, body: "hey" })
     ).rejects.toThrow(/schedule_flush/);
@@ -458,37 +492,17 @@ describe("runFlush history replay", () => {
     queueRows: Array<Record<string, unknown>>,
     options: { agentRunInsertError?: string } = {}
   ) {
-    return {
-      from: (table: string) => {
-        const mutationChain = {
-          eq: () => mutationChain,
-          in: () => Promise.resolve({ error: null }),
-          then: (resolve: (value: { error: null }) => void) =>
-            resolve({ error: null }),
-        };
-        return {
-          select: () => {
-            const rows = table === "batch_queue" ? queueRows : [];
-            const chain = {
-              eq: () => chain,
-              limit: () => chain,
-              order: () => Promise.resolve({ data: rows, error: null }),
-              maybeSingle: () => Promise.resolve({ data: null, error: null }),
-            };
-            return chain;
-          },
-          delete: () => mutationChain,
-          update: () => mutationChain,
-          insert: () =>
-            Promise.resolve({
-              error:
-                table === "agent_runs" && options.agentRunInsertError
-                  ? { message: options.agentRunInsertError }
-                  : null,
-            }),
-        };
-      },
-    } as unknown as SupabaseClient;
+    const db = new FakeSupabase();
+    db.tables["batch_queue"] = queueRows.map((row) => ({
+      space_id: "space-1",
+      ...row,
+    }));
+    if (options.agentRunInsertError) {
+      db.opErrors["agent_runs:insert"] = {
+        message: options.agentRunInsertError,
+      };
+    }
+    return db.client();
   }
 
   beforeEach(() => {
@@ -882,15 +896,21 @@ describe("runFlush history replay", () => {
 
 describe("dropQuickAckMarker", () => {
   it("deletes exactly the marker row for the space", async () => {
-    const del = { eq: vi.fn() };
-    del.eq.mockReturnValueOnce(del).mockResolvedValueOnce({ error: null });
-    const supabase = {
-      from: vi.fn(() => ({ delete: vi.fn(() => del) })),
-    } as unknown as SupabaseClient;
-    await dropQuickAckMarker(supabase, "space-1", "bridge:ack-123");
-    expect(vi.mocked(supabase.from)).toHaveBeenCalledWith("carried_messages");
-    expect(del.eq).toHaveBeenNthCalledWith(1, "space_id", "space-1");
-    expect(del.eq).toHaveBeenNthCalledWith(2, "message_id", "bridge:ack-123");
+    const db = new FakeSupabase();
+    db.tables["carried_messages"] = [
+      { space_id: "space-1", message_id: "bridge:ack-123" },
+      { space_id: "space-1", message_id: "m-other" },
+      { space_id: "space-2", message_id: "bridge:ack-123" },
+    ];
+    await dropQuickAckMarker(db.client(), "space-1", "bridge:ack-123");
+    db.expectQuery({
+      table: "carried_messages",
+      filters: { space_id: "space-1", message_id: "bridge:ack-123" },
+    });
+    expect(
+      db.rows("carried_messages").map((row) => row["message_id"])
+    ).toEqual(["m-other", "bridge:ack-123"]);
+    expect(db.rows("carried_messages")[1]?.["space_id"]).toBe("space-2");
   });
 });
 
