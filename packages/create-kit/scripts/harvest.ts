@@ -390,7 +390,7 @@ function airMeta(nodeModules: string): { id: string; meta: Promise<Meta> } {
       kind: "helper",
       entry: "index.ts",
       props: {
-        "useAirState(resource?, initial?)": "{ state, status, canWrite, error, save, update, reload }",
+        "useAirState(resource?, initial?)": "{ state, status, canWrite, error, save, update, reload } — update accepts a doc or an updater fn",
         "useLite()": "boolean",
         "useReducedMotion()": "boolean",
         "useTheme()": '"atmosphere" | "pixel"',

@@ -535,7 +535,7 @@
     },
     "kit/air/index.ts": {
       "component": "air",
-      "computedHash": "d84d5bac28d032f9837147a8c180edbe5deb3052fe383d481cbdad65a3dc4282",
+      "computedHash": "76580a8a6b037bd7c4c3f64fb6527cb9ef4806badfe0697c5984c03a3cd1b9b0",
       "skillPath": null,
       "source": "gratitude5dee/airv2",
       "sourceType": "air",
@@ -545,7 +545,7 @@
     },
     "kit/air/meta.json": {
       "component": "air",
-      "computedHash": "1ce8a1117ed347ca13e845ddbab02b54d1dc76b2b45f6a7056662e7ea93d326f",
+      "computedHash": "a17673ec9688b25072e08f85c8721328df6fc0e62d21084bc4fff0a3ba805068",
       "skillPath": null,
       "source": "gratitude5dee/airv2",
       "sourceType": "air",
@@ -555,7 +555,7 @@
     },
     "kit/air/ref.md": {
       "component": "air",
-      "computedHash": "844bf30ae13ede4b5dd81d9e92457809205a22f97b34e0996273f345043c9bf7",
+      "computedHash": "36f35556fe93731935ec3cab9665822127024d3c989e91ed5de845bb7eaeea76",
       "skillPath": null,
       "source": "gratitude5dee/airv2",
       "sourceType": "air",
@@ -1825,7 +1825,7 @@
     },
     "kit/fancy/animated-gradient-with-svg/meta.json": {
       "component": "fancy/animated-gradient-with-svg",
-      "computedHash": "5a87d98f4f01fd0035243a4c3464159e34480b70e9ad8e6ed6380314c78015ef",
+      "computedHash": "95e7648d2cbf13b7b15528f50c544f8ee40b081e7a19649cb146ba6b1d1e25ba",
       "skillPath": null,
       "source": "gratitude5dee/airv2",
       "sourceType": "air",
@@ -2105,7 +2105,7 @@
     },
     "kit/fancy/letter-3d-swap/meta.json": {
       "component": "fancy/letter-3d-swap",
-      "computedHash": "a970545f22bd06a18be244c3df29ebc9f4d1a336e411c31155f9ac89ab6b9891",
+      "computedHash": "ed075d8bfb10bcf6b7c0893bcaeeb8cbc1f0b898c3d4f6f2de519b395cdbd3aa",
       "skillPath": null,
       "source": "gratitude5dee/airv2",
       "sourceType": "air",
@@ -2115,7 +2115,7 @@
     },
     "kit/fancy/letter-3d-swap/ref.md": {
       "component": "fancy/letter-3d-swap",
-      "computedHash": "efaf9bf1edc5391473c082faf51c954b80059da87dbf92298deb4e74a72a0266",
+      "computedHash": "addaf5efb5dd3a1c361421ece675f8384eee28471af4da15298a41e1b548ab7f",
       "skillPath": null,
       "source": "gratitude5dee/airv2",
       "sourceType": "air",
