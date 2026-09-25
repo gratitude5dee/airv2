@@ -2,7 +2,14 @@
  * Pure projection helpers for the wallet readers (goal.md M15). No network,
  * no client — kept separate so they are unit-testable.
  */
-import { toTokens } from "thirdweb/utils";
+
+/** Smallest-unit bigint → full-precision decimal string (thirdweb `toTokens`). */
+function toTokens(value: bigint, decimals: number): string {
+  const digits = value.toString().padStart(decimals + 1, "0");
+  const whole = (decimals === 0 ? digits : digits.slice(0, -decimals)) || "0";
+  const fraction = digits.slice(-decimals).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
 
 /** Insight transaction fields the projection reads. */
 export interface InsightTransaction {
