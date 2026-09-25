@@ -342,13 +342,13 @@ function makePredicate(column: string, op: string, value: unknown): (row: Row) =
     case "neq":
       return (row) => row[column] !== value;
     case "gt":
-      return (row) => compare(row[column], value) > 0;
+      return (row) => row[column] != null && compare(row[column], value) > 0;
     case "gte":
-      return (row) => compare(row[column], value) >= 0;
+      return (row) => row[column] != null && compare(row[column], value) >= 0;
     case "lt":
-      return (row) => compare(row[column], value) < 0;
+      return (row) => row[column] != null && compare(row[column], value) < 0;
     case "lte":
-      return (row) => compare(row[column], value) <= 0;
+      return (row) => row[column] != null && compare(row[column], value) <= 0;
     case "is":
       return (row) => (row[column] ?? null) === value;
     case "in": {
@@ -581,19 +581,19 @@ function makeBuilder(db: FakeSupabase, table: string) {
       return api;
     },
     gt(column: string, value: unknown) {
-      addFilter("gt", column, value, (row) => compare(row[column], value) > 0);
+      addFilter("gt", column, value, (row) => row[column] != null && compare(row[column], value) > 0);
       return api;
     },
     gte(column: string, value: unknown) {
-      addFilter("gte", column, value, (row) => compare(row[column], value) >= 0);
+      addFilter("gte", column, value, (row) => row[column] != null && compare(row[column], value) >= 0);
       return api;
     },
     lt(column: string, value: unknown) {
-      addFilter("lt", column, value, (row) => compare(row[column], value) < 0);
+      addFilter("lt", column, value, (row) => row[column] != null && compare(row[column], value) < 0);
       return api;
     },
     lte(column: string, value: unknown) {
-      addFilter("lte", column, value, (row) => compare(row[column], value) <= 0);
+      addFilter("lte", column, value, (row) => row[column] != null && compare(row[column], value) <= 0);
       return api;
     },
     like(column: string, pattern: string) {
