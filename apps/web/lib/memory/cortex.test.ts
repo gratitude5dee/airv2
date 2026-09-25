@@ -65,6 +65,50 @@ describe("cortexOverview call telemetry", () => {
   });
 });
 
+describe("cortexOverview injected runner", () => {
+  it("runs the probe through the injected runner (R-TQ-10)", async () => {
+    const runner = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        configured: true,
+        reachable: true,
+        office_name: "Office",
+        graph_url: "https://graph.test",
+        totals: { raw: 7, embedded: 6, entities: 5 },
+        sources: [{ label: "imessage", items: 4 }],
+        recent: [
+          { title: "Likes espresso", source: "imessage", age_seconds: 12 },
+        ],
+        calls: [{ call: "cortex_manifest", ms: 55, ok: true }],
+      }),
+      stderr: "",
+    }));
+    const overview = await cortexOverview("box-42", runner);
+    expect(runner).toHaveBeenCalledWith(
+      "box-42",
+      expect.stringContaining("mitosislabs.ai"),
+      60
+    );
+    expect(overview.reachable).toBe(true);
+    expect(overview.officeName).toBe("Office");
+    expect(overview.graphUrl).toBe("https://graph.test");
+    expect(overview.totals).toEqual({ raw: 7, embedded: 6, entities: 5 });
+    expect(overview.sources).toEqual([{ label: "imessage", items: 4 }]);
+    expect(overview.recent).toEqual([
+      { title: "Likes espresso", source: "imessage", ageSeconds: 12 },
+    ]);
+  });
+
+  it("renders unavailable when the runner throws", async () => {
+    const overview = await cortexOverview("box-42", async () => {
+      throw new Error("box unreachable");
+    });
+    expect(overview.configured).toBe(false);
+    expect(overview.reachable).toBe(false);
+    expect(overview.recent).toEqual([]);
+  });
+});
+
 describe("logCortexCalls", () => {
   interface FakeSupabase {
     from: ReturnType<typeof vi.fn>;

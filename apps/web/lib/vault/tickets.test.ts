@@ -169,7 +169,10 @@ describe("redemption ledger", () => {
 describe("purchase_review closed vocabulary", () => {
   // Decision kinds move together: migration check constraint, the web
   // Needs-you renderer, and the iMessage vault card renderer must all know
-  // the kind, or the surface silently drops the owner's approval.
+  // the kind, or the surface silently drops the owner's approval. The two
+  // renderers are covered by behaviour tests — needs-panel.test.tsx and
+  // miniapps/apps/vault.test.ts — which render real decision rows instead
+  // of grepping source text. What remains here pins the SQL literal.
   const root = join(__dirname, "..", "..");
 
   it("is in the decisions kind check constraint", () => {
@@ -178,21 +181,5 @@ describe("purchase_review closed vocabulary", () => {
       "utf8"
     );
     expect(migration).toContain("'purchase_review'");
-  });
-
-  it("is rendered by the web Needs-you surface", () => {
-    const page = readFileSync(
-      join(root, "app", "home", "panels", "needs-panel.tsx"),
-      "utf8"
-    );
-    expect(page).toContain('"purchase_review"');
-  });
-
-  it("is rendered by the iMessage mini-app surface", () => {
-    const mini = readFileSync(
-      join(root, "lib", "miniapps", "apps", "vault.tsx"),
-      "utf8"
-    );
-    expect(mini).toContain("purchase_review");
   });
 });
