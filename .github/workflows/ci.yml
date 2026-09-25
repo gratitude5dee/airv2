@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -51,3 +51,64 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+  shell:
+    # R-CI-05: shellcheck over the repo's shell scripts, then verify the
+    # systemd units that ship in the Box template. systemd-analyze exits
+    # nonzero when an ExecStart binary is missing, so box-side paths get a
+    # stub executable first — the check still parses every unit fully.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (-S warning)
+        run: |
+          mapfile -t files < <(
+            find infra/template -name '*.sh'
+            printf '%s\n' scripts/*.sh infra/workers/release.sh
+          )
+          shellcheck -S warning "${files[@]}"
+      - name: systemd-analyze verify (11 Box units)
+        run: |
+          while IFS= read -r bin; do
+            [ -x "$bin" ] && continue
+            sudo mkdir -p "$(dirname "$bin")"
+            sudo sh -c 'printf "#!/bin/sh\nexit 0\n" > "$1"; chmod 755 "$1"' _ "$bin"
+          done < <(
+            grep -hoE '^(ExecStart|ExecStartPre|ExecStartPost|ExecCondition|ExecReload)=[-+@!]*(/[^ ]+)' \
+              infra/template/*.service infra/template/*.timer \
+              infra/template/learning/systemd/*.service \
+              | sed -E 's/^[^=]+=[-+@!]*//' | sort -u
+          )
+          systemd-analyze verify \
+            infra/template/*.service infra/template/*.timer \
+            infra/template/learning/systemd/air-learningd.service
+  skills:
+    # R-CI-06: the vendored .agents/skills carry node:test suites that ran
+    # nowhere. Run them; the suite must stay green.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Run vendored skill tests (node:test)
+        run: node --test ".agents/skills/**/*.test.mjs"
+  evals:
+    # R-CI-08: the eval harnesses ship tsconfigs nothing ran. Typecheck all
+    # three: agent-suite, its create/ sub-suite, and model-bench.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install workspace (@types for tsc)
+        run: npm ci --ignore-scripts
+      - name: Typecheck eval harnesses
+        run: |
+          npx --yes -p typescript@5 tsc -p evals/agent-suite/tsconfig.json --noEmit
+          npx --yes -p typescript@5 tsc -p evals/agent-suite/create/tsconfig.json --noEmit
+          npx --yes -p typescript@5 tsc -p evals/model-bench/tsconfig.json --noEmit
