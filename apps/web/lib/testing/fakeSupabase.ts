@@ -184,7 +184,26 @@ export class FakeSupabase {
         },
         list: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "list", args });
-          return { data: [], error: null };
+          const prefix = String(args[0] ?? "");
+          const search = (args[1] as { search?: string } | undefined)?.search;
+          const dir = prefix ? `${bucket}/${prefix}/` : `${bucket}/`;
+          const data = Object.entries(db.storageObjects)
+            .filter(([key]) => key.startsWith(dir))
+            .map(([key, body]) => ({
+              name: key.slice(dir.length),
+              metadata: {
+                size:
+                  body instanceof Blob
+                    ? body.size
+                    : typeof body === "string"
+                      ? body.length
+                      : body.byteLength,
+              },
+            }))
+            .filter(
+              (o) => o.name && !o.name.includes("/") && (!search || o.name.includes(search))
+            );
+          return { data, error: null };
         },
         getPublicUrl: (...args: unknown[]) => ({
           data: { publicUrl: `https://storage.test/${bucket}/${String(args[0] ?? "file")}` },
