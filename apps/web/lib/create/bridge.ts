@@ -73,7 +73,7 @@ export type NonceClaim = "claimed" | "replay" | "unavailable";
 
 /**
  * R-SEC-04: claim a verified signature in the nonce table
- * (`create_bridge_nonces`, migration 0128) with insert-on-conflict-do-
+ * (`create_bridge_nonces`, migration 0132) with insert-on-conflict-do-
  * nothing. The same request arriving twice inside the tolerance window is
  * a replay — the caller answers 409. The signature itself is the nonce:
  * HMAC over ts.METHOD.path.sha256(body), so a replay is byte-identical.
