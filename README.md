@@ -34,7 +34,11 @@ apps/web/                      Next.js (App Router) — the control plane + UI
   lib/calendar/                calendar spine: sources, schedules, sweeper, ICS
   lib/bots/                    bot roster, rooms, per-profile provisioning (V7)
   lib/security/                C18 sweep harness + injection red-team suite (V8)
-supabase/migrations/           versioned, forward-only SQL (applied via Supabase MCP)
+supabase/migrations/           versioned, forward-only SQL; single apply path
+                               is scripts/apply-migrations.sh — ci.yml shadow-
+                               applies it to scratch Postgres on every PR, and
+                               the deploy-migrations job applies it to prod
+                               behind the production environment approval
 infra/template/                everything baked into the Box template (M0):
                                Hermes + systemd units, dashboard SPA, base skills,
                                browser runtime, Daytona CLI + MCP, C24 platform gen
