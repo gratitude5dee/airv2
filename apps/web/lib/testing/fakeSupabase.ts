@@ -184,7 +184,26 @@ export class FakeSupabase {
         },
         list: async (...args: unknown[]) => {
           db.storageCalls.push({ bucket, method: "list", args });
-          return { data: [], error: null };
+          const prefix = String(args[0] ?? "");
+          const search = (args[1] as { search?: string } | undefined)?.search;
+          const dir = prefix ? `${bucket}/${prefix}/` : `${bucket}/`;
+          const data = Object.entries(db.storageObjects)
+            .filter(([key]) => key.startsWith(dir))
+            .map(([key, body]) => ({
+              name: key.slice(dir.length),
+              metadata: {
+                size:
+                  body instanceof Blob
+                    ? body.size
+                    : typeof body === "string"
+                      ? body.length
+                      : body.byteLength,
+              },
+            }))
+            .filter(
+              (o) => o.name && !o.name.includes("/") && (!search || o.name.includes(search))
+            );
+          return { data, error: null };
         },
         getPublicUrl: (...args: unknown[]) => ({
           data: { publicUrl: `https://storage.test/${bucket}/${String(args[0] ?? "file")}` },
@@ -342,17 +361,24 @@ function makePredicate(column: string, op: string, value: unknown): (row: Row) =
     case "neq":
       return (row) => row[column] !== value;
     case "gt":
-      return (row) => compare(row[column], value) > 0;
+      return (row) => row[column] != null && compare(row[column], value) > 0;
     case "gte":
-      return (row) => compare(row[column], value) >= 0;
+      return (row) => row[column] != null && compare(row[column], value) >= 0;
     case "lt":
-      return (row) => compare(row[column], value) < 0;
+      return (row) => row[column] != null && compare(row[column], value) < 0;
     case "lte":
-      return (row) => compare(row[column], value) <= 0;
+      return (row) => row[column] != null && compare(row[column], value) <= 0;
     case "is":
       return (row) => (row[column] ?? null) === value;
     case "in": {
-      const values = Array.isArray(value) ? value : [value];
+      // `.in()` passes a real array; `.not(col,"in",...)` and
+      // `.filter(col,"in",...)` arrive as the PostgREST "(a,b,c)" string —
+      // parse it the same way `or(...)` terms already do.
+      const values = Array.isArray(value)
+        ? value
+        : typeof value === "string" && value.startsWith("(") && value.endsWith(")")
+          ? splitTopLevel(value.slice(1, -1)).map(parseOrValue)
+          : [value];
       return (row) => values.some((v) => row[column] === v || String(row[column]) === String(v));
     }
     case "like":
@@ -581,19 +607,19 @@ function makeBuilder(db: FakeSupabase, table: string) {
       return api;
     },
     gt(column: string, value: unknown) {
-      addFilter("gt", column, value, (row) => compare(row[column], value) > 0);
+      addFilter("gt", column, value, (row) => row[column] != null && compare(row[column], value) > 0);
       return api;
     },
     gte(column: string, value: unknown) {
-      addFilter("gte", column, value, (row) => compare(row[column], value) >= 0);
+      addFilter("gte", column, value, (row) => row[column] != null && compare(row[column], value) >= 0);
       return api;
     },
     lt(column: string, value: unknown) {
-      addFilter("lt", column, value, (row) => compare(row[column], value) < 0);
+      addFilter("lt", column, value, (row) => row[column] != null && compare(row[column], value) < 0);
       return api;
     },
     lte(column: string, value: unknown) {
-      addFilter("lte", column, value, (row) => compare(row[column], value) <= 0);
+      addFilter("lte", column, value, (row) => row[column] != null && compare(row[column], value) <= 0);
       return api;
     },
     like(column: string, pattern: string) {

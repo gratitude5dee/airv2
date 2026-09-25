@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const getPaymentRequest = vi.hoisted(() => vi.fn());
 vi.mock("../commerce/paymentRequests", () => ({ getPaymentRequest }));
+
+const db = new FakeSupabase();
+
+beforeEach(() => db.reset());
 
 import {
   checkoutTransitionAllowed,
@@ -69,7 +73,7 @@ describe("checkout handoff lifecycle", () => {
 describe("checkout handoff payment request ownership", () => {
   it("rejects a cross-tenant payment request before creating a handoff", async () => {
     getPaymentRequest.mockResolvedValueOnce(null);
-    const supabase = {} as SupabaseClient;
+    const supabase = db.client();
 
     await expect(
       createCheckoutHandoff(supabase, {
@@ -93,7 +97,7 @@ describe("checkout handoff payment request ownership", () => {
     getPaymentRequest.mockClear();
 
     await expect(
-      createCheckoutHandoff({} as SupabaseClient, {
+      createCheckoutHandoff(db.client(), {
         userId: "owner-a",
         spaceId: "space-a",
         phone: "+14155550123",
@@ -110,35 +114,13 @@ describe("checkout handoff payment request ownership", () => {
 describe("checkout handoff sensitive URL storage", () => {
   it("seals the cart URL at rest and keeps only its public origin in metadata", async () => {
     vi.stubEnv("SESSION_SECRET", "checkout-test-session-secret");
-    const inserted: Record<string, unknown>[] = [];
-    const supabase = {
-      from(table: string) {
-        expect(table).toBe("checkout_handoffs");
-        return {
-          insert(row: Record<string, unknown>) {
-            inserted.push(row);
-            return {
-              select() {
-                return {
-                  async single() {
-                    return {
-                      data: {
-                        id: "123e4567-e89b-12d3-a456-426614174000",
-                        version: 0,
-                        created_at: "2026-09-14T00:00:00.000Z",
-                        updated_at: "2026-09-14T00:00:00.000Z",
-                        ...row,
-                      },
-                      error: null,
-                    };
-                  },
-                };
-              },
-            };
-          },
-        };
-      },
-    } as unknown as SupabaseClient;
+    db.defaults["checkout_handoffs"] = {
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      version: 0,
+      created_at: "2026-09-14T00:00:00.000Z",
+      updated_at: "2026-09-14T00:00:00.000Z",
+    };
+    const supabase = db.client();
     const sensitive =
       "https://tickets.example.test/checkout/session-secret?cart_token=secret-value";
 
@@ -150,9 +132,10 @@ describe("checkout handoff sensitive URL storage", () => {
       itemSummary: "Two tickets",
     });
 
-    expect(inserted[0]?.["merchant_url"]).toBe("https://tickets.example.test/");
-    expect(inserted[0]?.["merchant_url_sealed"]).toMatch(/^v1:/);
-    expect(String(inserted[0]?.["merchant_url_sealed"])).not.toContain(
+    const inserted = db.inserts.find((i) => i.table === "checkout_handoffs");
+    expect(inserted?.row["merchant_url"]).toBe("https://tickets.example.test/");
+    expect(inserted?.row["merchant_url_sealed"]).toMatch(/^v1:/);
+    expect(String(inserted?.row["merchant_url_sealed"])).not.toContain(
       "secret-value",
     );
     expect(handoff.merchant_url).toBe(sensitive);

@@ -5,58 +5,19 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
-interface ConversionRow {
-  account_id: string;
-  event_id: string;
-  value_cents: number | null;
-  [key: string]: unknown;
-}
-
-const db: { conversions: ConversionRow[] } = { conversions: [] };
+const db = new FakeSupabase();
 
 const ACCOUNT = {
   id: "acct-1",
   user_id: "user-1",
+  account_ref: "ref-1",
+  status: "active",
   conversion_token: "tok_secret",
 };
 
-function fakeSupabase() {
-  return {
-    from(table: string) {
-      if (table === "ad_accounts") {
-        const chain = {
-          select: () => chain,
-          eq: () => chain,
-          limit: async () => ({ data: [ACCOUNT], error: null }),
-        };
-        return chain;
-      }
-      if (table === "ad_conversions") {
-        return {
-          async upsert(
-            row: ConversionRow,
-            options?: { onConflict?: string; ignoreDuplicates?: boolean }
-          ) {
-            const keys = (options?.onConflict ?? "").split(",");
-            const duplicate = db.conversions.some((existing) =>
-              keys.every((key) => existing[key] === row[key])
-            );
-            if (duplicate) {
-              if (options?.ignoreDuplicates) return { error: null };
-              return { error: { code: "23505", message: "duplicate" } };
-            }
-            db.conversions.push(row);
-            return { error: null };
-          },
-        };
-      }
-      throw new Error(`unexpected table ${table}`);
-    },
-  };
-}
-
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => fakeSupabase() }));
+vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 
 import { POST } from "../../app/api/ads/conversions/route";
 
@@ -80,7 +41,8 @@ const POSTBACK = {
 
 describe("POST /api/ads/conversions", () => {
   beforeEach(() => {
-    db.conversions = [];
+    db.reset();
+    db.tables["ad_accounts"] = [{ ...ACCOUNT }];
   });
 
   it("rejects a postback without event_id", async () => {
@@ -92,17 +54,17 @@ describe("POST /api/ads/conversions", () => {
   it("records a conversion once and ignores replays", async () => {
     const first = await post(POSTBACK);
     expect(first.status).toBe(200);
-    expect(db.conversions).toHaveLength(1);
-    expect(db.conversions[0]?.value_cents).toBe(500);
+    expect(db.rows("ad_conversions")).toHaveLength(1);
+    expect(db.rows("ad_conversions")[0]?.["value_cents"]).toBe(500);
 
     const replay = await post(POSTBACK);
     expect(replay.status).toBe(200);
-    expect(db.conversions).toHaveLength(1);
+    expect(db.rows("ad_conversions")).toHaveLength(1);
   });
 
   it("records distinct event_ids separately", async () => {
     await post(POSTBACK);
     await post({ ...POSTBACK, event_id: "evt-2" });
-    expect(db.conversions).toHaveLength(2);
+    expect(db.rows("ad_conversions")).toHaveLength(2);
   });
 });

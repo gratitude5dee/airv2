@@ -48,6 +48,7 @@ import {
 } from "./email";
 import { BoxApiError } from "../box/client";
 import { MailApiError } from "../mail/errors";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const ORIGINAL = { ...process.env };
 
@@ -59,45 +60,23 @@ function fakeSupabase(
   // agent_addresses reflects inserts so a just-provisioned mailbox is found
   // by the follow-up installExistingMailbox lookup, like the real flow; an
   // update() retires the stored row the way the real retire+insert does.
-  let storedInboxId = existingInboxId;
-  let retired = false;
-  return {
-    from: vi.fn((table: string) => {
-      // Every builder method returns the builder; awaiting it resolves to the
-      // builder itself (no `then`), which the code under test ignores.
-      const q = {
-        select: vi.fn(() => q),
-        eq: vi.fn(() => q),
-        is: vi.fn(() => q),
-        update: vi.fn(() => {
-          if (table === "agent_addresses") retired = true;
-          return q;
-        }),
-        insert: vi.fn(async (row: { agentmail_inbox_id?: string }) => {
-          if (table === "agent_addresses" && row?.agentmail_inbox_id) {
-            storedInboxId = row.agentmail_inbox_id;
-            retired = false;
-          }
-          return { error: null };
-        }),
-        maybeSingle: vi.fn(async () => ({
-          data:
-            table === "boxes" && boxId
-              ? { provider_box_id: boxId }
-              : table === "agent_addresses" && storedInboxId && !retired
-                ? {
-                    address: `${storedInboxId}`,
-                    agentmail_inbox_id: storedInboxId,
-                  }
-                : table === "users" && username
-                  ? { username }
-                  : null,
-          error: null,
-        })),
-      };
-      return q;
-    }),
-  } as never;
+  const db = new FakeSupabase();
+  if (boxId) {
+    db.tables["boxes"] = [{ user_id: "user-1", provider_box_id: boxId }];
+  }
+  if (existingInboxId) {
+    db.tables["agent_addresses"] = [
+      {
+        user_id: "user-1",
+        address: existingInboxId,
+        agentmail_inbox_id: existingInboxId,
+        is_primary: true,
+        retired_at: null,
+      },
+    ];
+  }
+  db.tables["users"] = [{ id: "user-1", username }];
+  return db.client();
 }
 
 beforeEach(() => {

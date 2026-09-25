@@ -5,7 +5,9 @@
  * caller-built plan the fal lane reads off `plan.freeze`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   directFreezePlan,
   FROZEN_SCENE_PROMPT,
@@ -231,68 +233,34 @@ describe("admitFreezeSketch claim-failure classification", () => {
   };
 
   /**
-   * Fluent-builder stub: `insert().select("*").single()` mints the job row,
-   * the slot claim (`update().eq().gt().is().select("id")`) resolves
-   * `claimRows`, and the fallback `select("status, expires_at").maybeSingle()`
-   * resolves `sessionRow`/`sessionErr`. Every other await resolves empty.
+   * Seed the session row the CAS predicates see: `null` leaves the table
+   * empty (session deleted mid-flight); `sessionRow` overrides model a row
+   * that drifted since the caller's snapshot — a crossed deadline, a flipped
+   * status, or a held slot. `sessionErr` fails the fallback re-read.
    */
-  function fakeSupabase(db: {
-    claimRows?: { id: string }[];
-    sessionRow?: { status: string; expires_at: string } | null;
+  function admitDb(db: {
+    sessionRow?: Partial<FreezeSession> | null;
     sessionErr?: { message: string } | null;
-  }): SupabaseClient {
-    function builder(table: string) {
-      const chain: Record<string, unknown> = {};
-      const self = () => chain;
-      for (const m of [
-        "eq", "is", "in", "order", "limit", "gt", "gte", "lt", "lte", "neq",
-      ]) {
-        chain[m] = self;
-      }
-      chain["insert"] = self;
-      chain["update"] = self;
-      chain["select"] = (cols?: string) => {
-        chain["__cols"] = cols;
-        return chain;
-      };
-      chain["single"] = () =>
-        Promise.resolve({
-          data: { id: "job-1", status: "routing" },
-          error: null,
-        });
-      chain["maybeSingle"] = () => {
-        if (table === "freeze_sessions") {
-          return Promise.resolve({
-            data: db.sessionRow ?? null,
-            error: db.sessionErr ?? null,
-          });
-        }
-        return Promise.resolve({ data: null, error: null });
-      };
-      chain["then"] = (
-        resolve: (value: unknown) => unknown,
-        reject?: (reason: unknown) => unknown
-      ) => {
-        const isClaim =
-          table === "freeze_sessions" && chain["__cols"] === "id";
-        return Promise.resolve(
-          isClaim
-            ? { data: db.claimRows ?? [], error: null }
-            : { data: null, error: null }
-        ).then(resolve, reject);
-      };
-      return chain;
+  }): { supabase: SupabaseClient; db: FakeSupabase } {
+    const fake = new FakeSupabase();
+    fake.tables["freeze_sessions"] =
+      db.sessionRow === null
+        ? []
+        : [{ ...session(), ...(db.sessionRow ?? {}) }];
+    fake.tables["freeze_events"] = [];
+    fake.tables["creative_jobs"] = [];
+    if (db.sessionErr) {
+      fake.opErrors["freeze_sessions:select"] = db.sessionErr;
     }
-    return { from: builder } as unknown as SupabaseClient;
+    return { supabase: fake.client(), db: fake };
   }
 
   it("reports SESSION_EXPIRED when the deadline passed mid-admission", async () => {
     await expect(
       admitFreezeSketch(
-        fakeSupabase({
-          claimRows: [],
+        admitDb({
           sessionRow: { status: "active", expires_at: pastIso() },
-        }),
+        }).supabase,
         session(),
         sketchInput
       )
@@ -302,10 +270,9 @@ describe("admitFreezeSketch claim-failure classification", () => {
   it("reports SESSION_EXPIRED when the row flipped inactive", async () => {
     await expect(
       admitFreezeSketch(
-        fakeSupabase({
-          claimRows: [],
+        admitDb({
           sessionRow: { status: "expired", expires_at: futureIso() },
-        }),
+        }).supabase,
         session(),
         sketchInput
       )
@@ -315,7 +282,7 @@ describe("admitFreezeSketch claim-failure classification", () => {
   it("reports SESSION_EXPIRED when the session row is gone", async () => {
     await expect(
       admitFreezeSketch(
-        fakeSupabase({ claimRows: [], sessionRow: null }),
+        admitDb({ sessionRow: null }).supabase,
         session(),
         sketchInput
       )
@@ -325,11 +292,11 @@ describe("admitFreezeSketch claim-failure classification", () => {
   it("reports STORE_FAILED when the fallback read itself fails", async () => {
     await expect(
       admitFreezeSketch(
-        fakeSupabase({
-          claimRows: [],
-          sessionRow: null,
+        admitDb({
+          // The slot is held so the claim fails; the re-read is what errors.
+          sessionRow: { active_job_id: "job-held" },
           sessionErr: { message: "postgrest unreachable" },
-        }),
+        }).supabase,
         session(),
         sketchInput
       )
@@ -339,10 +306,13 @@ describe("admitFreezeSketch claim-failure classification", () => {
   it("reports JOB_ALREADY_ACTIVE on a live session whose slot is held", async () => {
     await expect(
       admitFreezeSketch(
-        fakeSupabase({
-          claimRows: [],
-          sessionRow: { status: "active", expires_at: futureIso() },
-        }),
+        admitDb({
+          sessionRow: {
+            status: "active",
+            expires_at: futureIso(),
+            active_job_id: "job-held",
+          },
+        }).supabase,
         session(),
         sketchInput
       )
@@ -350,15 +320,15 @@ describe("admitFreezeSketch claim-failure classification", () => {
   });
 
   it("admits when the claim lands", async () => {
-    const job = await admitFreezeSketch(
-      fakeSupabase({
-        claimRows: [{ id: "sess-1" }],
-        sessionRow: { status: "active", expires_at: futureIso() },
-      }),
-      session(),
-      sketchInput
-    );
-    expect(job.id).toBe("job-1");
+    const { supabase, db } = admitDb({ sessionRow: {} });
+    const job = await admitFreezeSketch(supabase, session(), sketchInput);
+    const jobRow = db.rows("creative_jobs")[0];
+    expect(job.id).toBe(jobRow?.["id"]);
+    expect(db.rows("freeze_sessions")[0]?.active_job_id).toBe(job.id);
+    expect(db.rows("freeze_sessions")[0]?.latest_job_id).toBe(job.id);
+    expect(
+      db.inserts.find((i) => i.table === "freeze_events")?.row
+    ).toMatchObject({ kind: "state", state: "admitted" });
   });
 });
 
@@ -530,78 +500,75 @@ describe("freeze clip lane", () => {
     ).rejects.toMatchObject({ code: "BAD_CLIP" });
   });
 
-  /** Storage + table stub: `storage.from()` answers list/createSignedUrl/
-   * remove, `from("creative_assets")` answers the dedupe select and the
-   * insert. The signed fetch is stubbed to a one-chunk stream. */
-  function fakeClipSupabase(db: {
+  /** Seed the stored clip object and creative_assets rows the commit reads:
+   * the fake's storage.list enumerates storageObjects (metadata.size is the
+   * stored body's real size) and remove() deletes them, so a dedupe drop or
+   * a failed insert is asserted on real object state. The signed fetch is
+   * stubbed to a one-chunk stream — the fingerprint hashes those bytes. */
+  function clipDb(db: {
     storedSize?: number;
     missingObject?: boolean;
     dedupe?: { id: string; storage_key: string } | null;
     insertErr?: { message: string } | null;
-    removed: string[][];
-  }): SupabaseClient {
-    function builder() {
-      const chain: Record<string, unknown> = {};
-      const self = () => chain;
-      for (const m of ["eq", "is", "in", "insert", "update", "select"]) {
-        chain[m] = self;
-      }
-      chain["single"] = () =>
-        Promise.resolve({
-          data: db.insertErr ? null : { id: "asset-1" },
-          error: db.insertErr ?? null,
-        });
-      chain["maybeSingle"] = () =>
-        Promise.resolve({ data: db.dedupe ?? null, error: null });
-      chain["then"] = (
-        resolve: (value: unknown) => unknown,
-        reject?: (reason: unknown) => unknown
-      ) =>
-        Promise.resolve({ data: null, error: null }).then(resolve, reject);
-      return chain;
+  }): { supabase: SupabaseClient; db: FakeSupabase } {
+    const fake = new FakeSupabase();
+    fake.tables["creative_assets"] = [];
+    if (!db.missingObject) {
+      fake.storageObjects[`creative-assets/${clipPath}`] = new Uint8Array(
+        db.storedSize ?? 1024
+      );
     }
-    const storage = {
-      from: () => ({
-        list: () =>
-          Promise.resolve({
-            data: db.missingObject
-              ? []
-              : [{ name: `${uuid}.mp4`, metadata: { size: db.storedSize ?? 1024 } }],
-            error: null,
-          }),
-        createSignedUrl: () =>
-          Promise.resolve({
-            data: { signedUrl: "https://storage.test/signed" },
-            error: null,
-          }),
-        remove: (paths: string[]) => {
-          db.removed.push(paths);
-          return Promise.resolve({ data: null, error: null });
+    if (db.dedupe) {
+      fake.tables["creative_assets"] = [
+        {
+          id: db.dedupe.id,
+          user_id: "user-1",
+          sha256: clipSha(db.storedSize ?? 1024),
+          storage_key: db.dedupe.storage_key,
         },
-      }),
+      ];
+    }
+    if (db.insertErr) {
+      fake.opErrors["creative_assets:insert"] = db.insertErr;
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => clipFetch()));
+    return { supabase: fake.client(), db: fake };
+  }
+
+  /** The fingerprint the commit recomputes over the stubbed head bytes. */
+  function clipSha(bytes: number): string {
+    return createHash("sha256")
+      .update(new Uint8Array([1, 2, 3]))
+      .update(`:${bytes}`)
+      .digest("hex");
+  }
+
+  function clipFetch() {
+    return {
+      ok: true,
+      body: {
+        getReader: () => {
+          let sent = false;
+          return {
+            read: () =>
+              Promise.resolve(
+                sent
+                  ? { done: true, value: undefined }
+                  : ((sent = true),
+                    { done: false, value: new Uint8Array([1, 2, 3]) })
+              ),
+            cancel: () => Promise.resolve(),
+          };
+        },
+      },
     };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        body: {
-          getReader: () => {
-            let sent = false;
-            return {
-              read: () =>
-                Promise.resolve(
-                  sent
-                    ? { done: true, value: undefined }
-                    : ((sent = true),
-                      { done: false, value: new Uint8Array([1, 2, 3]) })
-                ),
-              cancel: () => Promise.resolve(),
-            };
-          },
-        },
-      }))
-    );
-    return { from: builder, storage } as unknown as SupabaseClient;
+  }
+
+  /** remove() calls recorded against the fake: each entry is one path list. */
+  function removedPaths(db: FakeSupabase): string[][] {
+    return db.storageCalls
+      .filter((c) => c.method === "remove")
+      .map((c) => c.args[0] as string[]);
   }
 
   const clipArgs = {
@@ -614,14 +581,14 @@ describe("freeze clip lane", () => {
   it("rejects when the object never landed or its size was forged", async () => {
     await expect(
       registerFreezeClip(
-        fakeClipSupabase({ missingObject: true, removed: [] }),
+        clipDb({ missingObject: true }).supabase,
         session(),
         clipArgs
       )
     ).rejects.toMatchObject({ code: "CLIP_MISSING" });
     await expect(
       registerFreezeClip(
-        fakeClipSupabase({ storedSize: 4096, removed: [] }),
+        clipDb({ storedSize: 4096 }).supabase,
         session(),
         clipArgs
       )
@@ -629,39 +596,33 @@ describe("freeze clip lane", () => {
   });
 
   it("registers a verified object and ignores the claimed sha", async () => {
-    const removed: string[][] = [];
-    const id = await registerFreezeClip(
-      fakeClipSupabase({ removed }),
-      session(),
-      clipArgs
-    );
-    expect(id).toBe("asset-1");
-    expect(removed).toEqual([]);
+    const { supabase, db } = clipDb({});
+    const id = await registerFreezeClip(supabase, session(), clipArgs);
+    const row = db.rows("creative_assets")[0];
+    expect(id).toBe(row?.["id"]);
+    // The commit recomputes the fingerprint — the claimed "b…" sha never
+    // reaches the row, and the stored object stays put.
+    expect(row?.["sha256"]).toBe(clipSha(1024));
+    expect(removedPaths(db)).toEqual([]);
+    expect(db.storageObjects[`creative-assets/${clipPath}`]).toBeDefined();
   });
 
   it("drops the duplicate object on a dedupe hit", async () => {
-    const removed: string[][] = [];
-    const id = await registerFreezeClip(
-      fakeClipSupabase({
-        removed,
-        dedupe: { id: "asset-9", storage_key: `${clipDir}/older.mp4` },
-      }),
-      session(),
-      clipArgs
-    );
+    const { supabase, db } = clipDb({
+      dedupe: { id: "asset-9", storage_key: `${clipDir}/older.mp4` },
+    });
+    const id = await registerFreezeClip(supabase, session(), clipArgs);
     expect(id).toBe("asset-9");
-    expect(removed).toEqual([[clipPath]]);
+    expect(removedPaths(db)).toEqual([[clipPath]]);
+    expect(db.storageObjects[`creative-assets/${clipPath}`]).toBeUndefined();
   });
 
   it("removes the object when the asset insert fails", async () => {
-    const removed: string[][] = [];
+    const { supabase, db } = clipDb({ insertErr: { message: "rls denied" } });
     await expect(
-      registerFreezeClip(
-        fakeClipSupabase({ removed, insertErr: { message: "rls denied" } }),
-        session(),
-        clipArgs
-      )
+      registerFreezeClip(supabase, session(), clipArgs)
     ).rejects.toMatchObject({ code: "STORE_FAILED" });
-    expect(removed).toEqual([[clipPath]]);
+    expect(removedPaths(db)).toEqual([[clipPath]]);
+    expect(db.storageObjects[`creative-assets/${clipPath}`]).toBeUndefined();
   });
 });

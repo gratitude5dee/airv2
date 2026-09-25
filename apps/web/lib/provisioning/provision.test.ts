@@ -12,168 +12,80 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 type Row = Record<string, unknown>;
-const inserts: Record<string, Row[]> = {};
-const upserts: Record<string, Row[]> = {};
-/** Rows the fake supabase serves to select().eq()...maybeSingle(). */
-const tables: Record<string, Row[]> = {};
+
+const db = new FakeSupabase();
+const supabase = db.client() as SupabaseClient;
+
 /** Every update() applied to `boxes`, with the filters it carried. */
 const boxUpdates: Array<{ values: Row; filters: string[] }> = [];
 /** When set, a `boxes` update carrying these values fails with this message. */
 let failBoxUpdate: { when: (values: Row) => boolean; message: string } | null =
   null;
 
-type Filter = (row: Row) => boolean;
-
-function matches(row: Row, filters: Filter[]): boolean {
-  return filters.every((f) => f(row));
+/** PostgREST text of a query's recorded filters, e.g. `col=eq.value`. */
+function describeFilters(
+  filters: { op: string; column: string; value: unknown }[]
+): string[] {
+  return filters.map((f) =>
+    f.op === "or"
+      ? `or(${String(f.value)})`
+      : `${f.column}=${f.op}.${String(f.value)}`
+  );
 }
 
-/** Parses PostgREST's `col.op.value,col.op.value` or() clause. */
-function orFilter(clause: string): Filter {
-  const terms = clause.split(",").map((term) => {
-    const [col, op, ...rest] = term.split(".");
-    const value = rest.join(".");
-    return (row: Row) => {
-      const actual = row[col as string];
-      if (op === "is" && value === "null") return actual == null;
-      if (op === "lt") return actual != null && String(actual) < value;
-      throw new Error(`unsupported or() term ${term}`);
-    };
-  });
-  return (row) => terms.some((t) => t(row));
+function insertsFor(table: string): Row[] {
+  return db.inserts
+    .filter((entry) => entry.table === table)
+    .map((entry) => entry.row);
 }
 
-function tableApi(table: string) {
-  const filters: Filter[] = [];
-  const described: string[] = [];
-  const builder: Record<string, unknown> = {
-    eq(key: string, value: unknown) {
-      described.push(`${key}=eq.${String(value)}`);
-      filters.push((row) => row[key] === value);
-      return builder;
-    },
-    is() {
-      return builder;
-    },
-    async maybeSingle() {
-      const row = (tables[table] ?? []).find((r) => matches(r, filters));
-      return { data: row ? { ...row } : null, error: null };
-    },
-  };
-  /**
-   * update(): rows matching every filter are mutated in place and returned
-   * by select(), so a conditional claim sees exactly the rows it won.
-   */
-  function updateApi(values: Row) {
-    const apply = () => {
-      const rows = (tables[table] ?? []).filter((r) => matches(r, filters));
-      if (table === "boxes") {
-        boxUpdates.push({ values, filters: [...described] });
-      }
-      for (const row of rows) Object.assign(row, values);
-      return rows.map((row) => ({ ...row }));
+function upsertsFor(table: string): Row[] {
+  return db.upserts
+    .filter((entry) => entry.table === table)
+    .map((entry) => entry.row);
+}
+
+/** Mirror 0106's claim_replace: refuse under a live migration, then CAS the
+ * claim timestamp while it is null or stale. */
+function claimReplace(args: Row) {
+  const control = db.rows("tenant_control").find(
+    (r) => r["user_id"] === args["p_user_id"]
+  );
+  if (control?.["active_migration_id"]) {
+    return {
+      claimed: false,
+      reason: "migration_active",
+      migration_id: control["active_migration_id"],
     };
-    const chain: Record<string, unknown> = {
-      eq(key: string, value: unknown) {
-        described.push(`${key}=eq.${String(value)}`);
-        filters.push((row) => row[key] === value);
-        return chain;
-      },
-      or(clause: string) {
-        described.push(`or(${clause})`);
-        filters.push(orFilter(clause));
-        return chain;
-      },
-      is: () => ({
-        select: async () => ({ data: [{ id: "line-1" }], error: null }),
-      }),
-      select: async () => ({ data: apply(), error: null }),
-      then(
-        resolve: (value: { error: { message: string } | null }) => unknown
-      ) {
-        if (table === "boxes" && failBoxUpdate?.when(values)) {
-          return Promise.resolve({
-            error: { message: failBoxUpdate.message },
-          }).then(resolve);
-        }
-        apply();
-        return Promise.resolve({ error: null }).then(resolve);
-      },
-    };
-    return chain;
   }
-  return {
-    select: () => builder,
-    insert(row: Row) {
-      (inserts[table] ??= []).push(row);
-      return Object.assign(Promise.resolve({ error: null }), {
-        select: () => ({
-          single: async () => ({ data: { id: "user-1" }, error: null }),
-        }),
-      });
-    },
-    upsert(row: Row) {
-      (upserts[table] ??= []).push(row);
-      return Promise.resolve({ error: null });
-    },
-    update: (values: Row) => updateApi(values),
-    delete: () => ({ eq: async () => ({ error: null }) }),
-  };
+  const row = db.rows("boxes").find(
+    (r) =>
+      r["user_id"] === args["p_user_id"] &&
+      r["provider_box_id"] === args["p_box_id"]
+  );
+  const existing = row?.["replace_claimed_at"] as string | null | undefined;
+  const claimable = !existing || existing < (args["p_stale_before"] as string);
+  if (!row || !claimable) {
+    return { claimed: false, reason: "replace_in_flight" };
+  }
+  boxUpdates.push({
+    values: { replace_claimed_at: args["p_claimed_at"] },
+    filters: [
+      `user_id=eq.${String(args["p_user_id"])}`,
+      `provider_box_id=eq.${String(args["p_box_id"])}`,
+      `or(replace_claimed_at.is.null,replace_claimed_at.lt.${String(
+        args["p_stale_before"]
+      )})`,
+    ],
+  });
+  row["replace_claimed_at"] = args["p_claimed_at"];
+  return { claimed: true };
 }
 
-const fakeSupabase = {
-  from: (table: string) => tableApi(table),
-  rpc: async (name: string, args: Row) => {
-    if (name !== "claim_replace") {
-      return { data: null, error: { message: `unstubbed rpc ${name}` } };
-    }
-    // Mirror 0106's claim_replace: refuse under a live migration, then CAS
-    // the claim timestamp while it is null or stale.
-    const control = tables["tenant_control"]?.find(
-      (r) => r["user_id"] === args["p_user_id"]
-    );
-    if (control?.["active_migration_id"]) {
-      return {
-        data: {
-          claimed: false,
-          reason: "migration_active",
-          migration_id: control["active_migration_id"],
-        },
-        error: null,
-      };
-    }
-    const row = tables["boxes"]?.find(
-      (r) =>
-        r["user_id"] === args["p_user_id"] &&
-        r["provider_box_id"] === args["p_box_id"]
-    );
-    const existing = row?.["replace_claimed_at"] as string | null | undefined;
-    const claimable =
-      !existing || existing < (args["p_stale_before"] as string);
-    if (!row || !claimable) {
-      return {
-        data: { claimed: false, reason: "replace_in_flight" },
-        error: null,
-      };
-    }
-    boxUpdates.push({
-      values: { replace_claimed_at: args["p_claimed_at"] },
-      filters: [
-        `user_id=eq.${String(args["p_user_id"])}`,
-        `provider_box_id=eq.${String(args["p_box_id"])}`,
-        `or(replace_claimed_at.is.null,replace_claimed_at.lt.${String(
-          args["p_stale_before"]
-        )})`,
-      ],
-    });
-    row["replace_claimed_at"] = args["p_claimed_at"];
-    return { data: { claimed: true }, error: null };
-  },
-} as unknown as SupabaseClient;
-
-vi.mock("../supabase", () => ({ serviceClient: () => fakeSupabase }));
+vi.mock("../supabase", () => ({ serviceClient: () => supabase }));
 
 const fork = vi.fn(async () => ({ id: "box-new" }));
 /**
@@ -314,12 +226,12 @@ function pointChannelAtCurrentRelease(
   hermesRef: string | null = "sha-1",
   stamp: { version?: string; gitSha?: string } | null = {}
 ) {
-  tables["box_channels"] = [
-    ...(tables["box_channels"] ?? []),
+  db.tables["box_channels"] = [
+    ...(db.tables["box_channels"] ?? []),
     { name: channel, release_id: `rel-${channel}`, template_box_id: `tpl-${channel}` },
   ];
-  tables["template_releases"] = [
-    ...(tables["template_releases"] ?? []),
+  db.tables["template_releases"] = [
+    ...(db.tables["template_releases"] ?? []),
     {
       id: `rel-${channel}`,
       version: `2026.09.05-${channel}`,
@@ -336,9 +248,22 @@ function pointChannelAtCurrentRelease(
 }
 
 beforeEach(() => {
-  for (const store of [inserts, upserts, tables]) {
-    for (const key of Object.keys(store)) delete store[key];
-  }
+  db.reset();
+  // Record every boxes update (with its PostgREST filters) in call order, and
+  // optionally fail it — claim pushes join the same log inside claimReplace.
+  db.resolve = (query) => {
+    if (query.table === "boxes" && query.mode === "update") {
+      boxUpdates.push({
+        values: (query.args[0] ?? {}) as Row,
+        filters: describeFilters(query.filters),
+      });
+      if (failBoxUpdate?.when(query.args[0] as Row)) {
+        return { error: { message: failBoxUpdate.message } };
+      }
+    }
+    return undefined;
+  };
+  db.rpcResults["claim_replace"] = (args: unknown) => claimReplace(args as Row);
   boxUpdates.length = 0;
   failBoxUpdate = null;
   memoryInitializationFails = false;
@@ -364,7 +289,7 @@ describe("provisionUser environments", () => {
     memoryInitializationFails = true;
     await expect(provisionUser()).rejects.toThrow("Deep memory initialization failed");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
-    expect(upserts["boxes"] ?? []).toEqual([]);
+    expect(upsertsFor("boxes")).toEqual([]);
   });
 
   it("explicit tenki forks the TENKI_TEMPLATE_ID snapshot", async () => {
@@ -375,7 +300,7 @@ describe("provisionUser environments", () => {
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tenki:snap-1" })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "ubuntu",
       provider: "tenki",
       provider_box_id: "tk_sess-1",
@@ -383,7 +308,7 @@ describe("provisionUser environments", () => {
   });
 
   it("platform_settings box_default_provider=tenki provisions tenki when a template is set", async () => {
-    tables["platform_settings"] = [
+    db.tables["platform_settings"] = [
       { key: "box_default_provider", value: "tenki" },
     ];
     fork.mockResolvedValueOnce({ id: "tk_sess-2" });
@@ -392,7 +317,7 @@ describe("provisionUser environments", () => {
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tenki:snap-1" })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "ubuntu",
       provider: "tenki",
       provider_box_id: "tk_sess-2",
@@ -402,7 +327,7 @@ describe("provisionUser environments", () => {
   it.each([null, "snap-123"])(
     "a tenki platform default falls back to ascii when TENKI_TEMPLATE_ID is %s",
     async (bad) => {
-      tables["platform_settings"] = [
+      db.tables["platform_settings"] = [
         { key: "box_default_provider", value: "tenki" },
       ];
       tenkiTemplate = bad;
@@ -412,7 +337,7 @@ describe("provisionUser environments", () => {
         expect(fork).toHaveBeenCalledWith(
           expect.objectContaining({ templateId: "template-ubuntu" })
         );
-        expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+        expect(upsertsFor("boxes")?.[0]).toMatchObject({ provider: "ascii" });
       } finally {
         tenkiTemplate = "tenki:snap-1";
       }
@@ -420,7 +345,7 @@ describe("provisionUser environments", () => {
   );
 
   it("an explicit provider still wins over the platform default", async () => {
-    tables["platform_settings"] = [
+    db.tables["platform_settings"] = [
       { key: "box_default_provider", value: "tenki" },
     ];
     const result = await provisionUser({ provider: "ascii" });
@@ -428,7 +353,7 @@ describe("provisionUser environments", () => {
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "template-ubuntu" })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({ provider: "ascii" });
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({ provider: "ascii" });
   });
 
   it.each([null, "snap-123", "tk_session", "tenki:", "tenki:   "])(
@@ -453,14 +378,14 @@ describe("provisionUser environments", () => {
       expect.objectContaining({ templateId: "template-ubuntu" })
     );
     expect(createMacInstance).not.toHaveBeenCalled();
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "ubuntu",
       provider: "ascii",
       provider_box_id: "box-new",
     });
     expect(installComposioMcp).toHaveBeenCalled();
     expect(ensureMailboxOnBox).toHaveBeenCalledWith(
-      fakeSupabase,
+      supabase,
       expect.any(String),
       "box-new",
     );
@@ -480,7 +405,7 @@ describe("provisionUser environments", () => {
   });
 
   it("omarchy forks the registered omarchy template box", async () => {
-    tables["box_environment_templates"] = [
+    db.tables["box_environment_templates"] = [
       { channel: "prod", environment: "omarchy", template_ref: "template-omarchy" },
     ];
     const result = await provisionUser({ environment: "omarchy" });
@@ -489,7 +414,7 @@ describe("provisionUser environments", () => {
       expect.objectContaining({ templateId: "template-omarchy" })
     );
     expect(createMacInstance).not.toHaveBeenCalled();
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "omarchy",
       provider: "ascii",
     });
@@ -507,7 +432,7 @@ describe("provisionUser environments", () => {
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tenki:snap-1" })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "ubuntu",
       provider: "tenki",
       provider_box_id: "tk_sess-1",
@@ -543,7 +468,7 @@ describe("provisionUser environments", () => {
   });
 
   it("macos builds a Namespace instance from the bootstrap URL", async () => {
-    tables["box_environment_templates"] = [
+    db.tables["box_environment_templates"] = [
       {
         channel: "prod",
         environment: "macos",
@@ -558,13 +483,13 @@ describe("provisionUser environments", () => {
         bootstrapUrl: "https://air.test/mac-bootstrap.sh",
       })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "macos",
       provider: "namespace",
       provider_box_id: "mac-1",
       control_url: "https://mac-bridge.ns.dev",
     });
-    expect(upserts["boxes"]?.[0]?.["control_token"]).toEqual(expect.any(String));
+    expect(upsertsFor("boxes")?.[0]?.["control_token"]).toEqual(expect.any(String));
     expect(installComposioMcp).toHaveBeenCalled();
   });
 });
@@ -577,21 +502,21 @@ describe("provisionUser rollback", () => {
     await expect(provisionUser()).rejects.toThrow("box never became ready");
     expect(boxClient.stop).toHaveBeenCalledWith("box-new");
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
-    expect(upserts["boxes"]).toBeUndefined();
+    expect(upsertsFor("boxes")).toHaveLength(0);
   });
 });
 
 describe("switchEnvironment", () => {
   beforeEach(() => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       { user_id: "user-1", provider_box_id: "box-old", environment: "ubuntu" },
     ];
   });
 
   it("repoints the row at the new box, then tears the old one down", async () => {
-    const result = await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    const result = await switchEnvironment(supabase, "user-1", "ubuntu");
     expect(result.boxId).toBe("box-new");
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       user_id: "user-1",
       provider_box_id: "box-new",
     });
@@ -599,7 +524,7 @@ describe("switchEnvironment", () => {
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
     expect(ensureMailboxOnBox).toHaveBeenCalledWith(
-      fakeSupabase,
+      supabase,
       "user-1",
       "box-new",
     );
@@ -607,23 +532,23 @@ describe("switchEnvironment", () => {
 
   it("a setup failure after the row moved still retires the old box and names the new one", async () => {
     installBaseSkills.mockRejectedValueOnce(new Error("hub unreachable"));
-    const failure = await switchEnvironment(fakeSupabase, "user-1", "ubuntu").catch(
+    const failure = await switchEnvironment(supabase, "user-1", "ubuntu").catch(
       (error: unknown) => error
     );
     expect(failure).toBeInstanceOf(SwitchSetupError);
     expect((failure as SwitchSetupError).boxId).toBe("box-new");
     expect((failure as Error).message).toMatch(/hub unreachable/);
-    expect(upserts["boxes"]?.[0]).toMatchObject({ provider_box_id: "box-new" });
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({ provider_box_id: "box-new" });
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-new");
   });
 
   it("a fork that never becomes ready destroys only the new box", async () => {
     vi.mocked(boxClient.waitForBox).mockRejectedValueOnce(new Error("never ready"));
-    await expect(switchEnvironment(fakeSupabase, "user-1", "ubuntu")).rejects.toThrow(
+    await expect(switchEnvironment(supabase, "user-1", "ubuntu")).rejects.toThrow(
       "never ready"
     );
-    expect(upserts["boxes"]).toBeUndefined();
+    expect(upsertsFor("boxes")).toHaveLength(0);
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-new");
     expect(boxClient.deleteBox).not.toHaveBeenCalledWith("box-old");
   });
@@ -631,7 +556,7 @@ describe("switchEnvironment", () => {
   it("uses Tenki only when the caller explicitly targets it", async () => {
     fork.mockResolvedValueOnce({ id: "tk_new" });
     const result = await switchEnvironment(
-      fakeSupabase,
+      supabase,
       "user-1",
       "ubuntu",
       "tenki",
@@ -640,12 +565,12 @@ describe("switchEnvironment", () => {
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tenki:snap-1" }),
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       provider: "tenki",
       provider_box_id: "tk_new",
     });
     expect(ensureMailboxOnBox).toHaveBeenCalledWith(
-      fakeSupabase,
+      supabase,
       "user-1",
       "tk_new",
     );
@@ -653,11 +578,11 @@ describe("switchEnvironment", () => {
   });
 
   it("keeps the current provider when no target provider is supplied", async () => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
     ];
     fork.mockResolvedValueOnce({ id: "tk_new" });
-    await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    await switchEnvironment(supabase, "user-1", "ubuntu");
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tenki:snap-1" }),
     );
@@ -665,10 +590,10 @@ describe("switchEnvironment", () => {
   });
 
   it("moves a Tenki box to ascii when switching to Omarchy", async () => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
     ];
-    tables["box_environment_templates"] = [
+    db.tables["box_environment_templates"] = [
       {
         channel: "prod",
         environment: "omarchy",
@@ -676,12 +601,12 @@ describe("switchEnvironment", () => {
       },
     ];
 
-    await switchEnvironment(fakeSupabase, "user-1", "omarchy");
+    await switchEnvironment(supabase, "user-1", "omarchy");
 
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "template-omarchy" }),
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "omarchy",
       provider: "ascii",
     });
@@ -689,10 +614,10 @@ describe("switchEnvironment", () => {
   });
 
   it("moves a Tenki box to Namespace when switching to macOS", async () => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       { user_id: "user-1", provider_box_id: "tk_old", environment: "ubuntu" },
     ];
-    tables["box_environment_templates"] = [
+    db.tables["box_environment_templates"] = [
       {
         channel: "prod",
         environment: "macos",
@@ -700,10 +625,10 @@ describe("switchEnvironment", () => {
       },
     ];
 
-    await switchEnvironment(fakeSupabase, "user-1", "macos");
+    await switchEnvironment(supabase, "user-1", "macos");
 
     expect(createMacInstance).toHaveBeenCalled();
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       environment: "macos",
       provider: "namespace",
     });
@@ -715,7 +640,7 @@ describe("fleet position of a fresh fork", () => {
   it("a fork of unknown provenance installs the hub skills and stays unsynced", async () => {
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       channel: "prod",
       baseline_version: null,
       baseline_synced_at: null,
@@ -731,7 +656,7 @@ describe("fleet position of a fresh fork", () => {
     );
     expect(installBaseSkills).not.toHaveBeenCalled();
     expect(installComposioMcp).toHaveBeenCalled();
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       channel: "prod",
       baseline_version: "2026.09.05-prod",
       baseline_synced_at: expect.any(String),
@@ -749,7 +674,7 @@ describe("fleet position of a fresh fork", () => {
     expect(installBaseSkills).toHaveBeenCalledWith(expect.anything(), [
       "browser-harness",
     ]);
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       baseline_version: "2026.09.05-prod",
     });
   });
@@ -759,7 +684,7 @@ describe("fleet position of a fresh fork", () => {
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(installBaseSkills).toHaveBeenCalledWith(expect.anything());
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       baseline_version: null,
       baseline_synced_at: null,
     });
@@ -769,28 +694,28 @@ describe("fleet position of a fresh fork", () => {
     pointChannelAtCurrentRelease("prod", "sha-1", { version: "2026.09.01-old" });
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
-    expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({ baseline_version: null });
   });
 
   it("a stamp whose git sha disagrees with the release row is not claimed", async () => {
     pointChannelAtCurrentRelease("prod", "sha-1", { gitSha: "sha-elsewhere" });
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
-    expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({ baseline_version: null });
   });
 
   it("a release whose Hermes ref the template does not carry is not claimed", async () => {
     pointChannelAtCurrentRelease("prod", "sha-newer");
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       baseline_version: null,
       baseline_synced_at: null,
     });
   });
 
   it("a channel with no release yet behaves like unknown provenance", async () => {
-    tables["box_channels"] = [
+    db.tables["box_channels"] = [
       { name: "prod", release_id: null, template_box_id: "tpl-prod" },
     ];
     await provisionUser({ provider: "ascii" });
@@ -798,13 +723,13 @@ describe("fleet position of a fresh fork", () => {
       expect.objectContaining({ templateId: "tpl-prod" })
     );
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
-    expect(upserts["boxes"]?.[0]).toMatchObject({ baseline_version: null });
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({ baseline_version: null });
   });
 });
 
 describe("switchEnvironment keeps the box's channel", () => {
   it("a dev box is rebuilt from the dev template and stays on dev", async () => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       {
         user_id: "user-1",
         provider_box_id: "box-old",
@@ -814,11 +739,11 @@ describe("switchEnvironment keeps the box's channel", () => {
     ];
     pointChannelAtCurrentRelease("prod", "sha-other");
     pointChannelAtCurrentRelease("dev");
-    await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    await switchEnvironment(supabase, "user-1", "ubuntu");
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tpl-dev" })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({
       provider_box_id: "box-new",
       channel: "dev",
       baseline_version: "2026.09.05-dev",
@@ -827,15 +752,15 @@ describe("switchEnvironment keeps the box's channel", () => {
   });
 
   it("a row without a channel falls back to prod", async () => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       { user_id: "user-1", provider_box_id: "box-old", environment: "ubuntu" },
     ];
     pointChannelAtCurrentRelease("prod");
-    await switchEnvironment(fakeSupabase, "user-1", "ubuntu");
+    await switchEnvironment(supabase, "user-1", "ubuntu");
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "tpl-prod" })
     );
-    expect(upserts["boxes"]?.[0]).toMatchObject({ channel: "prod" });
+    expect(upsertsFor("boxes")?.[0]).toMatchObject({ channel: "prod" });
   });
 });
 
@@ -844,10 +769,10 @@ describe("replaceBox", () => {
     boxUpdates.filter((u) => typeof u.values["replace_claimed_at"] === "string");
   const releaseUpdates = () =>
     boxUpdates.filter((u) => u.values["replace_claimed_at"] === null);
-  const boxRow = () => tables["boxes"]?.[0] as Row;
+  const boxRow = () => db.tables["boxes"]?.[0] as Row;
 
   beforeEach(() => {
-    tables["boxes"] = [
+    db.tables["boxes"] = [
       {
         user_id: "user-1",
         provider_box_id: "box-old",
@@ -858,7 +783,7 @@ describe("replaceBox", () => {
   });
 
   it("claims the row on the named box, rebuilds, then releases only its own claim", async () => {
-    const result = await replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu");
+    const result = await replaceBox(supabase, "user-1", "box-old", "ubuntu");
     expect(result.boxId).toBe("box-new");
     expect(claimUpdates()).toHaveLength(1);
     expect(claimUpdates()[0]?.filters).toEqual(
@@ -882,7 +807,7 @@ describe("replaceBox", () => {
   it("passes an explicit target provider through the replacement lease", async () => {
     fork.mockResolvedValueOnce({ id: "tk_new" });
     const result = await replaceBox(
-      fakeSupabase,
+      supabase,
       "user-1",
       "box-old",
       "ubuntu",
@@ -896,21 +821,21 @@ describe("replaceBox", () => {
   });
 
   it("a live migration refuses the replacement with MigrationBusyError", async () => {
-    tables["tenant_control"] = [
+    db.tables["tenant_control"] = [
       { user_id: "user-1", active_migration_id: "mig-1" },
     ];
     await expect(
-      replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu")
+      replaceBox(supabase, "user-1", "box-old", "ubuntu")
     ).rejects.toBeInstanceOf(MigrationBusyError);
     expect(fork).not.toHaveBeenCalled();
-    delete tables["tenant_control"];
+    db.tables["tenant_control"] = [];
   });
 
   it("a live claim held by another call is a ReplaceInProgressError and forks nothing", async () => {
     const live = new Date(Date.now() - 60_000).toISOString();
     boxRow()["replace_claimed_at"] = live;
     await expect(
-      replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu")
+      replaceBox(supabase, "user-1", "box-old", "ubuntu")
     ).rejects.toBeInstanceOf(ReplaceInProgressError);
     expect(fork).not.toHaveBeenCalled();
     expect(boxRow()["replace_claimed_at"]).toBe(live);
@@ -923,7 +848,7 @@ describe("replaceBox", () => {
     ).toISOString();
     boxRow()["replace_claimed_at"] = live;
     await expect(
-      replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu")
+      replaceBox(supabase, "user-1", "box-old", "ubuntu")
     ).rejects.toBeInstanceOf(ReplaceInProgressError);
     expect(fork).not.toHaveBeenCalled();
     expect(boxRow()["replace_claimed_at"]).toBe(live);
@@ -933,7 +858,7 @@ describe("replaceBox", () => {
     boxRow()["replace_claimed_at"] = new Date(
       Date.now() - REPLACE_CLAIM_TTL_MS - 60_000
     ).toISOString();
-    const result = await replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu");
+    const result = await replaceBox(supabase, "user-1", "box-old", "ubuntu");
     expect(result.boxId).toBe("box-new");
     expect(fork).toHaveBeenCalledTimes(1);
     expect(boxRow()["replace_claimed_at"]).toBeNull();
@@ -941,7 +866,7 @@ describe("replaceBox", () => {
 
   it("naming a box the row has moved on from forks nothing", async () => {
     await expect(
-      replaceBox(fakeSupabase, "user-1", "box-stale", "ubuntu")
+      replaceBox(supabase, "user-1", "box-stale", "ubuntu")
     ).rejects.toBeInstanceOf(ReplaceInProgressError);
     expect(fork).not.toHaveBeenCalled();
     expect(boxRow()["replace_claimed_at"]).toBeNull();
@@ -950,7 +875,7 @@ describe("replaceBox", () => {
   it("a fork failure releases the claim and rethrows", async () => {
     vi.mocked(boxClient.waitForBox).mockRejectedValueOnce(new Error("never ready"));
     await expect(
-      replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu")
+      replaceBox(supabase, "user-1", "box-old", "ubuntu")
     ).rejects.toThrow("never ready");
     expect(boxRow()["replace_claimed_at"]).toBeNull();
     expect(releaseUpdates()).toHaveLength(1);
@@ -959,7 +884,7 @@ describe("replaceBox", () => {
   it("a setup failure after the row moved still surfaces as SwitchSetupError with the claim released", async () => {
     installBaseSkills.mockRejectedValueOnce(new Error("hub unreachable"));
     const failure = await replaceBox(
-      fakeSupabase,
+      supabase,
       "user-1",
       "box-old",
       "ubuntu"
@@ -975,15 +900,17 @@ describe("replaceBox", () => {
     };
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const result = await replaceBox(fakeSupabase, "user-1", "box-old", "ubuntu");
+    const result = await replaceBox(supabase, "user-1", "box-old", "ubuntu");
     expect(result.boxId).toBe("box-new");
 
     installBaseSkills.mockRejectedValueOnce(new Error("hub unreachable"));
     boxRow()["replace_claimed_at"] = null;
+    // The first replacement already moved the row to box-new — a second
+    // replace names the box the row currently points at.
     const failure = await replaceBox(
-      fakeSupabase,
+      supabase,
       "user-1",
-      "box-old",
+      "box-new",
       "ubuntu"
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(SwitchSetupError);
@@ -1003,18 +930,18 @@ describe("provisionUser bound_phone normalization (P1-8)", () => {
       provisionUser({ boundPhone: "+1 (415) 555-0123" })
     ).rejects.toThrow("fork unavailable in test");
 
-    expect(inserts["provisioning"]?.[0]).toMatchObject({
+    expect(insertsFor("provisioning")?.[0]).toMatchObject({
       bound_phone: "+14155550123",
     });
-    expect(inserts["handles"]?.[0]).toMatchObject({
+    expect(insertsFor("handles")?.[0]).toMatchObject({
       platform: "imessage",
       address: "+14155550123",
     });
-    expect(inserts["senders"]?.[0]).toMatchObject({
+    expect(insertsFor("senders")?.[0]).toMatchObject({
       platform: "imessage",
       address: "+14155550123",
       trust_tier: 0,
     });
-    expect(upserts["boxes"]).toBeUndefined();
+    expect(upsertsFor("boxes")).toHaveLength(0);
   });
 });

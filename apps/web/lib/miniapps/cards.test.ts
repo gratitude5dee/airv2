@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { UnsupportedError } from "spectrum-ts";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { createSpectrumSender } from "../spectrum/sender";
 import {
   checkoutCardLayout,
@@ -21,66 +21,31 @@ const SESSION = {
   targetMessageGuid: "target-message-guid",
 };
 
-function makeSupabase(options?: {
+function makeDb(options?: {
   session?: typeof SESSION;
   persistError?: boolean;
 }) {
-  let session = options?.session;
-  const upserts: unknown[] = [];
-  let deletions = 0;
-  const client = {
-    from: (table: string) => {
-      if (table === "imessage_destinations") {
-        const builder = {
-          eq: () => builder,
-          maybeSingle: async () => ({
-            data: { space_id: "space-1", phone: "+15555550123" },
-            error: null,
-          }),
-        };
-        return {
-          select: () => builder,
-        };
-      }
-      expect(table).toBe("miniapp_card_sessions");
-      return {
-        select: () => {
-          const builder = {
-            eq: () => builder,
-            maybeSingle: async () => ({
-              data: session ? { session } : null,
-              error: null,
-            }),
-          };
-          return builder;
+  const db = new FakeSupabase();
+  db.tables["imessage_destinations"] = [
+    { user_id: "user-1", space_id: "space-1", phone: "+15555550123" },
+  ];
+  db.tables["miniapp_card_sessions"] = options?.session
+    ? [
+        {
+          user_id: "user-1",
+          kind: "vault",
+          resource_id: "default",
+          space_id: "space-1",
+          session: options.session,
         },
-        upsert: async (row: unknown) => {
-          upserts.push(row);
-          if (options?.persistError) {
-            return { error: { message: "database unavailable" } };
-          }
-          session = (row as { session: typeof SESSION }).session;
-          return { error: null };
-        },
-        delete: () => {
-          let calls = 0;
-          const builder = {
-            eq: () => {
-              calls += 1;
-              if (calls === 3) {
-                deletions += 1;
-                session = undefined;
-                return Promise.resolve({ error: null });
-              }
-              return builder;
-            },
-          };
-          return builder;
-        },
-      };
-    },
-  } as unknown as SupabaseClient;
-  return { client, upserts, getSession: () => session, getDeletions: () => deletions };
+      ]
+    : [];
+  if (options?.persistError) {
+    db.opErrors["miniapp_card_sessions:upsert"] = {
+      message: "database unavailable",
+    };
+  }
+  return db;
 }
 
 const senderMock = {
@@ -100,59 +65,55 @@ describe("mini-app card session lifecycle", () => {
   });
 
   it("persists the session returned by a fresh send and updates in place", async () => {
-    const { client, getSession } = makeSupabase();
+    const db = makeDb();
     await sendMiniAppCard(
-      client,
+      db.client(),
       "space-1",
       "+15555550123",
       "user-1",
       "vault",
       "default"
     );
-    expect(getSession()).toEqual(SESSION);
+    expect(db.rows("miniapp_card_sessions")[0]?.session).toEqual(SESSION);
 
-    await updateMiniAppCard(client, "user-1", "vault", "default");
+    await updateMiniAppCard(db.client(), "user-1", "vault", "default");
     expect(senderMock.editApp).toHaveBeenCalledOnce();
     expect(senderMock.sendApp).toHaveBeenCalledOnce();
   });
 
   it("does nothing when no session is stored", async () => {
-    const { client } = makeSupabase();
-    await updateMiniAppCard(client, "user-1", "vault", "default");
+    const db = makeDb();
+    await updateMiniAppCard(db.client(), "user-1", "vault", "default");
     expect(senderMock.sendApp).not.toHaveBeenCalled();
     expect(senderMock.editApp).not.toHaveBeenCalled();
   });
 
   it("deletes the session without sending when the refreshed session is invalid", async () => {
-    const { client, getSession, getDeletions } = makeSupabase({
-      session: SESSION,
-    });
+    const db = makeDb({ session: SESSION });
     senderMock.editApp.mockResolvedValueOnce(undefined);
-    await updateMiniAppCard(client, "user-1", "vault", "default");
+    await updateMiniAppCard(db.client(), "user-1", "vault", "default");
     expect(senderMock.sendApp).not.toHaveBeenCalled();
-    expect(getDeletions()).toBe(1);
-    expect(getSession()).toBeUndefined();
+    expect(db.deletes).toHaveLength(1);
+    expect(db.rows("miniapp_card_sessions")).toHaveLength(0);
   });
 
   it("deletes the session without sending when editing is unsupported", async () => {
-    const { client, getSession, getDeletions } = makeSupabase({
-      session: SESSION,
-    });
+    const db = makeDb({ session: SESSION });
     senderMock.editApp.mockRejectedValueOnce(
       UnsupportedError.content("edit", "imessage", "not supported")
     );
-    await updateMiniAppCard(client, "user-1", "vault", "default");
+    await updateMiniAppCard(db.client(), "user-1", "vault", "default");
     expect(senderMock.editApp).toHaveBeenCalledOnce();
     expect(senderMock.sendApp).not.toHaveBeenCalled();
-    expect(getDeletions()).toBe(1);
-    expect(getSession()).toBeUndefined();
+    expect(db.deletes).toHaveLength(1);
+    expect(db.rows("miniapp_card_sessions")).toHaveLength(0);
   });
 
   it("does not propagate a session persistence failure", async () => {
-    const { client } = makeSupabase({ persistError: true });
+    const db = makeDb({ persistError: true });
     await expect(
       sendMiniAppCard(
-        client,
+        db.client(),
         "space-1",
         "+15555550123",
         "user-1",
