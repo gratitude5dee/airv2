@@ -1457,7 +1457,6 @@ function ShareTab({ status }: { status: StatusResponse }) {
         </p>
       ) : null}
       {qr ? (
-        // eslint-disable-next-line @next/next/no-img-element -- inline SVG data URL; nothing to optimize
         <img
           src={qr}
           alt={`QR code for ${status.url}`}

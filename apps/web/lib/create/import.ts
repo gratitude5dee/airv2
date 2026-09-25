@@ -686,7 +686,6 @@ function yamlQuote(value: string): string {
     .replace(/\n/g, "\\n")
     .replace(/\r/g, "\\r")
     .replace(/\t/g, "\\t")
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0085\u2028\u2029]/g, (c) =>
       `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
     );
