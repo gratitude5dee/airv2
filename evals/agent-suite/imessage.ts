@@ -111,7 +111,7 @@ async function postWebhook(
     headers: webhook.headers,
     body: webhook.rawBody,
   });
-  // The route answers 202 on accept; anything else still gets timed so the
+  // The route answers 200 {ok:true} on accept; anything else still gets timed so the
   // report shows a rejected webhook rather than a silent skip.
   await res.arrayBuffer().catch(() => undefined);
   return { status: res.status, postedAtMs, messageId: webhook.messageId };
