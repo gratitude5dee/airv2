@@ -3,15 +3,17 @@
  * when served from a shell page under `script-src 'self'`, the same way
  * `image-editor.js` and `identity-booth.js` hydrate. The store page imports
  * `CreateStudio` directly; this entry exists for the first-party module path.
+ *
+ * R-PERF-07: react-dom + the studio are dynamic imports so this script tag
+ * stays a tiny shell — the shell page doesn't pay ~300 KB up front.
  */
-import { createRoot } from "react-dom/client";
-import { CreateStudio } from "./CreateStudio";
+export {};
 
 interface Payload {
   slug?: string | null;
 }
 
-function mount(): void {
+async function mount(): Promise<void> {
   const el = document.getElementById("create");
   if (!el) return;
   let payload: Payload = {};
@@ -20,11 +22,21 @@ function mount(): void {
   } catch {
     payload = {};
   }
+  const [{ createRoot }, { CreateStudio }] = await Promise.all([
+    // The code-split react-dom chunk is CJS — esbuild puts the real
+    // exports on `default`, so unwrap that interop shape.
+    import("react-dom/client").then((m) =>
+      "default" in m ? (m.default as typeof m) : m
+    ),
+    import("./CreateStudio"),
+  ]);
   createRoot(el).render(<CreateStudio slug={payload.slug ?? null} />);
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", mount, { once: true });
+  document.addEventListener("DOMContentLoaded", () => void mount(), {
+    once: true,
+  });
 } else {
-  mount();
+  void mount();
 }

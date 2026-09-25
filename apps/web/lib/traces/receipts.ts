@@ -27,6 +27,9 @@ export const RECEIPT_COLUMNS = [
   "latency_ms",
   "prompt_tokens",
   "completion_tokens",
+  "ttfk_ms",
+  "ttfk_met",
+  "ttfk_lane",
 ] as const;
 
 export type ReceiptColumn = (typeof RECEIPT_COLUMNS)[number];
@@ -77,6 +80,15 @@ export function mapAgentRun(row: Row): TraceReceipt {
     latency_ms: num(row["latency_ms"]),
     prompt_tokens: num(row["prompt_tokens"]),
     completion_tokens: num(row["completion_tokens"]),
+    ttfk_ms: num(row["ttfk_ms"]),
+    // Flat export has no booleans: met -> 1/0, absent -> null.
+    ttfk_met:
+      typeof row["ttfk_met"] === "boolean"
+        ? row["ttfk_met"]
+          ? 1
+          : 0
+        : null,
+    ttfk_lane: str(row["ttfk_lane"]),
   });
 }
 
@@ -143,7 +155,7 @@ const SOURCES: readonly Source[] = [
     table: "agent_runs",
     tsColumn: "started_at",
     select:
-      "id, hermes_run_id, trigger, started_at, ended_at, outcome, box_seconds, cost_usd, speed_tier, model, requested_model, reasoning_effort, latency_ms, prompt_tokens, completion_tokens",
+      "id, hermes_run_id, trigger, started_at, ended_at, outcome, box_seconds, cost_usd, speed_tier, model, requested_model, reasoning_effort, latency_ms, prompt_tokens, completion_tokens, ttfk_ms, ttfk_met, ttfk_lane",
     map: mapAgentRun,
   },
   {

@@ -11,11 +11,17 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 await build({
-  entryPoints: [join(root, "lib/miniapps/client/create/index.tsx")],
-  outfile: join(root, "public/creator-os/create.js"),
+  entryPoints: [
+    { in: join(root, "lib/miniapps/client/create/index.tsx"), out: "create" },
+  ],
+  outdir: join(root, "public/creator-os"),
+  // R-PERF-07: the entry stays a tiny shell — react-dom and the studio
+  // land in chunks/create/ and hydrate behind a dynamic import.
+  chunkNames: "chunks/create/[name]-[hash]",
   bundle: true,
   minify: true,
-  format: "iife",
+  format: "esm",
+  splitting: true,
   platform: "browser",
   jsx: "automatic",
   define: { "process.env.NODE_ENV": '"production"' },

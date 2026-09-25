@@ -1371,7 +1371,7 @@ function onairosBody(
   const hint = connected
     ? "Open Onairos again to connect other platforms — each new connection re-imports your context."
     : "The consent flow opens right here — approve what to share and your context imports in one step.";
-  const connect = `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">${hint}</p><div id="onairos-connect" class="oa-mount" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div>${browserNote}</div><script src="/creator-os/onairos-connect.js" defer></script>`;
+  const connect = `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">${hint}</p><div id="onairos-connect" class="oa-mount" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div>${browserNote}</div><script src="/creator-os/onairos-connect.js" type="module"></script>`;
   const imessage = `<div class="oa-alt"><span class="chip">Or connect via iMessage</span><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="oa-bubble"><span>Connect via iMessage</span>${IMESSAGE_ICON}${BUBBLE_TAIL}</button></form><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p></div>`;
   const primary = connected
     ? doneForm("onairos", "Continue")
