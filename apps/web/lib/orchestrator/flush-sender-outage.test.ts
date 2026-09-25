@@ -7,7 +7,6 @@
  * throw past the reschedule.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { runFlush } from "./flush";
 import { createSpectrumSender } from "../spectrum/sender";
 import {
@@ -20,6 +19,7 @@ import {
 import { probeForTapback } from "../spectrum/tapbacks";
 import { ensureBoxAwake } from "./boxes";
 import { sharedBridgeReply } from "./sharedBridge";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
@@ -55,54 +55,13 @@ vi.mock("./sharedBridge", () => ({
   sharedBridgeReply: vi.fn(),
 }));
 
-interface TableOps {
-  reads: string[];
-  deletes: string[];
-  updates: Array<{ table: string; values: Record<string, unknown> }>;
-  inserts: Array<{ table: string; rows: unknown }>;
-}
-
 function fakeSupabase(queueRows: Array<Record<string, unknown>>) {
-  const ops: TableOps = { reads: [], deletes: [], updates: [], inserts: [] };
-  const supabase = {
-    ops,
-    from: (table: string) => ({
-      select: () => {
-        ops.reads.push(table);
-        const rows = table === "batch_queue" ? queueRows : [];
-        return {
-          eq: () => ({
-            order: () => Promise.resolve({ data: rows, error: null }),
-            maybeSingle: () => Promise.resolve({ data: null, error: null }),
-          }),
-        };
-      },
-      delete: () => {
-        ops.deletes.push(table);
-        const chain = {
-          eq: () => chain,
-          in: () => Promise.resolve({ error: null }),
-          then: (resolve: (value: { error: null }) => void) =>
-            resolve({ error: null }),
-        };
-        return chain;
-      },
-      update: (values: Record<string, unknown>) => {
-        ops.updates.push({ table, values });
-        const chain = {
-          eq: () => chain,
-          then: (resolve: (value: { error: null }) => void) =>
-            resolve({ error: null }),
-        };
-        return chain;
-      },
-      insert: (rows: unknown) => {
-        ops.inserts.push({ table, rows });
-        return Promise.resolve({ error: null });
-      },
-    }),
-  };
-  return supabase as unknown as SupabaseClient & { ops: TableOps };
+  const db = new FakeSupabase();
+  db.tables["batch_queue"] = queueRows.map((row) => ({
+    space_id: "space-1",
+    ...row,
+  }));
+  return { supabase: db.client(), db };
 }
 
 const job = {
@@ -125,28 +84,28 @@ describe("runFlush during a Spectrum outage", () => {
     vi.mocked(createSpectrumSender).mockRejectedValue(
       new Error("502 Bad gateway")
     );
-    const supabase = fakeSupabase([
+    const { supabase, db } = fakeSupabase([
       { id: "q1", message_id: "m1", body: "hello" },
     ]);
     await runFlush(supabase, job, new Date().toISOString());
-    expect(supabase.ops.reads).not.toContain("batch_queue");
-    expect(supabase.ops.deletes).not.toContain("batch_queue");
-    const reschedule = supabase.ops.updates.find(
+    expect(db.queries.map((q) => q.table)).not.toContain("batch_queue");
+    expect(db.deletes.map((d) => d.table)).not.toContain("batch_queue");
+    const reschedule = db.updates.find(
       (update) => update.table === "flush_jobs"
     );
-    expect(reschedule?.values["attempts"]).toBe(1);
-    expect(reschedule?.values["chain_started_at"]).toBeNull();
+    expect(reschedule?.patch["attempts"]).toBe(1);
+    expect(reschedule?.patch["chain_started_at"]).toBeNull();
   });
 
   it("rethrows sender-creation failure once attempts are exhausted", async () => {
     vi.mocked(createSpectrumSender).mockRejectedValue(
       new Error("502 Bad gateway")
     );
-    const supabase = fakeSupabase([]);
+    const { supabase, db } = fakeSupabase([]);
     await expect(
       runFlush(supabase, { ...job, attempts: 5 }, new Date().toISOString())
     ).rejects.toThrow("502 Bad gateway");
-    expect(supabase.ops.reads).not.toContain("batch_queue");
+    expect(db.queries.map((q) => q.table)).not.toContain("batch_queue");
   });
 
   it("still reschedules when the holding line fails after a wake failure", async () => {
@@ -157,18 +116,18 @@ describe("runFlush during a Spectrum outage", () => {
     } as never);
     vi.mocked(ensureBoxAwake).mockRejectedValue(new Error("box wake failed"));
     vi.mocked(sharedBridgeReply).mockResolvedValue(null);
-    const supabase = fakeSupabase([
+    const { supabase, db } = fakeSupabase([
       { id: "q1", message_id: "m1", body: "hello" },
     ]);
     await runFlush(supabase, job, new Date().toISOString());
-    const carried = supabase.ops.inserts.find(
+    const carried = db.inserts.find(
       (insert) => insert.table === "carried_messages"
     );
     expect(carried).toBeDefined();
-    const reschedule = supabase.ops.updates.find(
+    const reschedule = db.updates.find(
       (update) => update.table === "flush_jobs"
     );
-    expect(reschedule?.values["attempts"]).toBe(1);
+    expect(reschedule?.patch["attempts"]).toBe(1);
   });
 
   it("does not carry a bridge marker when the bridged reply fails to send", async () => {
@@ -179,18 +138,18 @@ describe("runFlush during a Spectrum outage", () => {
     } as never);
     vi.mocked(ensureBoxAwake).mockRejectedValue(new Error("box wake failed"));
     vi.mocked(sharedBridgeReply).mockResolvedValue("on it — one sec");
-    const supabase = fakeSupabase([
+    const { supabase, db } = fakeSupabase([
       { id: "q1", message_id: "m1", body: "hello" },
     ]);
     await runFlush(supabase, job, new Date().toISOString());
-    const carries = supabase.ops.inserts.filter(
+    const carries = db.inserts.filter(
       (insert) => insert.table === "carried_messages"
     );
     expect(carries).toHaveLength(1);
-    const reschedule = supabase.ops.updates.find(
+    const reschedule = db.updates.find(
       (update) => update.table === "flush_jobs"
     );
-    expect(reschedule?.values["attempts"]).toBe(1);
+    expect(reschedule?.patch["attempts"]).toBe(1);
   });
 
   it("carries and retries a model stream failure before any bubble is sent", async () => {
@@ -217,23 +176,21 @@ describe("runFlush during a Spectrum outage", () => {
     vi.mocked(probeForTapback).mockRejectedValue(
       new Error("Provider returned an empty stream with no finish_reason")
     );
-    const supabase = fakeSupabase([
+    const { supabase, db } = fakeSupabase([
       { id: "q1", message_id: "m1", body: "hello" },
     ]);
 
     await runFlush(supabase, job, new Date().toISOString());
 
-    expect(supabase.ops.inserts).toContainEqual({
+    expect(db.inserts).toContainEqual({
       table: "carried_messages",
-      rows: [
-        expect.objectContaining({ message_id: "m1", body: "hello" }),
-      ],
+      row: expect.objectContaining({ message_id: "m1", body: "hello" }),
     });
-    const reschedule = supabase.ops.updates.find(
+    const reschedule = db.updates.find(
       (update) =>
-        update.table === "flush_jobs" && update.values["attempts"] === 1
+        update.table === "flush_jobs" && update.patch["attempts"] === 1
     );
-    expect(reschedule?.values).toMatchObject({
+    expect(reschedule?.patch).toMatchObject({
       attempts: 1,
       chain_started_at: null,
     });
