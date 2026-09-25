@@ -205,7 +205,15 @@ function addImport(source, file) {
   const importRe = /^import[\s\S]*?from\s*["'][^"']+["'];?\s*$/gm;
   let lastEnd = -1;
   for (const m of source.matchAll(importRe)) lastEnd = m.index + m[0].length;
-  if (lastEnd === -1) return line + source;
+  if (lastEnd === -1) {
+    // No imports: a "use client"/"use server" directive must stay first.
+    const directive = source.match(/^(?:\s*["']use (?:client|server)["'];?)+/);
+    if (directive) {
+      const at = directive[0].length;
+      return directive[0] + "\n" + line + source.slice(at);
+    }
+    return line + source;
+  }
   return (
     source.slice(0, lastEnd) +
     (source[lastEnd] === "\n" ? "" : "\n") +
