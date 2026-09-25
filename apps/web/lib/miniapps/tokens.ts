@@ -9,6 +9,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { log } from "../log";
 
 export type MiniAppRole = "owner" | "guest";
 
@@ -49,9 +50,7 @@ export function mintToken(
     ...(extra ?? {}),
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  console.log(
-    JSON.stringify({ msg: "miniapp token minted", user_id: userId, app, jti: claims.jti })
-  );
+  log.info("miniapp token minted", {user_id: userId, app, jti: claims.jti});
   return `${payload}.${sign(payload)}`;
 }
 
@@ -99,14 +98,9 @@ export async function recordRedemption(
     if (error.code === "23503") return false;
     throw new Error(`miniapp redemption failed: ${error.message}`);
   }
-  console.log(
-    JSON.stringify({
-      msg: "miniapp token redeemed",
-      user_id: claims.userId,
+  log.info("miniapp token redeemed", {user_id: claims.userId,
       app: claims.app,
-      jti: claims.jti,
-    })
-  );
+      jti: claims.jti,});
   return true;
 }
 
@@ -128,14 +122,9 @@ export async function consumeRedemptionOnce(
     app: claims.app,
   });
   if (!error) {
-    console.log(
-      JSON.stringify({
-        msg: "miniapp token consumed once",
-        user_id: claims.userId,
+    log.info("miniapp token consumed once", {user_id: claims.userId,
         app: claims.app,
-        jti: claims.jti,
-      })
-    );
+        jti: claims.jti,});
     return true;
   }
   if (error.code === "23505" || error.code === "23503") return false;

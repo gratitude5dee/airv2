@@ -55,6 +55,7 @@ import {
 import { resourceId } from "./provision";
 import { STATIC_STUB_MAIN, STATIC_STUB_MODULE } from "./staticStub";
 import { appOriginConfigured } from "./tokens";
+import { log } from "../log";
 
 export const WORKER_COMPATIBILITY_DATE = "2026-01-01";
 export const FUNCTIONS_CPU_MS = { free: 50, paid: 200 } as const;
@@ -224,9 +225,7 @@ async function teardownUnlessReassigned(
   if (error) throw new Error(`app origin owner check failed: ${error.message}`);
   const owner = (data as { id: string } | null)?.id ?? null;
   if (owner !== null && owner !== appId) {
-    console.warn(
-      JSON.stringify({ msg: "app origin slug reassigned; teardown skipped", app: slug })
-    );
+    log.warn("app origin slug reassigned; teardown skipped", {app: slug});
     return;
   }
   await teardownAppOrigin(slug);
@@ -332,16 +331,11 @@ export async function deployStaticVersion(
           limits: { cpu_ms: 50, subrequests: 0 },
           assetsJwt: assets.jwt,
         });
-  console.log(
-    JSON.stringify({
-      msg: "app worker deployed",
-      app: input.slug,
+  log.info("app worker deployed", {app: input.slug,
       version: input.version,
       target: input.target,
       files: input.files.length,
-      functions: runsFunctions,
-    })
-  );
+      functions: runsFunctions,});
   await confirmAppOrigin(supabase, input.appId, input.slug);
   return { workerSha256: digest };
 }
@@ -566,7 +560,7 @@ export async function reconcileAppOrigins(
     after = last;
   }
   if (repaired > 0) {
-    console.log(JSON.stringify({ msg: "app origins reconciled", repaired }));
+    log.info("app origins reconciled", {repaired});
   }
   return { repaired };
 }
@@ -585,13 +579,8 @@ async function reconcilePage(
     } catch (error) {
       // Deletion owns the origin now; the deleter tears it down.
       if (error instanceof AppOriginRefusedError) continue;
-      console.error(
-        JSON.stringify({
-          msg: "app origin reconcile failed",
-          slug: app.slug,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("app origin reconcile failed", {slug: app.slug,
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   return repaired;
@@ -647,15 +636,10 @@ async function repairAppOrigin(
     await putOriginOn(supabase, current, known);
     if (await touchAppOrigin(supabase, current)) {
       const registry = manifestFor(current);
-      console.log(
-        JSON.stringify({
-          msg: "app origin reconciled",
-          slug: app.slug,
+      log.info("app origin reconciled", {slug: app.slug,
           served: { status: served.status, live: served.live, draft: served.draft },
           registry: { status: registry.status, live: registry.live, draft: registry.draft },
-          attempt,
-        })
-      );
+          attempt,});
       return;
     }
     const fresh = await readRegistryRow(supabase, app.id);
@@ -663,12 +647,7 @@ async function repairAppOrigin(
     current = fresh;
     known = null;
   }
-  console.error(
-    JSON.stringify({
-      msg: "app origin repair unfenced; pointers kept moving, next sweep re-checks",
-      slug: app.slug,
-    })
-  );
+  log.error("app origin repair unfenced; pointers kept moving, next sweep re-checks", {slug: app.slug,});
 }
 
 /** Live Worker, draft Worker and manifest onto `app`'s releases; `known` null → all of them. */
@@ -776,12 +755,7 @@ export async function reconcileAppOriginMarks(
     }
   }
   if (unmatched.length > 0) {
-    console.error(
-      JSON.stringify({
-        msg: "dispatch scripts without an app row",
-        scripts: unmatched,
-      })
-    );
+    log.error("dispatch scripts without an app row", {scripts: unmatched,});
   }
   return { marked: unmarked.length, unmatched };
 }

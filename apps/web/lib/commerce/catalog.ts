@@ -11,6 +11,7 @@ import { z } from "zod";
 import { env } from "../env";
 import { readAppState } from "../miniapps/store";
 import { CommerceError } from "./merchants";
+import { log } from "../log";
 
 export const PRODUCT_KINDS = [
   "physical",
@@ -392,15 +393,10 @@ export async function approveCatalogPublish(
       .eq("status", "approved")
       .eq("resolved_at", claimedAt);
     if (undoError && undoError.code !== UNIQUE_VIOLATION) {
-      console.error(
-        JSON.stringify({
-          msg: "shop_publish claim could not be reopened after a failed projection",
-          user_id: userId,
+      log.error("shop_publish claim could not be reopened after a failed projection", {user_id: userId,
           decision_id: decision.id,
           projection_error: cause instanceof Error ? cause.message : "unknown",
-          error: undoError.message,
-        })
-      );
+          error: undoError.message,});
       throw new CommerceError(
         "the publish failed and the card could not be reopened — have your agent stage the catalog again",
         502

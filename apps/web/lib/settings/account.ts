@@ -10,6 +10,7 @@ import type { BackgroundId } from "../miniapps/backgrounds";
 import { provisionEmail } from "../provisioning/email";
 import { renameBox } from "../box/client";
 import { isReservedWord } from "../miniapps/reserved";
+import { log } from "../log";
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{2,24}$/;
 
@@ -68,16 +69,11 @@ export async function setUsername(
     try {
       await renameBox(providerBoxId, `air-${username}`);
     } catch (renameError) {
-      console.error(
-        JSON.stringify({
-          msg: "box rename failed",
-          user_id: userId,
+      log.error("box rename failed", {user_id: userId,
           error:
             renameError instanceof Error
               ? renameError.message
-              : String(renameError),
-        })
-      );
+              : String(renameError),});
     }
   }
   let address: string | null = null;
@@ -85,16 +81,11 @@ export async function setUsername(
     const email = await provisionEmail(supabase, userId, username);
     address = email.address;
   } catch (provisionError) {
-    console.error(
-      JSON.stringify({
-        msg: "email provisioning failed",
-        user_id: userId,
+    log.error("email provisioning failed", {user_id: userId,
         error:
           provisionError instanceof Error
             ? provisionError.message
-            : String(provisionError),
-      })
-    );
+            : String(provisionError),});
   }
   return { ok: true, username, address };
 }

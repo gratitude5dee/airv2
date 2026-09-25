@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,13 +69,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     await claim?.release().catch(() => undefined);
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "browser card send failed", user_id: userId, error: message })
-    );
+    log.error("browser card send failed", {user_id: userId, error: message});
     return NextResponse.json({ error: "card send failed" }, { status: 502 });
   }
-  console.log(
-    JSON.stringify({ msg: "browser card sent", user_id: userId })
-  );
+  log.info("browser card sent", {user_id: userId});
   return NextResponse.json({ ok: true });
 }

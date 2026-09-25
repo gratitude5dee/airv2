@@ -11,6 +11,7 @@ import { recordAdminAudit } from "@/lib/admin/audit";
 import { ReleaseError, renewDev, revokeDev, type DevRelease } from "@/lib/create/release";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import { serviceClient } from "@/lib/supabase";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,15 +69,10 @@ export async function POST(
       app,
       detail,
     });
-    console.log(
-      JSON.stringify({
-        msg: "admin dev action",
-        user_id: app.owner_user_id,
+    log.info("admin dev action", {user_id: app.owner_user_id,
         app: app.slug,
         action,
-        version: detail["version"] ?? null,
-      })
-    );
+        version: detail["version"] ?? null,});
     const fresh = (await getRegistryApp(supabase, slug).catch(() => null)) ?? app;
     return NextResponse.json({ action, dev, app: appRow(fresh) });
   } catch (error) {
@@ -88,15 +84,10 @@ export async function POST(
         { status: error.status }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "admin dev action failed",
-        user_id: app.owner_user_id,
+    log.error("admin dev action failed", {user_id: app.owner_user_id,
         app: app.slug,
         action,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "dev release action failed" }, { status: 502 });
   }
 }

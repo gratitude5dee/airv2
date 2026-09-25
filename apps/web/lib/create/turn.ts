@@ -29,6 +29,7 @@ import { kitRoot, kitVersion } from "./kit";
 import { openCreateRun } from "./budget";
 import { discardEmptyDraft, resolveOrCreateDropApp } from "./drop";
 import { WORKSPACE_ROOT } from "./build";
+import { log } from "../log";
 
 /** `air-create-<appname>` — the per-app thread inside air-main's namespace. */
 export const CREATE_SESSION_RE = /^air-create-[a-z0-9-]{1,48}$/;
@@ -263,14 +264,9 @@ export async function startCreateTurn(
       .is("ended_at", null)
       .select("id");
     if (linkError || !(Array.isArray(linked) && linked.length > 0)) {
-      console.error(
-        JSON.stringify({
-          msg: linkError ? "create run link failed" : "create run row retired before link",
-          user_id: userId,
+      log.error(linkError ? "create run link failed" : "create run row retired before link", {user_id: userId,
           run_id: run.run_id,
-          error: linkError?.message,
-        })
-      );
+          error: linkError?.message,});
       await stopRun(box.target, run.run_id).catch(() => undefined);
       await closeRow();
       throw new PublishError("could not open the Create run; try again", 503);
@@ -335,6 +331,6 @@ export async function closeCreateRunRow(
     if (!error) return true;
     if (attempt + 1 < CLOSE_ROW_ATTEMPTS) await sleep(CLOSE_ROW_BACKOFF_MS * (attempt + 1));
   }
-  console.error(JSON.stringify({ msg: "create run close failed", user_id: userId, row_id: rowId }));
+  log.error("create run close failed", {user_id: userId, row_id: rowId});
   return false;
 }

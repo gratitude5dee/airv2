@@ -82,6 +82,7 @@ import {
   synthesizeTwinSpeech,
   VOICE_NOT_READY_LINE,
 } from "./voiceClone";
+import { log } from "../log";
 
 export type {
   AvatarStatus,
@@ -332,14 +333,9 @@ export async function recordReferenceUses(
     }))
   );
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "identity reference use insert failed",
-        user_id: callerUserId,
+    log.error("identity reference use insert failed", {user_id: callerUserId,
         job_id: jobId,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }
 

@@ -20,6 +20,7 @@ import { deepMemoryIndex } from "../memory/deep";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { createRun } from "../hermes/client";
 import { env } from "../env";
+import { log } from "../log";
 
 export const CONTEXT_IMPORT_USE = "context_import";
 /** Long enough to package and upload three stores, short enough to bound
@@ -68,13 +69,8 @@ export function mintImportTicket(userId: string): string {
     exp: Math.floor(Date.now() / 1000) + IMPORT_TTL_MINUTES * 60,
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  console.log(
-    JSON.stringify({
-      msg: "agent context import ticket minted",
-      user_id: userId,
-      jti: claims.jti,
-    })
-  );
+  log.info("agent context import ticket minted", {user_id: userId,
+      jti: claims.jti,});
   return `${payload}.${sign(payload)}`;
 }
 
@@ -341,16 +337,11 @@ export async function storeImportChunk(
   if (chunk.final) {
     await deepMemoryIndex(box.boxId, `${IMPORT_DIR}/${chunk.source}`, `${OV_IMPORT_URI}/${chunk.source}`);
   }
-  console.log(
-    JSON.stringify({
-      msg: "agent context chunk stored",
-      user_id: userId,
+  log.info("agent context chunk stored", {user_id: userId,
       box_id: box.boxId,
       source: chunk.source,
       files: chunk.files.length,
-      final: chunk.final,
-    })
-  );
+      final: chunk.final,});
   return status;
 }
 
@@ -414,13 +405,8 @@ export async function startDictionaryRun(
     hermes_run_id: run.run_id,
     trigger: "web",
   });
-  console.log(
-    JSON.stringify({
-      msg: "dictionary ingest run started",
-      user_id: userId,
+  log.info("dictionary ingest run started", {user_id: userId,
       box_id: box.boxId,
-      run_id: run.run_id,
-    })
-  );
+      run_id: run.run_id,});
   return status;
 }

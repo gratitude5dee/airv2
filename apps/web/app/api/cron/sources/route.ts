@@ -13,6 +13,7 @@ import {
   proposeForUser,
   type ProposeResult,
 } from "@/lib/publish/propose";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,13 +49,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       result.momentsProposed += swept.momentsProposed;
       result.slotsProposed += swept.slotsProposed;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "source sweep failed for user",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("source sweep failed for user", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   return NextResponse.json({ ok: true, ...result });

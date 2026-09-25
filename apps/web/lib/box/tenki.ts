@@ -52,6 +52,7 @@ import {
   type CommandResult,
   type ForkOptions,
 } from "./types";
+import { log } from "../log";
 
 export const TENKI_ID_PREFIX = "tk_";
 export const TENKI_TEMPLATE_PREFIX = "tenki:";
@@ -751,14 +752,9 @@ export async function requestDesktop(
 ): Promise<string | undefined> {
   const ensure = await command(boxId, DESKTOP_ENSURE_SCRIPT, 300);
   if (ensure.exitCode !== 0) {
-    console.log(
-      JSON.stringify({
-        msg: "tenki desktop ensure failed",
-        box_id: boxId,
+    log.info("tenki desktop ensure failed", {box_id: boxId,
         exit_code: ensure.exitCode,
-        stderr: ensure.stderr.trim().slice(0, 500),
-      })
-    );
+        stderr: ensure.stderr.trim().slice(0, 500),});
     return undefined;
   }
   const route = await hostRoute(boxId, DESKTOP_WEB_PORT, {
@@ -768,22 +764,15 @@ export async function requestDesktop(
   if (route.rotated) {
     const rotated = await command(boxId, DESKTOP_ROTATE_SCRIPT, 90);
     if (rotated.exitCode !== 0) {
-      console.log(
-        JSON.stringify({
-          msg: "tenki desktop password rotation failed",
-          box_id: boxId,
+      log.info("tenki desktop password rotation failed", {box_id: boxId,
           exit_code: rotated.exitCode,
-          stderr: rotated.stderr.trim().slice(0, 500),
-        })
-      );
+          stderr: rotated.stderr.trim().slice(0, 500),});
       return undefined;
     }
   }
   const secret = (await command(boxId, DESKTOP_SECRET_READ, 15)).stdout.trim();
   if (!secret) {
-    console.log(
-      JSON.stringify({ msg: "tenki desktop secret missing", box_id: boxId })
-    );
+    log.info("tenki desktop secret missing", {box_id: boxId});
     return undefined;
   }
   const base = route.url.endsWith("/") ? route.url.slice(0, -1) : route.url;

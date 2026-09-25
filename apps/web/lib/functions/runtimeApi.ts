@@ -16,6 +16,7 @@ import { recordOpsEvent } from "../security/limits";
 import { IDENTITY_HEADERS } from "./identity";
 import type { AppRole } from "./tokens";
 import { authenticateRuntimeToken, type RuntimePrincipal } from "./runtime";
+import { log } from "../log";
 
 export const RESOURCE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const ACTION_NAME_RE = /^[a-z0-9_.-]{1,64}$/;
@@ -102,13 +103,8 @@ export async function handleRuntime(
     if (error instanceof RuntimeApiError) {
       response = runtimeJson({ error: error.code }, error.status);
     } else {
-      console.error(
-        JSON.stringify({
-          msg: "functions runtime route failed",
-          app: call?.principal.slug ?? null,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("functions runtime route failed", {app: call?.principal.slug ?? null,
+          error: error instanceof Error ? error.message : String(error),});
       response = runtimeJson({ error: "internal" }, 500);
     }
   }

@@ -19,6 +19,7 @@ import {
   verifyCalcomSignature,
   type CalcomEnvelope,
 } from "@/lib/calendar/calcom";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,14 +118,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         .update({ last_synced_at: new Date().toISOString() })
         .eq("id", accountId);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "calcom sync nudge failed",
-          user_id: userId,
+      log.error("calcom sync nudge failed", {user_id: userId,
           account_id: accountId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     } finally {
       // ensureBoxAwake nulls stop_after before it can fail; re-arm on every exit.
       await armStopAfter(supabase, userId).catch(() => undefined);

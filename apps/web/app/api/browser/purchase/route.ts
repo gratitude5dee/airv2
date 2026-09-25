@@ -30,6 +30,7 @@ import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { mintApprovalUrl } from "@/lib/approvals/token";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,13 +97,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // silently kills the offer-the-fill path.
   const queryError = cardsError ?? openError;
   if (queryError) {
-    console.error(
-      JSON.stringify({
-        msg: "purchase eligibility query failed",
-        user_id: userId,
-        error: queryError.message,
-      })
-    );
+    log.error("purchase eligibility query failed", {user_id: userId,
+        error: queryError.message,});
     return NextResponse.json(
       { error: "query_failed", message: queryError.message },
       { status: 502, headers: { "Cache-Control": "no-store" } }
@@ -123,13 +119,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     // The store, not the mirror, decides: a box that cannot be read must not
     // hand the agent a card it may be unable to fill.
-    console.error(
-      JSON.stringify({
-        msg: "purchase eligibility store read failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("purchase eligibility store read failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json(
       { error: "store_unavailable" },
       { status: 502, headers: { "Cache-Control": "no-store" } }
@@ -187,13 +178,8 @@ async function sendPurchaseCard(
     );
   } catch (error) {
     await claim?.release().catch(() => undefined);
-    console.error(
-      JSON.stringify({
-        msg: "purchase card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("purchase card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 

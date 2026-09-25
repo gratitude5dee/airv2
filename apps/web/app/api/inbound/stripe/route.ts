@@ -30,6 +30,7 @@ import {
   markPaymentRequestPaid,
   markPaymentRequestPaidByIntent,
 } from "@/lib/commerce/paymentRequests";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,19 +88,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     // Release the id claim so Stripe's redelivery can retry the effect.
     await supabase.from("stripe_events").delete().eq("event_id", event.id);
-    console.error(
-      JSON.stringify({
-        msg: "stripe event dispatch failed",
-        id: event.id,
+    log.error("stripe event dispatch failed", {id: event.id,
         type: event.type,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "dispatch failed" }, { status: 500 });
   }
 
-  console.log(
-    JSON.stringify({ msg: "stripe event", id: event.id, type: event.type })
-  );
+  log.info("stripe event", {id: event.id, type: event.type});
   return NextResponse.json({ ok: true });
 }

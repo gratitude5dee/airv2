@@ -10,6 +10,7 @@ import { useState } from "react";
 import { launchMiniAppDetailed, type LaunchResult } from "./launch";
 import { AppTile } from "./app-tile";
 import { useStaleWhileRevalidate } from "./use-swr";
+import { log } from "@/lib/log";
 
 interface AppRow {
   slug: string;
@@ -50,17 +51,12 @@ export function AppsPanel({
   );
 
   function logFailure(result: LaunchResult, surface: string) {
-    console.error(
-      JSON.stringify({
-        msg: "apps panel launch failed",
-        surface,
+    log.error("apps panel launch failed", {surface,
         slug: result.slug,
         reason: result.reason,
         status: result.status ?? null,
         mint_ms: result.mintMs,
-        ms: result.ms,
-      })
-    );
+        ms: result.ms,});
   }
 
   async function launch(slug: string) {

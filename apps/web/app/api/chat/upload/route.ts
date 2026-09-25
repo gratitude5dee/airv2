@@ -33,6 +33,7 @@ import {
   UPLOAD_CHUNK_B64_LEN,
   UPLOAD_CHUNK_BYTES,
 } from "@/lib/chat/attachments";
+import { log } from "@/lib/log";
 
 /**
  * In-flight upload artifacts live in a dedicated subdirectory so the stale
@@ -162,13 +163,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof StartLimitError) {
       return NextResponse.json({ error: "busy" }, { status: 429 });
     }
-    console.error(
-      JSON.stringify({
-        msg: "chat upload failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("chat upload failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ error: "upload failed" }, { status: 502 });
   } finally {
     if (op) {

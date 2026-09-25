@@ -12,6 +12,7 @@ import {
   addInboxBlockEntry,
   removeInboxBlockEntry,
 } from "@/lib/mail/client";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,13 +112,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     } catch (error) {
       // The list is the enforcement layer — never record a block that
       // AgentMail didn't accept.
-      console.error(
-        JSON.stringify({
-          msg: "agentmail block mirror failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("agentmail block mirror failed", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
       return NextResponse.json(
         { error: "could not update the block list — try again" },
         { status: 502 }

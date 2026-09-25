@@ -1,3 +1,4 @@
+import { log } from "../log";
 /**
  * Latency instrumentation shared by the mini-app loader, the gate chain and
  * the per-app renderers. Timing lines are content-free — slug, block name
@@ -40,15 +41,10 @@ export async function timedParts<T>(
   try {
     return await run(parts);
   } finally {
-    console.log(
-      JSON.stringify({
-        msg: "miniapp data fetch",
-        app,
+    log.info("miniapp data fetch", {app,
         block,
         ms: elapsedMs(start),
-        parts,
-      })
-    );
+        parts,});
   }
 }
 
@@ -66,13 +62,8 @@ export async function timedFetch<T>(
   try {
     return await fn();
   } finally {
-    console.log(
-      JSON.stringify({
-        msg: "miniapp data fetch",
-        app,
+    log.info("miniapp data fetch", {app,
         block,
-        ms: elapsedMs(start),
-      })
-    );
+        ms: elapsedMs(start),});
   }
 }

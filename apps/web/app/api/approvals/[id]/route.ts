@@ -17,6 +17,7 @@ import {
   resolveHostedDecision,
   type HostedDecision,
 } from "@/lib/approvals/hosted";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -119,14 +120,9 @@ export async function POST(
   } catch (error) {
     const mapped = hostedErrorResponse(error);
     if (mapped) return mapped;
-    console.error(
-      JSON.stringify({
-        msg: "hosted approval resolution failed",
-        user_id: auth.userId,
+    log.error("hosted approval resolution failed", {user_id: auth.userId,
         decision_id: id,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json(
       { error: "could not resolve this approval — try again" },
       { status: 502 }

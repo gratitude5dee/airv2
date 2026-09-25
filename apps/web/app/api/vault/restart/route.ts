@@ -13,6 +13,7 @@ import {
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
 import { restartGateway } from "@/lib/vault/managers";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,13 +43,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 429 }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "vault restart failed",
-        user_id: session.userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("vault restart failed", {user_id: session.userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "restart failed" }, { status: 502 });
   }
 }

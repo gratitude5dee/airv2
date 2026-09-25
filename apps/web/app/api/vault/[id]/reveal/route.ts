@@ -17,6 +17,7 @@ import {
 } from "@/lib/orchestrator/boxes";
 import { reveal, totp, VaultCliError } from "@/lib/vault/client";
 import { vaultItemIdSchema, vaultRevealBodySchema } from "@/lib/vault/schema";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,14 +93,9 @@ export async function POST(
         { status: 400, headers: NO_STORE }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "vault reveal failed",
-        user_id: session.userId,
+    log.error("vault reveal failed", {user_id: session.userId,
         item_id: id,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json(
       { error: "reveal failed" },
       { status: 502, headers: NO_STORE }

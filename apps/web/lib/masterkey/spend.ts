@@ -10,6 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { currentPeriodSpend } from "../entitlements/spend";
 import { findCatalogEntry } from "./client";
+import { log } from "../log";
 
 export type SpendVerdict =
   | { ok: true; estimateUsd: number | null }
@@ -92,7 +93,7 @@ export async function recordMasterkeyRun(
     latency_ms: receipt.latencyMs,
   });
   if (runError) {
-    console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
+    log.error("agent_runs insert failed", {user_id: userId, error: runError.message});
   }
   if (receipt.runId) {
     await supabase
@@ -119,7 +120,7 @@ export async function recordMasterkeyRun(
       resolved_at: now,
     });
     if (error) {
-      console.error(JSON.stringify({ msg: "masterkey_runs insert failed", user_id: userId, error: error.message }));
+      log.error("masterkey_runs insert failed", {user_id: userId, error: error.message});
     }
   }
   if (cost > 0) {
@@ -128,7 +129,7 @@ export async function recordMasterkeyRun(
       p_cost_usd: cost,
     });
     if (spendError) {
-      console.error(JSON.stringify({ msg: "add_spend failed", user_id: userId, error: spendError.message }));
+      log.error("add_spend failed", {user_id: userId, error: spendError.message});
     }
   }
 }

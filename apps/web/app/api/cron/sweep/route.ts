@@ -27,6 +27,7 @@ import { sweepVersions } from "@/lib/create/versions";
 import { reconcileAppOriginMarks, reconcileAppOrigins } from "@/lib/functions/deploy";
 import { reconcileMigrations } from "@/lib/migration/sweep";
 import { resolveDueLocationRequests } from "@/lib/location/resolve";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,14 +81,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .eq("provider_box_id", box.provider_box_id);
       reconciled += 1;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "sweeper reconcile failed",
-          box_id: box.provider_box_id,
+      log.error("sweeper reconcile failed", {box_id: box.provider_box_id,
           user_id: box.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
 
@@ -99,12 +95,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     orphanedCarried = await recoverOrphanedCarriedJobs(supabase, now);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper carried recovery failed",
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    log.error("sweeper carried recovery failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Flush jobs overdue by more than a debounce window: their after() task
@@ -128,14 +119,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
       flushed += 1;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "sweeper flush failed",
-          space_id: job.space_id,
+      log.error("sweeper flush failed", {space_id: job.space_id,
           user_id: job.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
 
@@ -143,12 +129,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     uploadsReleased = await sweepAbandonedUploads(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper upload release failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper upload release failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Fleet sync: one wave of the active release-sync job per sweep tick,
@@ -157,12 +138,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     fleet = await runSyncJobs(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper fleet sync failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper fleet sync failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // C10 backstop: file an email_draft review for any recent box-created
@@ -171,48 +147,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     draftsFiled = await sweepUnfiledDrafts(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper draft review failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper draft review failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   let versionsRetired = 0;
   try {
     versionsRetired = await sweepVersions(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper version retention failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper version retention failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   let originsMarked = 0;
   try {
     originsMarked = (await reconcileAppOriginMarks(supabase)).marked;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper app origin mark reconcile failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper app origin mark reconcile failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   let originsRepaired = 0;
   try {
     originsRepaired = (await reconcileAppOrigins(supabase)).repaired;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper app origin reconcile failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper app origin reconcile failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Migrations whose deferred work is due (or whose driver died mid-phase).
@@ -220,12 +176,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     migrationsDriven = (await reconcileMigrations(supabase, now)).driven;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper migration reconcile failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper migration reconcile failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Find My: pending "near me" requests probe the shared location on the
@@ -237,12 +188,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     locationsResolved = outcome.resolved;
     locationsExpired = outcome.expired;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper location resolve failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper location resolve failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();

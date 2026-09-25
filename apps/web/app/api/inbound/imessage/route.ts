@@ -66,6 +66,7 @@ import {
   maybeHandleMuseInbound,
   museModeIsActive,
 } from "@/lib/muse/commands";
+import { log } from "@/lib/log";
 
 export const maxDuration = 800;
 
@@ -171,17 +172,12 @@ async function sendImmediateReaction(
       : false;
   }
   const elapsedMs = Date.now() - receivedAtMs;
-  console.info(
-    JSON.stringify({
-      msg: "imessage ttfk reaction",
-      user_id: message.userId,
+  log.info("imessage ttfk reaction", {user_id: message.userId,
       space_id: message.spaceId,
       delivered: reacted,
       transport,
       elapsed_ms: elapsedMs,
-      within_sla: elapsedMs <= REACTION_SLA_MS,
-    })
-  );
+      within_sla: elapsedMs <= REACTION_SLA_MS,});
 }
 
 /**
@@ -216,18 +212,13 @@ async function sendInitialReply(
         response.body
       );
     }
-    console.info(
-      JSON.stringify({
-        msg: "imessage ttfk initial reply",
-        user_id: message.userId,
+    log.info("imessage ttfk initial reply", {user_id: message.userId,
         space_id: message.spaceId,
         elapsed_ms: Date.now() - receivedAtMs,
         within_sla: Date.now() - receivedAtMs <= INITIAL_REPLY_SLA_MS,
         kind: isCommand ? "command" : "agent",
         disposition: response.disposition,
-        source: response.source,
-      })
-    );
+        source: response.source,});
     return response.disposition === "final";
   } finally {
     if (markerId && !sent) {
@@ -252,10 +243,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     if (error instanceof SpectrumWebhookError) {
-      console.warn(
-        JSON.stringify({
-          msg: "spectrum webhook rejected",
-          status: error.status,
+      log.warn("spectrum webhook rejected", {status: error.status,
           reason: error.message,
           event: headers.event ?? null,
           has_signature: Boolean(headers.signature),
@@ -264,9 +252,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             : headers.signature
               ? "bare"
               : "missing",
-          has_timestamp: Boolean(headers.timestamp),
-        }),
-      );
+          has_timestamp: Boolean(headers.timestamp),});
       return NextResponse.json(
         { error: error.message },
         { status: error.status },
@@ -338,14 +324,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!body) {
     // Identifiers only (C4): a conversational payload whose content parsed to
     // nothing would otherwise vanish without a trace.
-    console.error(
-      JSON.stringify({
-        msg: "imessage inbound empty body",
-        user_id: route?.userId ?? null,
+    log.error("imessage inbound empty body", {user_id: route?.userId ?? null,
         space_id: inbound.spaceId,
-        message_id: inbound.messageId,
-      }),
-    );
+        message_id: inbound.messageId,});
     closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
@@ -395,14 +376,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } else {
       // Unroutable line: recorded as an event, no work dispatched. Log the
       // line identifier (never content) so misrouted numbers are diagnosable.
-      console.error(
-        JSON.stringify({
-          msg: "imessage inbound unroutable",
-          line_phone: inbound.phone ?? null,
+      log.error("imessage inbound unroutable", {line_phone: inbound.phone ?? null,
           space_id: inbound.spaceId,
-          message_id: inbound.messageId,
-        }),
-      );
+          message_id: inbound.messageId,});
       return NextResponse.json({ ok: true }, { status: 200 });
     }
   }
@@ -443,13 +419,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (startCompute) {
         await ensureComputeProvisioned(supabase, userId).catch(
           (error: unknown) => {
-            console.error(
-              JSON.stringify({
-                msg: "self-serve compute provision failed",
-                user_id: userId,
-                error: error instanceof Error ? error.message : String(error),
-              }),
-            );
+            log.error("self-serve compute provision failed", {user_id: userId,
+                error: error instanceof Error ? error.message : String(error),});
           },
         );
       }
@@ -480,13 +451,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ref: inbound.messageId,
       label: "Message from an unknown number",
     }).catch((error: unknown) => {
-      console.error(
-        JSON.stringify({
-          msg: "tier2 decision insert failed",
-          user_id: route.userId,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      log.error("tier2 decision insert failed", {user_id: route.userId,
+          error: error instanceof Error ? error.message : String(error),});
     });
     closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
@@ -551,14 +517,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         try {
           result = await relayToOnairos(relayInput);
         } catch (error) {
-          console.error(
-            JSON.stringify({
-              msg: "onairos relay failed",
-              user_id: userId,
+          log.error("onairos relay failed", {user_id: userId,
               space_id: relayInput.sessionId,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+              error: error instanceof Error ? error.message : String(error),});
           await setSpectrumFlow(supabase, userId, "error").catch(
             () => undefined,
           );
@@ -567,13 +528,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (result.grants.length > 0) {
           await storeSpectrumGrants(supabase, userId, result.grants).catch(
             (error: unknown) => {
-              console.error(
-                JSON.stringify({
-                  msg: "onairos grant store failed",
-                  user_id: userId,
-                  error: error instanceof Error ? error.message : String(error),
-                }),
-              );
+              log.error("onairos grant store failed", {user_id: userId,
+                  error: error instanceof Error ? error.message : String(error),});
             },
           );
         } else {
@@ -678,28 +634,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           .eq("space_id", message.spaceId)
           .eq("message_id", message.messageId);
         if (error) {
-          console.error(
-            JSON.stringify({
-              msg: "imessage direct completion cleanup failed",
-              user_id: message.userId,
+          log.error("imessage direct completion cleanup failed", {user_id: message.userId,
               space_id: message.spaceId,
-              error: error.message,
-            })
-          );
+              error: error.message,});
         }
       }
     }
     try {
       await flushAfterDebounce(supabase, message, runAt);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "imessage flush failed",
-          user_id: message.userId,
+      log.error("imessage flush failed", {user_id: message.userId,
           space_id: message.spaceId,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+          error: error instanceof Error ? error.message : String(error),});
     } finally {
       await sender?.close().catch(() => undefined);
     }

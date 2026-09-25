@@ -10,6 +10,7 @@ import { serviceClient } from "@/lib/supabase";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { PublishError } from "@/lib/miniapps/publish";
 import { stopCreateTurn } from "@/lib/create/turn";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,13 +37,8 @@ export async function POST(
     if (error instanceof PublishError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error(
-      JSON.stringify({
-        msg: "create stop failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("create stop failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ error: "stop failed" }, { status: 502 });
   }
   return NextResponse.json({ ok: true });

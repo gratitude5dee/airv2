@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { desktopSession } from "@/lib/auth/desktop";
 import { chatEventStream, SSE_HEADERS } from "@/lib/chat/relay";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,13 +30,8 @@ export async function GET(
     return new Response(stream, { headers: SSE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({
-        msg: "desktop events relay failed",
-        user_id: session.userId,
-        error: message,
-      })
-    );
+    log.error("desktop events relay failed", {user_id: session.userId,
+        error: message,});
     return NextResponse.json({ error: "stream failed" }, { status: 500 });
   }
 }

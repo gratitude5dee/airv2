@@ -24,6 +24,7 @@ import {
   type ToolResult,
 } from "@/lib/masterkey/client";
 import { checkMasterkeySpend, recordMasterkeyRun } from "@/lib/masterkey/spend";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,13 +112,8 @@ async function proxy(request: NextRequest): Promise<Response> {
   try {
     ({ token } = await ensureMasterkeyToken(supabase, userId));
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "masterkey mcp proxy: token resolve failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      })
-    );
+    log.error("masterkey mcp proxy: token resolve failed", {user_id: userId,
+        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",});
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
   }
 
@@ -200,13 +196,8 @@ async function proxy(request: NextRequest): Promise<Response> {
       errorCode,
     });
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "masterkey run receipt failed",
-        user_id: userId,
-        error: error instanceof MasterkeyError || error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("masterkey run receipt failed", {user_id: userId,
+        error: error instanceof MasterkeyError || error instanceof Error ? error.message : "unknown",});
   }
   return new Response(text, { status: upstream.status, headers: responseHeaders });
 }

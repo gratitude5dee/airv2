@@ -24,6 +24,7 @@ import {
   type CardClaim,
 } from "@/lib/miniapps/cardSends";
 import { ownedApp, PublishError } from "@/lib/miniapps/publish";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,16 +84,14 @@ export async function POST(
           { status: 429 }
         );
       }
-      console.log(JSON.stringify({ msg: "card sent", kind, user_id: userId, outcome }));
+      log.info("card sent", {kind, user_id: userId, outcome});
       return NextResponse.json({ ok: true, outcome });
     } catch (error) {
       if (error instanceof PublishError) {
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
       const message = error instanceof Error ? error.message : "unknown error";
-      console.error(
-        JSON.stringify({ msg: "card send failed", kind, user_id: userId, error: message })
-      );
+      log.error("card send failed", {kind, user_id: userId, error: message});
       return NextResponse.json({ error: "card send failed" }, { status: 502 });
     }
   }
@@ -117,7 +116,7 @@ export async function POST(
       if (error instanceof Error && error.message === "checkout handoff not found") {
         return NextResponse.json({ error: error.message }, { status: 404 });
       }
-      console.error(JSON.stringify({ msg: "checkout card send failed", user_id: userId, error: error instanceof Error ? error.message : "unknown" }));
+      log.error("checkout card send failed", {user_id: userId, error: error instanceof Error ? error.message : "unknown"});
       return NextResponse.json({ error: "card send failed" }, { status: 502 });
     }
   }
@@ -142,11 +141,9 @@ export async function POST(
   } catch (error) {
     await claim?.release().catch(() => undefined);
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "card send failed", kind, user_id: userId, error: message })
-    );
+    log.error("card send failed", {kind, user_id: userId, error: message});
     return NextResponse.json({ error: "card send failed" }, { status: 502 });
   }
-  console.log(JSON.stringify({ msg: "card sent", kind, user_id: userId }));
+  log.info("card sent", {kind, user_id: userId});
   return NextResponse.json({ ok: true });
 }

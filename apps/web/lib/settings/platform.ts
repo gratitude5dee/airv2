@@ -4,6 +4,7 @@
  * surface.
  */
 import { serviceClient } from "../supabase";
+import { log } from "../log";
 
 /** platform_settings key for which provider brand-new boxes land on. */
 export const BOX_DEFAULT_PROVIDER_KEY = "box_default_provider";
@@ -25,13 +26,8 @@ export async function readPlatformSetting(
     if (error) throw new Error(error.message);
     return typeof data?.value === "string" ? data.value : undefined;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "platform setting read failed",
-        key,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("platform setting read failed", {key,
+        error: error instanceof Error ? error.message : String(error),});
     return undefined;
   }
 }

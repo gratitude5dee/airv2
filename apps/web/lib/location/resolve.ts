@@ -21,6 +21,7 @@ import {
   LOCATION_CONTEXT_PREFIX,
   type LocationRequest,
 } from "./requests";
+import { log } from "../log";
 
 const MAX_LOCATION_ACCURACY_METERS = 2000;
 const MAX_LOCATION_AGE_MS = 15 * 60 * 1000;
@@ -134,13 +135,8 @@ async function deliverHeldBurst(
       { onConflict: "user_id" }
     );
   if (destError) {
-    console.error(
-      JSON.stringify({
-        msg: "location burst destination upsert failed",
-        user_id: request.user_id,
-        error: destError.message,
-      })
-    );
+    log.error("location burst destination upsert failed", {user_id: request.user_id,
+        error: destError.message,});
   }
   await scheduleFlush(supabase, {
     userId: request.user_id,
@@ -241,13 +237,8 @@ export async function resolveDueLocationRequests(
         }
         await releaseLocationRequest(supabase, request, request.revision);
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "location resolve failed",
-            request_id: request.id,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("location resolve failed", {request_id: request.id,
+            error: error instanceof Error ? error.message : String(error),});
         await releaseLocationRequest(supabase, request, request.revision).catch(
           () => undefined
         );

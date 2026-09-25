@@ -29,6 +29,7 @@ import {
 import { projectBudget } from "@/lib/create/budget";
 import { PublishError } from "@/lib/miniapps/publish";
 import type { JobRow } from "@/lib/create/job";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,13 +108,8 @@ async function consumeAndReport(
     run_id: runId,
     outcome: closed,
   }).catch((error: unknown) => {
-    console.error(
-      JSON.stringify({
-        msg: "turn_done post failed",
-        job_id: jobId,
-        error: error instanceof Error ? error.name : "unknown",
-      })
-    );
+    log.error("turn_done post failed", {job_id: jobId,
+        error: error instanceof Error ? error.name : "unknown",});
   });
 }
 

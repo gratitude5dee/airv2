@@ -31,6 +31,7 @@ import {
   vaultDeleteBodySchema,
   vaultUpdateBodySchema,
 } from "@/lib/vault/schema";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,13 +113,8 @@ async function mutate<S extends z.ZodTypeAny>(
         }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "vault mutation failed",
-        user_id: session.userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("vault mutation failed", {user_id: session.userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json(
       { error: "vault update failed" },
       { status: 502, headers: NO_STORE }

@@ -26,6 +26,7 @@ import {
 } from "./registry";
 import { isReservedWord } from "./reserved";
 import { splitPublishedSlug } from "./nested";
+import { log } from "../log";
 
 export class PublishError extends Error {
   readonly status: number;
@@ -136,9 +137,7 @@ export async function createDraft(
     }
     const parsed = parseDraftResult(refreshed, false);
     if (parsed) {
-      console.log(
-        JSON.stringify({ msg: "miniapp draft refreshed", user_id: userId, slug })
-      );
+      log.info("miniapp draft refreshed", {user_id: userId, slug});
     }
     return parsed;
   };
@@ -194,9 +193,7 @@ export async function createDraft(
     }
     throw new Error(`draft create failed: ${error.message}`);
   }
-  console.log(
-    JSON.stringify({ msg: "miniapp draft created", user_id: userId, slug })
-  );
+  log.info("miniapp draft created", {user_id: userId, slug});
   const parsed = parseDraftResult(data, true);
   if (!parsed) throw new Error("draft create returned an invalid row");
   return parsed;
@@ -368,9 +365,7 @@ export async function setPublishStatus(
       throw error;
     }
   }
-  console.log(
-    JSON.stringify({ msg: "miniapp status flip", user_id: userId, slug, status })
-  );
+  log.info("miniapp status flip", {user_id: userId, slug, status});
 }
 
 /**
@@ -413,13 +408,8 @@ async function undoPublish(
     }
   }
   if (!current) {
-    console.error(
-      JSON.stringify({
-        msg: "app origin not restored; registry unreadable after a failed flip, left to reconcile",
-        slug: app.slug,
-        version: from,
-      })
-    );
+    log.error("app origin not restored; registry unreadable after a failed flip, left to reconcile", {slug: app.slug,
+        version: from,});
     return;
   }
   if (current.bundle_version) {
@@ -434,15 +424,10 @@ function logRestoreFailure(
   previous: string,
   error: unknown
 ): void {
-  console.error(
-    JSON.stringify({
-      msg: "miniapp release restore failed",
-      slug: app.slug,
+  log.error("miniapp release restore failed", {slug: app.slug,
       version: from,
       previous,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  );
+      error: error instanceof Error ? error.message : String(error),});
 }
 
 /**
@@ -579,14 +564,9 @@ export async function updateGateSettings(
     .eq("id", owned.id)
     .eq("owner_user_id", userId);
   if (error) throw new Error(`gate settings update failed: ${error.message}`);
-  console.log(
-    JSON.stringify({
-      msg: "miniapp gate settings updated",
-      user_id: userId,
+  log.info("miniapp gate settings updated", {user_id: userId,
       slug,
-      fields: Object.keys(update).filter((key) => key !== "updated_at"),
-    })
-  );
+      fields: Object.keys(update).filter((key) => key !== "updated_at"),});
 }
 
 export interface EarningsRow {

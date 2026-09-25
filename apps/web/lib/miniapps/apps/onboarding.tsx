@@ -209,6 +209,7 @@ import {
 import { timedFetch, timedPart, timedParts } from "../timing";
 import { userProfile } from "../themeContext";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 /**
  * The deck: a welcome intro plus six grouped slides. The step IDs above stay
@@ -2621,15 +2622,10 @@ function logClientTiming(
     metrics[field] = Math.min(Math.floor(raw), ceiling);
   }
   if (Object.keys(metrics).length > 0) {
-    console.log(
-      JSON.stringify({
-        msg: "miniapp client timing",
-        app: "onboarding",
+    log.info("miniapp client timing", {app: "onboarding",
         // The surface, not the person: `card` means a Messages webview.
         via: ctx.session.via ?? null,
-        ...metrics,
-      })
-    );
+        ...metrics,});
   }
   return new NextResponse(null, { status: 204, headers: baseHeaders() });
 }
@@ -2702,21 +2698,11 @@ function refreshOnboardingCard(
         // `stale` is the ordinary case for an owner who has no bubble; only
         // a live card that refused the edit is worth a line in the log.
         if (outcome === "failed") {
-          console.error(
-            JSON.stringify({
-              msg: "onboarding card refresh failed",
-              user_id: userId,
-            })
-          );
+          log.error("onboarding card refresh failed", {user_id: userId,});
         }
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "onboarding card refresh failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+        log.error("onboarding card refresh failed", {user_id: userId,
+            error: error instanceof Error ? error.message : "unknown",});
       }
     });
   } catch {
@@ -2766,13 +2752,8 @@ async function sendHomeCard(
     await sendMiniAppCard(supabase, spaceId, phone, userId, "home", "default");
   } catch (error) {
     await claim?.release().catch(() => undefined);
-    console.error(
-      JSON.stringify({
-        msg: "walkthrough home card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("walkthrough home card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
@@ -2897,14 +2878,9 @@ export const onboarding: MiniAppModule = {
       if (currentBoxError) {
         // Unknown whether a box exists: an unleased switch here could fork a
         // second box for the user, so ask them to retry instead.
-        console.error(
-          JSON.stringify({
-            msg: "environment switch box lookup failed",
-            user_id: userId,
+        log.error("environment switch box lookup failed", {user_id: userId,
             environment: value,
-            error: currentBoxError.message,
-          })
-        );
+            error: currentBoxError.message,});
         return respond(
           ctx,
           "environment",
@@ -2921,14 +2897,9 @@ export const onboarding: MiniAppModule = {
           await switchEnvironment(supabase, userId, value);
         }
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "environment switch failed",
-            user_id: userId,
+        log.error("environment switch failed", {user_id: userId,
             environment: value,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+            error: error instanceof Error ? error.message : "unknown",});
         if (error instanceof ReplaceInProgressError) {
           return respond(
             ctx,
@@ -3026,15 +2997,10 @@ export const onboarding: MiniAppModule = {
         );
       } catch (error) {
         if (error instanceof ComposioApiError) {
-          console.error(
-            JSON.stringify({
-              msg: "connect link failed",
-              user_id: userId,
+          log.error("connect link failed", {user_id: userId,
               toolkit,
               status: error.status,
-              error: error.message,
-            })
-          );
+              error: error.message,});
           return respond(
             ctx,
             "connect",
@@ -3342,13 +3308,8 @@ export const onboarding: MiniAppModule = {
       const run = (): Promise<unknown> =>
         enableVideoAvatar(supabase, userId, username, { channel: "web" }).catch(
           (error: unknown) => {
-            console.error(
-              JSON.stringify({
-                msg: "video avatar render failed",
-                user_id: userId,
-                error: error instanceof Error ? error.message : String(error),
-              })
-            );
+            log.error("video avatar render failed", {user_id: userId,
+                error: error instanceof Error ? error.message : String(error),});
           }
         );
       try {
@@ -3608,13 +3569,8 @@ export const onboarding: MiniAppModule = {
         const url = await startOnboarding(supabase, userId, here, here);
         return withBaseHeaders(NextResponse.redirect(url, 303));
       } catch (error) {
-        console.log(
-          JSON.stringify({
-            msg: "onboarding stripe connect failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.info("onboarding stripe connect failed", {user_id: userId,
+            error: error instanceof Error ? error.message : String(error),});
         return respond(
           ctx,
           "stripe",

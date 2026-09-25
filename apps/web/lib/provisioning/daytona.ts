@@ -12,18 +12,15 @@ import {
   type ComputeTarget,
 } from "../compute/runtime";
 import { createTenantKey, daytonaConfigured } from "../daytona/client";
+import { log } from "../log";
 
 export async function provisionDaytona(
   target: ComputeTarget,
   userId: string
 ): Promise<void> {
   if (!daytonaConfigured()) {
-    console.log(
-      JSON.stringify({
-        msg: "daytona manager key not configured — sandbox lane disabled",
-        user_id: userId,
-      })
-    );
+    log.info("daytona manager key not configured — sandbox lane disabled", {box_id: null,
+        user_id: userId,});
     return;
   }
   const tenantKey = await createTenantKey(userId);
