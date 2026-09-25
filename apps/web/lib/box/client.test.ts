@@ -30,21 +30,18 @@ import {
 } from "./client";
 import { setTenkiClientForTests } from "./tenki";
 
+import { FakeSupabase } from "../testing/fakeSupabase";
+
+const db = new FakeSupabase();
+
 vi.mock("../supabase", () => ({
-  serviceClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: null, error: null }),
-        }),
-      }),
-    }),
-  }),
+  serviceClient: () => db.client(),
 }));
 
 const fetchMock = vi.fn();
 
 beforeEach(() => {
+  db.reset();
   process.env["BOX_API_KEY"] = "test-key";
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();

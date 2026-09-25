@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   desktopStreamUrl,
   desktopStreamUrlIfUp,
@@ -20,9 +21,11 @@ vi.mock("../orchestrator/boxes", () => ({
   StartLimitError: class StartLimitError extends Error {},
 }));
 
+const db = new FakeSupabase();
 const supabase = {} as SupabaseClient;
 
 beforeEach(() => {
+  db.reset();
   vi.clearAllMocks();
   vi.mocked(resume).mockResolvedValue({ state: "ready" } as Awaited<
     ReturnType<typeof resume>
@@ -30,17 +33,10 @@ beforeEach(() => {
 });
 
 function supabaseWithBox(boxId: string | null): SupabaseClient {
-  const chain = {
-    select: () => chain,
-    update: () => chain,
-    eq: () => chain,
-    maybeSingle: () =>
-      Promise.resolve({
-        data: boxId ? { provider_box_id: boxId } : null,
-        error: null,
-      }),
-  };
-  return { from: () => chain } as unknown as SupabaseClient;
+  db.tables["boxes"] = boxId
+    ? [{ provider_box_id: boxId, state: "idle", user_id: "user-1" }]
+    : [];
+  return db.client();
 }
 
 describe("desktopStreamUrl", () => {
