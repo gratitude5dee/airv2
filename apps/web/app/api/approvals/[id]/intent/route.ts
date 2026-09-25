@@ -7,7 +7,9 @@
  * the request to paid and resolves the decision.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
+import { parseBody } from "@/lib/http/body";
 import { serviceClient } from "@/lib/supabase";
 import { verifyApprovalToken } from "@/lib/approvals/token";
 import { createExpressPaymentIntent } from "@/lib/commerce/paymentRequests";
@@ -16,14 +18,18 @@ import { CommerceError } from "@/lib/commerce/merchants";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const Body = z.object({ k: z.string().optional() });
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const { id } = await params;
-  const body = (await request.json().catch(() => ({}))) as { k?: string };
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   let userId: string | null = null;
-  if (typeof body.k === "string") {
+  if (body.k !== undefined) {
     userId = verifyApprovalToken(body.k, id)?.userId ?? null;
   }
   userId = userId ?? sessionUserId(request) ?? null;
