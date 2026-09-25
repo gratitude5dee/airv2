@@ -33,6 +33,19 @@ jobs:
           docker cp supabase "${{ job.services.postgres.id }}:/checks"
           docker exec "${{ job.services.postgres.id }}" \
             psql -U postgres -f /checks/tests/agent_run_box_seconds.sql
+  commit-ids:
+    # R-LED-02: every non-merge, non-chore commit on a PR names a finding ID.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check finding IDs in commit messages
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: bash scripts/check-commit-ids.sh
   web:
     # GitHub-hosted runners keep pull-request validation available when the
     # optional third-party runner fleet is unavailable.

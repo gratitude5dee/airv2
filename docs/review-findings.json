@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "review": "review.md",
+  "review": "docs/review-2026-09/astra-ultra-review.md",
   "reviewed_commit": "bb82c05",
   "acceptance_document": "docs/review-implementation-plan.md",
   "product_acceptance": {
@@ -17,7 +17,7 @@
       "finding": "iMessage ingest is not idempotent",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 937
       },
       "workstream": "memory",
@@ -46,7 +46,7 @@
       "finding": "Recall is not wired into the turn",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 938
       },
       "workstream": "memory",
@@ -76,7 +76,7 @@
       "finding": "`ov.conf` is rendered at template time when the gateway token is a placeholder",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 939
       },
       "workstream": "memory",
@@ -106,7 +106,7 @@
       "finding": "Every turn on every channel fetches up to 500 transcript rows (the endpoint's default page; `?limit=` exists and is unused),…",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 940
       },
       "workstream": "memory",
@@ -134,7 +134,7 @@
       "finding": "The replay is redundant. The pinned Hermes `/v1/runs` loads the session transcript itself when `conversation_history` is…",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 941
       },
       "workstream": "memory",
@@ -164,7 +164,7 @@
       "finding": "No write policy: explicit \"remember\" requests never reach the archive",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 942
       },
       "workstream": "memory",
@@ -194,7 +194,7 @@
       "finding": "The extractor selects only `m.text` and filters `text IS NOT NULL`",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 943
       },
       "workstream": "memory",
@@ -223,7 +223,7 @@
       "finding": "Production chunks are raw JSON arrays",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 944
       },
       "workstream": "memory",
@@ -252,7 +252,7 @@
       "finding": "Agent-import re-indexes the whole source directory on every chunk",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 945
       },
       "workstream": "memory",
@@ -284,7 +284,7 @@
       "finding": "Enqueue-only indexing has no durability across the idle stop",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 946
       },
       "workstream": "memory",
@@ -325,7 +325,7 @@
       "finding": "`Dictionary.MD` is never indexed",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 947
       },
       "workstream": "memory",
@@ -352,7 +352,7 @@
       "finding": "Cortex/Mitosis is an unpoliced third-party memory path, not a display-only panel",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 948
       },
       "workstream": "memory",
@@ -379,7 +379,7 @@
       "finding": "Onairos sync splices ~1 KB into USER.md with no length check",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 949
       },
       "workstream": "memory",
@@ -407,7 +407,7 @@
       "finding": "Onairos disconnect is not zero-byte",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 950
       },
       "workstream": "memory",
@@ -432,7 +432,7 @@
       "finding": "Reindex is synchronous: `ovctl ensure` (180 s) + `ovctl reindex` (600 s, wait=True) inside a route with `maxDuration = 300`",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 951
       },
       "workstream": "memory",
@@ -457,7 +457,7 @@
       "finding": "Four uncoordinated writers, no consolidation, no decay, no supersession",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 952
       },
       "workstream": "memory",
@@ -487,7 +487,7 @@
       "finding": "No recall-quality eval. `score.ts` passes \"context use\" on `/memory|viking|crm|people/` in tool names",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 953
       },
       "workstream": "evals",
@@ -518,7 +518,7 @@
       "finding": "Email turns never reach `air-main` or deep memory",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 954
       },
       "workstream": "memory",
@@ -543,7 +543,7 @@
       "finding": "Dictionary run reads up to 200 MB of raw import into the model with no budget, no failure signal",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 955
       },
       "workstream": "memory",
@@ -568,7 +568,7 @@
       "finding": "Onairos disconnect cannot be zero-byte by design",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 956
       },
       "workstream": "memory",
@@ -593,7 +593,7 @@
       "finding": "Working memory is polluted by automation",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 957
       },
       "workstream": "memory",
@@ -620,7 +620,7 @@
       "finding": "The amnesia guard misfires on a session with no assistant row",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 958
       },
       "workstream": "memory",
@@ -647,7 +647,7 @@
       "finding": "Deep memory has no owner clear or forget surface",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 959
       },
       "workstream": "memory",
@@ -677,7 +677,7 @@
       "finding": "The eval harness runs all 109 cases in `air-main`",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 960
       },
       "workstream": "evals",
@@ -692,9 +692,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "16d9a26a test(evals): EVAL_SESSION env to target isolated chat sessions"
+      ],
+      "notes": "Opt-in per-run session only; per-case eval:<id> sessions, seeded history and first-call prompt-token reporting are not done; still runs against the live box via /api/chat."
     },
     {
       "id": "MEM-30",
@@ -704,7 +706,7 @@
       "finding": "Mitosis is not display-only in practice",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 961
       },
       "workstream": "memory",
@@ -731,7 +733,7 @@
       "finding": "`ovctl`'s header docstring claims stdout is content-free",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 962
       },
       "workstream": "memory",
@@ -758,7 +760,7 @@
       "finding": "The Persona render wakes a stopped box (three box commands) merely to draw health/count chips, so a card tap can spend a start…",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 963
       },
       "workstream": "memory",
@@ -790,7 +792,7 @@
       "finding": "Resolved in source, guard missing",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 964
       },
       "workstream": "memory",
@@ -815,7 +817,7 @@
       "finding": "Persona memory stats are wrong by construction",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 965
       },
       "workstream": "memory",
@@ -843,7 +845,7 @@
       "finding": "`ovctl.py` and `lib/memory/deep.ts` have no tests while `taskrouter`, `learning` and `plugins/air-vault` each ship a suite",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 966
       },
       "workstream": "memory",
@@ -871,7 +873,7 @@
       "finding": "Two prompt sections share the heading `## What you know about your owner`",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 967
       },
       "workstream": "memory",
@@ -896,7 +898,7 @@
       "finding": "The gateway buffers the entire SSE body for every non-OpenAI family (`await upstream.clone().arrayBuffer()`) to check for an…",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 968
       },
       "workstream": "imessage",
@@ -926,7 +928,7 @@
       "finding": "Instant first bubble is neither instant nor free",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 969
       },
       "workstream": "imessage",
@@ -955,7 +957,7 @@
       "finding": "Spectrum SDK fully initialised two to six times per inbound message (webhook, `runFlush`, once per card marker up to four)",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 970
       },
       "workstream": "imessage",
@@ -980,7 +982,7 @@
       "finding": "Cold-box retry has no in-process waiter",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 971
       },
       "workstream": "imessage",
@@ -1008,7 +1010,7 @@
       "finding": "Wake loop built from fixed 5 s sleeps and a 10 s health timeout",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 972
       },
       "workstream": "imessage",
@@ -1036,7 +1038,7 @@
       "finding": "The quick-ack marker is drained by the real turn before the ack text exists",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 973
       },
       "workstream": "imessage",
@@ -1063,7 +1065,7 @@
       "finding": "No fast lane exists for the default family",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 974
       },
       "workstream": "imessage",
@@ -1091,7 +1093,7 @@
       "finding": "Typing indicator sent once, in the webhook, after Spectrum init and a two-RPC `markRead` (~1.3 s)",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 975
       },
       "workstream": "imessage",
@@ -1116,7 +1118,7 @@
       "finding": "Message path never waits for post-resume home hydration (`waitForHomeSteady` exists, used only by fleet sync)",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 976
       },
       "workstream": "imessage",
@@ -1141,7 +1143,7 @@
       "finding": "Every inbound pays the full 2.5 s debounce, including `/commands`, attachment-only bubbles and single messages after long silence",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 977
       },
       "workstream": "imessage",
@@ -1166,7 +1168,7 @@
       "finding": "7-8 sequential DB round trips pre-ack and ~10 more between claim and `createRun`",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 978
       },
       "workstream": "imessage",
@@ -1191,7 +1193,7 @@
       "finding": "History is re-fetched and re-shipped every turn (ensureSession + a 500-row GET + 60-message replay = three hosted-proxy hops)…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 979
       },
       "workstream": "imessage",
@@ -1217,7 +1219,7 @@
       "finding": "Gateway preflight is up to 5 sequential DB reads per model…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 980
       },
       "workstream": "imessage",
@@ -1242,7 +1244,7 @@
       "finding": "Gateway upstream `fetch` has no timeout at all (`grep signal` = 0 hits)",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 981
       },
       "workstream": "imessage",
@@ -1267,7 +1269,7 @@
       "finding": "The webhook function holds the whole turn in `after()`",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 982
       },
       "workstream": "imessage",
@@ -1292,7 +1294,7 @@
       "finding": "No latency instrumentation or eval for the iMessage path",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 983
       },
       "workstream": "imessage",
@@ -1317,7 +1319,7 @@
       "finding": "Any inbound during a streaming turn cancels it, and the successor runs alongside the dying chain",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 984
       },
       "workstream": "imessage",
@@ -1344,7 +1346,7 @@
       "finding": "Cold wake self-sabotage. Resume re-boots every enabled unit, so `hermes-gateway` starts from zero on each cold turn,…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 985
       },
       "workstream": "imessage",
@@ -1369,7 +1371,7 @@
       "finding": "An existing session that replays empty is carried and rescheduled with nothing sent",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 986
       },
       "workstream": "imessage",
@@ -1394,7 +1396,7 @@
       "finding": "Read receipts and typing events from the user are acked and discarded instead of prewarming a stopped box",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 987
       },
       "workstream": "imessage",
@@ -1419,7 +1421,7 @@
       "finding": "The SDK's in-place edit budget (`INITIAL_THROTTLE_MS 1000`, backoff ×2, `MAX_EDITS 5`) freezes a first bubble that streams >15 s",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 988
       },
       "workstream": "imessage",
@@ -1444,7 +1446,7 @@
       "finding": "Attachment materialisation is three sequential Box API round trips plus a base64-in-JSON PUT per attachment",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 989
       },
       "workstream": "imessage",
@@ -1469,7 +1471,7 @@
       "finding": "The minute sweep runs idle-box stops and stale reconciliation before overdue flushes, in one sequential function",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 990
       },
       "workstream": "imessage",
@@ -1494,7 +1496,7 @@
       "finding": "Same as LAT-01, found independently (canonical: LAT-01, §5)",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 991
       },
       "workstream": "gateway-web",
@@ -1519,7 +1521,7 @@
       "finding": "Fallback silently changes the served model, provider and paying key",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 992
       },
       "workstream": "gateway-web",
@@ -1549,7 +1551,7 @@
       "finding": "Warm web chat needs 2 invocations and ~16 sequential round trips before the first Hermes byte",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 993
       },
       "workstream": "gateway-web",
@@ -1574,7 +1576,7 @@
       "finding": "The box proxy never re-arms the idle deadline",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 994
       },
       "workstream": "gateway-web",
@@ -1599,7 +1601,7 @@
       "finding": "Gateway preflight: 2 sequential DB reads per model call, plus 3 sequential `provider_keys` reads when `PROVIDER_VAULT_KEY` is…",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 995
       },
       "workstream": "gateway-web",
@@ -1624,7 +1626,7 @@
       "finding": "Metering keep-alive is registered only when the tee monitor reaches EOF",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 996
       },
       "workstream": "gateway-web",
@@ -1649,7 +1651,7 @@
       "finding": "No timeout on the gateway provider fetch, the box proxy upstream fetch, or the dashboard login",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 997
       },
       "workstream": "gateway-web",
@@ -1674,7 +1676,7 @@
       "finding": "`agent_runs` rows are never closed on client disconnect, stream-open failure, or timeout",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 998
       },
       "workstream": "gateway-web",
@@ -1701,7 +1703,7 @@
       "finding": "The web client treats any SSE error as terminal (\"Connection lost\"), disables the browser's auto-reconnect, and never resumes a…",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 999
       },
       "workstream": "gateway-web",
@@ -1726,7 +1728,7 @@
       "finding": "Every run re-downloads up to 500 transcript rows and keeps 60 (same root as MEM-06/LAT-10; redundant per MEM-16)",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1000
       },
       "workstream": "gateway-web",
@@ -1752,7 +1754,7 @@
       "finding": "Box proxy pays a full wake check per request",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1001
       },
       "workstream": "gateway-web",
@@ -1777,7 +1779,7 @@
       "finding": "`/home` first paint is fully client-rendered with an 8-request fan-out",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1002
       },
       "workstream": "gateway-web",
@@ -1804,7 +1806,7 @@
       "finding": "Dashboard hosted-route refresh can run twice concurrently (background on wake + synchronous on 401), last write wins on the…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1003
       },
       "workstream": "gateway-web",
@@ -1829,7 +1831,7 @@
       "finding": "The relay's happy-path close-out and re-arm are detached promises (`void supabase.update`, `void armStopAfter`) fired from the…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1004
       },
       "workstream": "gateway-web",
@@ -1854,7 +1856,7 @@
       "finding": "Completions that carry no usage chunk are never metered",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1005
       },
       "workstream": "gateway-web",
@@ -1879,7 +1881,7 @@
       "finding": "Network-level provider failures bypass the retry and fallback ladder",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1006
       },
       "workstream": "gateway-web",
@@ -1894,9 +1896,11 @@
         "no-personal-key-spend-fallback"
       ],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "3b72284c recover orphaned imessage work"
+      ],
+      "notes": "Astra timeouts recover to GLM inside dispatch(); non-GMI network errors (DNS/TLS/socket) still re-throw to a bare 500 with no synthesized upstream_unreachable."
     },
     {
       "id": "WEB-21",
@@ -1906,7 +1910,7 @@
       "finding": "`ensureBoxAwake` treats any false from `health()`, including a 10 s timeout on a box that is merely slow, as a rotated token and…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1007
       },
       "workstream": "gateway-web",
@@ -1932,7 +1936,7 @@
       "finding": "Transcript replay failures are silent",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1008
       },
       "workstream": "gateway-web",
@@ -1957,7 +1961,7 @@
       "finding": "`latency_ms` excludes the gateway's own pre-dispatch overhead",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1009
       },
       "workstream": "gateway-web",
@@ -1982,7 +1986,7 @@
       "finding": "Eval \"latency per case\" is not agent latency",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1010
       },
       "workstream": "evals",
@@ -2012,7 +2016,7 @@
       "finding": "The suite sent 4,575,672 prompt tokens against 23,574 completion tokens",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1011
       },
       "workstream": "gateway-web",
@@ -2037,7 +2041,7 @@
       "finding": "Retry + fallback can triple upstream cost of a failing call with a fixed 1.5 s sleep before the second attempt",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1012
       },
       "workstream": "gateway-web",
@@ -2062,7 +2066,7 @@
       "finding": "`agent_runs` updates by `hermes_run_id` have no supporting index while the gateway inserts one metering row per model call",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1013
       },
       "workstream": "gateway-web",
@@ -2087,7 +2091,7 @@
       "finding": "Two near-identical SSE relays (web, bots) have already drifted",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1014
       },
       "workstream": "gateway-web",
@@ -2112,7 +2116,7 @@
       "finding": "Desktop stream iframe triggers a wake check + provider desktop-URL mint on every remount",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1015
       },
       "workstream": "gateway-web",
@@ -2137,7 +2141,7 @@
       "finding": "`GET /api/bots` is DB-only only while the box is asleep",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1016
       },
       "workstream": "gateway-web",
@@ -2162,7 +2166,7 @@
       "finding": "The edge middleware matcher excludes only `_next/` and the favicon, so every gateway completion, every `/api/chat`, every…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1017
       },
       "workstream": "gateway-web",
@@ -2187,7 +2191,7 @@
       "finding": "Every 3 MiB upload chunk runs a full wake check (select, update, `getBox`, health, update), is base64-encoded through the…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1018
       },
       "workstream": "gateway-web",
@@ -2212,7 +2216,7 @@
       "finding": "Every `message.delta` event calls `setMessages(replaceLast(...))`, one React commit per token chunk on the 1,250-line client…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1019
       },
       "workstream": "gateway-web",
@@ -2237,7 +2241,7 @@
       "finding": "Every send re-creates the Spectrum SDK",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1020
       },
       "workstream": "miniapps-spectrum",
@@ -2264,7 +2268,7 @@
       "finding": "Kanban/todo/crm views and actions hit the box 1-3 times per request",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1021
       },
       "workstream": "miniapps-spectrum",
@@ -2289,7 +2293,7 @@
       "finding": "A 790 KB PNG wordmark (1600×396, gzip-incompressible) is loaded by every mini-app shell and the onboarding deck for a ~25 px logo",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1022
       },
       "workstream": "miniapps-spectrum",
@@ -2302,9 +2306,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "ce8d6bf0 onboarding: fix the extension kill, the entry slide, and the deck's weight"
+      ],
+      "notes": "Wordmark now served as 15KB 320w / 45KB 640w srcset; the 790KB 1600px asset is no longer referenced by the shell header."
     },
     {
       "id": "MS-04",
@@ -2314,7 +2320,7 @@
       "finding": "Prompt-bar (\"Ask your agent\") runs are fire-and-forget",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1023
       },
       "workstream": "miniapps-spectrum",
@@ -2339,7 +2345,7 @@
       "finding": "Card tap never warms the box; a sleeping box turns a tap into a 30-240 s spinner inside Messages",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1024
       },
       "workstream": "miniapps-spectrum",
@@ -2364,7 +2370,7 @@
       "finding": "`readDoc` catches every `readFile` error (Box 5xx, timeout, hosted-route failure) and returns `DEFAULT_BOARD`/`DEFAULT_TODOS`",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1025
       },
       "workstream": "miniapps-spectrum",
@@ -2392,7 +2398,7 @@
       "finding": "The V11 hand-off lands on a path nothing serves",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1026
       },
       "workstream": "miniapps-spectrum",
@@ -2417,7 +2423,7 @@
       "finding": "Kit apps on the app origin cannot reach the Apps API",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1027
       },
       "workstream": "miniapps-spectrum",
@@ -2442,7 +2448,7 @@
       "finding": "Typing indicator never re-armed after the quick-ack and never stopped",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1028
       },
       "workstream": "miniapps-spectrum",
@@ -2467,7 +2473,7 @@
       "finding": "The marker-path 2-min card cooldown silently drops an explicit \"open X\" while the text says \"tap the card below\"",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1029
       },
       "workstream": "miniapps-spectrum",
@@ -2492,7 +2498,7 @@
       "finding": "Card bubbles are text-only; the SDK's image layout is never used, so a calendar or image card carries no glanceable content",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1030
       },
       "workstream": "miniapps-spectrum",
@@ -2517,7 +2523,7 @@
       "finding": "Lite (card) sessions still download and run WebGL backdrops (~300 KB gzipped of three.js…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1031
       },
       "workstream": "miniapps-spectrum",
@@ -2542,7 +2548,7 @@
       "finding": "The token-exchange hop awaits two ledger inserts before the 303 although the gate ledger is documented best-effort",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1032
       },
       "workstream": "miniapps-spectrum",
@@ -2567,7 +2573,7 @@
       "finding": "Onboarding's Onairos step ships a 2.49 MB client bundle, 981 KB…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1033
       },
       "workstream": "miniapps-spectrum",
@@ -2592,7 +2598,7 @@
       "finding": "Marker cards are sent only after the whole stream ends, sequentially, each with a fresh SDK init",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1034
       },
       "workstream": "miniapps-spectrum",
@@ -2619,7 +2625,7 @@
       "finding": "Hand-rolled webhook verify/parse duplicates `spectrum.webhook()` and already carries legacy payload shims",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1035
       },
       "workstream": "miniapps-spectrum",
@@ -2644,7 +2650,7 @@
       "finding": "V11 published apps take three redirects and a Durable Object round trip per open",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1036
       },
       "workstream": "miniapps-spectrum",
@@ -2669,7 +2675,7 @@
       "finding": "Home tiles and the shell wordmark link are minted with a 15-minute TTL at render time inside a sheet whose session cookie slides…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1037
       },
       "workstream": "miniapps-spectrum",
@@ -2698,7 +2704,7 @@
       "finding": "Guest sessions resume and keep awake the owner's box",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1038
       },
       "workstream": "miniapps-spectrum",
@@ -2725,7 +2731,7 @@
       "finding": "Multiplayer kanban/todo read-modify-write has no serialisation",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1039
       },
       "workstream": "miniapps-spectrum",
@@ -2756,7 +2762,7 @@
       "finding": "kanban/todo views null `stop_after` through `ensureBoxAwake` and never re-arm it",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1040
       },
       "workstream": "miniapps-spectrum",
@@ -2781,7 +2787,7 @@
       "finding": "Stable-named bundles cached 24 h reference hash-named chunks deleted on every rebuild",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1041
       },
       "workstream": "miniapps-spectrum",
@@ -2806,7 +2812,7 @@
       "finding": "A 75.8 MB `airintrofin.mov` is committed and shipped in `public/` as a dead `<source>` fallback behind a 5.9 MB mp4",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1042
       },
       "workstream": "miniapps-spectrum",
@@ -2831,7 +2837,7 @@
       "finding": "Copy and docs still call mini-app links single-use",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1043
       },
       "workstream": "miniapps-spectrum",
@@ -2856,7 +2862,7 @@
       "finding": "The Home launcher mints ~20 tokens per render and logs a line per mint",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1044
       },
       "workstream": "miniapps-spectrum",
@@ -2881,7 +2887,7 @@
       "finding": "No card-tap funnel: the loader logs every `?t=` exchange as `app_opened` with ref `\"token\"` although `claims.via` already says…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1045
       },
       "workstream": "miniapps-spectrum",
@@ -2906,7 +2912,7 @@
       "finding": "Calendar render does its two Box reads (events, then people) and the `user_buckets` read sequentially after the wake",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1046
       },
       "workstream": "miniapps-spectrum",
@@ -2931,7 +2937,7 @@
       "finding": "V11 app-origin sheets dead-end twice after 15 minutes",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1047
       },
       "workstream": "miniapps-spectrum",
@@ -2956,7 +2962,7 @@
       "finding": "`agent_runs.outcome` is a transport outcome, not a task outcome",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1048
       },
       "workstream": "task-spine",
@@ -2984,7 +2990,7 @@
       "finding": "`social_post` approval is structurally dead for iMessage-originated proposals",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1049
       },
       "workstream": "task-spine",
@@ -3011,7 +3017,7 @@
       "finding": "No box-callable reminder/schedule primitive",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1050
       },
       "workstream": "task-spine",
@@ -3026,9 +3032,12 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "7055991d schedule_deliveries ledger",
+        "8e4a5278 schedule POST accepts callingBox Bearer = boxes.gateway_token"
+      ],
+      "notes": "Skills (watch_for, tour-planning) now reference the endpoint."
     },
     {
       "id": "TC-05",
@@ -3038,7 +3047,7 @@
       "finding": "The Aug P1-12 fix was scoped to one skill",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1051
       },
       "workstream": "template-steering",
@@ -3066,7 +3075,7 @@
       "finding": "Six of eight agent-staged decision kinds never notify the owner on iMessage, and the two that do are throttled…",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1052
       },
       "workstream": "task-spine",
@@ -3098,7 +3107,7 @@
       "finding": "Agent-authored skills persist forever and out-compete template skills",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1053
       },
       "workstream": "task-spine",
@@ -3126,7 +3135,7 @@
       "finding": "`sync-box.sh`, the in-place sync for every provisioned box, never installs the two SOUL sections written for the eval failure…",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1054
       },
       "workstream": "template-steering",
@@ -3158,7 +3167,7 @@
       "finding": "A reconciliation backstop already exists for email drafts",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1055
       },
       "workstream": "task-spine",
@@ -3187,7 +3196,7 @@
       "finding": "The eval never exercises the iMessage path",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1056
       },
       "workstream": "evals",
@@ -3212,7 +3221,7 @@
       "finding": "`social_post` is a per-item proposal",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1057
       },
       "workstream": "task-spine",
@@ -3240,7 +3249,7 @@
       "finding": "No account-less draft state for `ad_write`",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1058
       },
       "workstream": "task-spine",
@@ -3265,7 +3274,7 @@
       "finding": "Decision creation scattered across ≥10 raw inserts",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1059
       },
       "workstream": "task-spine",
@@ -3295,7 +3304,7 @@
       "finding": "Tool discovery dominates the turn because control-plane actions are curl recipes, not tools",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1060
       },
       "workstream": "task-spine",
@@ -3323,7 +3332,7 @@
       "finding": "`fast` and `balanced` both resolve to gpt-5.6-luna, and tool-bearing calls on `/v1/chat/completions` are pinned…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1061
       },
       "workstream": "task-spine",
@@ -3350,7 +3359,7 @@
       "finding": "Smart approvals pause runs no surface can resume",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1062
       },
       "workstream": "task-spine",
@@ -3375,7 +3384,7 @@
       "finding": "Learning plane has no producer; task router has no consumer",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1063
       },
       "workstream": "task-spine",
@@ -3400,7 +3409,7 @@
       "finding": "Storefront and payments missing from `connected-tools.md`",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1064
       },
       "workstream": "template-steering",
@@ -3425,7 +3434,7 @@
       "finding": "`crm-people` teaches only the update call",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1065
       },
       "workstream": "template-steering",
@@ -3450,7 +3459,7 @@
       "finding": "Eval honesty and gating axes are blind to fabrication and to \"not connected\" excuses, and the harness has two larger blind spots",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1066
       },
       "workstream": "evals",
@@ -3475,7 +3484,7 @@
       "finding": "Approval outcomes never flow back to the agent or the owner thread (except `content_plan`)",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1067
       },
       "workstream": "task-spine",
@@ -3500,7 +3509,7 @@
       "finding": "Merchant purchases are over-choreographed",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1068
       },
       "workstream": "task-spine",
@@ -3525,7 +3534,7 @@
       "finding": "The gateway sees every model tool call (it already parses `choices[].message.tool_calls` for the empty-answer fallback) and…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1069
       },
       "workstream": "task-spine",
@@ -3550,7 +3559,7 @@
       "finding": "Scheduled runs (reminders, briefs, routines) bypass the outbound lanes",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1070
       },
       "workstream": "task-spine",
@@ -3575,7 +3584,7 @@
       "finding": "Bot escalation string-matches `[NEEDS-USER]` in the routine's last output and files a `run_approval` with a `bot:` ref",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1071
       },
       "workstream": "task-spine",
@@ -3603,7 +3612,7 @@
       "finding": "Bot profiles are provisioned blind",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1072
       },
       "workstream": "template-steering",
@@ -3628,7 +3637,7 @@
       "finding": "The execution axis rests on the 7-case union of `must_do` (5 cases) and `must_not_do` (those 5 plus A02 and H95), and…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1073
       },
       "workstream": "evals",
@@ -3653,7 +3662,7 @@
       "finding": "Skill grades: five skills describe more than they command",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1074
       },
       "workstream": "template-steering",
@@ -3678,7 +3687,7 @@
       "finding": "`sendEmailReviewCard` returns silently when `claimCardSend(\"inbox\")` fails",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1075
       },
       "workstream": "task-spine",
@@ -3703,7 +3712,7 @@
       "finding": "`content/plan` rejects LinkedIn (any platform outside `SLOT_PLATFORMS`) with a bare `invalid request` 400…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1076
       },
       "workstream": "task-spine",
@@ -3728,7 +3737,7 @@
       "finding": "Per-run `instructions` is a live, unused steering channel",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1077
       },
       "workstream": "template-steering",
@@ -3746,9 +3755,11 @@
         "disable-taskrouter"
       ],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "92942d4a append routing hint to turn input"
+      ],
+      "notes": "Chat relay passes Jev routingInstructions to createRun (relay.ts:47-55); the iMessage flush path (flush.ts:1348) still sends no instructions."
     },
     {
       "id": "WZ-01",
@@ -3758,7 +3769,7 @@
       "finding": "`MAIL_PROVIDER` is a global flip with no per-user provider",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1078
       },
       "workstream": "mail",
@@ -3783,7 +3794,7 @@
       "finding": "No migration path for existing users",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1079
       },
       "workstream": "mail",
@@ -3818,7 +3829,7 @@
       "finding": "`ensureWebhook` PATCHes `pod_ids`, which wzrdmail fixes at create, and discards the one-time signing secret",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1080
       },
       "workstream": "mail",
@@ -3843,7 +3854,7 @@
       "finding": "Send idempotency unverified: the only replay guard on `sendDraft` and `replyToMessage` is an `Idempotency-Key` header that…",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1081
       },
       "workstream": "mail",
@@ -3870,7 +3881,7 @@
       "finding": "Admin deletion reports the pod \"deleted\" when the active provider 404s the other provider's pod id",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1082
       },
       "workstream": "mail",
@@ -3895,7 +3906,7 @@
       "finding": "Hosted calendar is AgentMail-only and imported directly by the calendar mini-app",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1083
       },
       "workstream": "mail",
@@ -3920,7 +3931,7 @@
       "finding": "Box replacement strips the mail wiring and nothing re-applies it",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1084
       },
       "workstream": "mail",
@@ -3936,8 +3947,12 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "11eb4987 ensureMailboxOnBox provisions and installs a mailbox when no address row exists (finishSetup, provision.ts:1089)",
+        "d2fa6379 re-mint dangling addresses when both providers 404; installExistingMailbox falls back across providers",
+        "913a3be0 POST /api/admin/mailboxes/ensure sweep"
+      ],
       "notes": ""
     },
     {
@@ -3948,7 +3963,7 @@
       "finding": "Block enforcement is per-inbox at the provider and never replayed",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1085
       },
       "workstream": "mail",
@@ -3973,7 +3988,7 @@
       "finding": "The wzrdmail block-list body is wrong",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1086
       },
       "workstream": "mail",
@@ -3998,7 +4013,7 @@
       "finding": "Username collision on the shared `@wzrd.tech` namespace leaves the user with no inbox and a log line",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1087
       },
       "workstream": "mail",
@@ -4023,7 +4038,7 @@
       "finding": "No 429/`Retry-After` or 5xx handling",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1088
       },
       "workstream": "mail",
@@ -4048,7 +4063,7 @@
       "finding": "Legacy credentials and MCP linger on the box after a…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1089
       },
       "workstream": "mail",
@@ -4073,7 +4088,7 @@
       "finding": "MCP swap restarts `hermes-gateway` on a live box from a settings write",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1090
       },
       "workstream": "mail",
@@ -4098,7 +4113,7 @@
       "finding": "`ensurePod` fallback and `ensureWebhook` read page 1 only",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1091
       },
       "workstream": "mail",
@@ -4123,7 +4138,7 @@
       "finding": "The parity eval cannot support a cutover decision",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1092
       },
       "workstream": "mail",
@@ -4152,7 +4167,7 @@
       "finding": "CC'd mail never resolves (only `to[]`)",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1093
       },
       "workstream": "mail",
@@ -4177,7 +4192,7 @@
       "finding": "Consumer tests mock `../agentmail/client` directly, so `MAIL_PROVIDER=wzrdmail` never exercises the wzrdmail path",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1094
       },
       "workstream": "mail",
@@ -4202,7 +4217,7 @@
       "finding": "Draft-only keys can never be revoked",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1095
       },
       "workstream": "mail",
@@ -4229,7 +4244,7 @@
       "finding": "Renaming back to a previous username, or rolling `MAIL_PROVIDER` back after a migration, leaves the user with no primary address",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1096
       },
       "workstream": "mail",
@@ -4256,7 +4271,7 @@
       "finding": "`email_draft` decisions record only `ref = draft_id`, not the inbox or provider holding the draft",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1097
       },
       "workstream": "mail",
@@ -4281,7 +4296,7 @@
       "finding": "A missing or wrong `WZRDMAIL_WEBHOOK_SECRET` turns every inbound POST into a 500, not a 401",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1098
       },
       "workstream": "mail",
@@ -4306,7 +4321,7 @@
       "finding": "Both providers cannot receive for `@wzrd.tech` at once",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1099
       },
       "workstream": "mail",
@@ -4335,7 +4350,7 @@
       "finding": "Eight copy-pasted primary-inbox lookups hard-code `agentmail_inbox_id`",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1100
       },
       "workstream": "mail",
@@ -4360,7 +4375,7 @@
       "finding": "The draft review route maps every provider error (429, 5xx, timeout) to 404 \"no such draft\"",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1101
       },
       "workstream": "mail",
@@ -4385,7 +4400,7 @@
       "finding": "No env or ops documentation for the wzrdmail lane",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1102
       },
       "workstream": "mail",
@@ -4410,7 +4425,7 @@
       "finding": "The agent has an ungated direct publish path through the Composio tool-router",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1103
       },
       "workstream": "social",
@@ -4435,7 +4450,7 @@
       "finding": "Every plan-originated slot carries `account_ref = \"primary\"`, which the Facebook adapter sends as the Graph `page_id`",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1104
       },
       "workstream": "social",
@@ -4460,7 +4475,7 @@
       "finding": "Adapter tool slugs diverge from the slugs the verification doc recorded from Composio",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1105
       },
       "workstream": "social",
@@ -4485,7 +4500,7 @@
       "finding": "`validate()` media checks are dead",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1106
       },
       "workstream": "social",
@@ -4510,7 +4525,7 @@
       "finding": "No media upload engine: X is text-only by design (`validate()` rejects media although `specs/x.ts` advertises 4 images or 1 video)",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1107
       },
       "workstream": "social",
@@ -4544,7 +4559,7 @@
       "finding": "A publish that succeeds on the platform but fails the `external_id` write is re-posted",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1108
       },
       "workstream": "social",
@@ -4569,7 +4584,7 @@
       "finding": "Approved `social_post` decisions execute nothing server-side",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1109
       },
       "workstream": "social",
@@ -4599,7 +4614,7 @@
       "finding": "The sweep is single-threaded with no time budget against `maxDuration = 800`",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1110
       },
       "workstream": "social",
@@ -4626,7 +4641,7 @@
       "finding": "Ingest buffers every asset in function memory with a permanent 100 MB cap",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1111
       },
       "workstream": "social",
@@ -4653,7 +4668,7 @@
       "finding": "Pending processing is an in-function sleep loop",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1112
       },
       "workstream": "social",
@@ -4678,7 +4693,7 @@
       "finding": "`dailyCap` counts only `published` rows, ignores in-flight and non-slot posts, ignores Instagram's live limit endpoint, and…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1113
       },
       "workstream": "social",
@@ -4703,7 +4718,7 @@
       "finding": "Reconnect decisions loop hourly and never lead to…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1114
       },
       "workstream": "social",
@@ -4728,7 +4743,7 @@
       "finding": "Raw platform/Composio error bodies persisted to `content_slots.error_message` and returned by `/api/slots`…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1115
       },
       "workstream": "social",
@@ -4753,7 +4768,7 @@
       "finding": "Coalescing publishes slots up to 10 min early, contradicting \"fires at 09:00 local\"",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1116
       },
       "workstream": "social",
@@ -4778,7 +4793,7 @@
       "finding": "Instagram resume path can record the container id as `external_id`",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1117
       },
       "workstream": "social",
@@ -4803,7 +4818,7 @@
       "finding": "No analytics path; `metrics()` never invoked",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1118
       },
       "workstream": "social",
@@ -4828,7 +4843,7 @@
       "finding": "Connection lookups ignore `provider` (`maybeSingle` on…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1119
       },
       "workstream": "social",
@@ -4853,7 +4868,7 @@
       "finding": "Non-social Composio dependents (Google Calendar, Shopify, Gmail hint, onboarding step 3, deletion) must be scoped explicitly or…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1120
       },
       "workstream": "social",
@@ -4881,7 +4896,7 @@
       "finding": "The worker wakes the box before any pre-flight",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1121
       },
       "workstream": "social",
@@ -4906,7 +4921,7 @@
       "finding": "No package-readiness signal between plan approval and fire time",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1122
       },
       "workstream": "social",
@@ -4934,7 +4949,7 @@
       "finding": "TikTok and YouTube adapters omit required settings, and TikTok's post id is parsed as a string",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1123
       },
       "workstream": "social",
@@ -4959,7 +4974,7 @@
       "finding": "`GET /api/browser/social` advertises adapters by name only",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1124
       },
       "workstream": "social",
@@ -4986,7 +5001,7 @@
       "finding": "Approving a revise card re-queues the identical package with the attempt reset",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1125
       },
       "workstream": "social",
@@ -5011,7 +5026,7 @@
       "finding": "The eval scorer counts any Composio tool call as social-engage routing evidence",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1126
       },
       "workstream": "evals",
@@ -5036,7 +5051,7 @@
       "finding": "Backoff, cap deferral and re-queue all overwrite `scheduled_at`",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1127
       },
       "workstream": "social",
@@ -5061,7 +5076,7 @@
       "finding": "Connection status changes trigger box wakes and gateway restarts from the Connect render path",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1128
       },
       "workstream": "social",
@@ -5088,7 +5103,7 @@
       "finding": "Canonical for the hydration gate (LAT-07, §5, is the same root seen from the message path)",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1129
       },
       "workstream": "box-fleet",
@@ -5115,7 +5130,7 @@
       "finding": "`start_rate` in ops is not a proxy for machine starts at all",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1130
       },
       "workstream": "box-fleet",
@@ -5140,7 +5155,7 @@
       "finding": "Fleet sync resumes boxes outside the `boxes.state` machine",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1131
       },
       "workstream": "box-fleet",
@@ -5167,7 +5182,7 @@
       "finding": "The wake loop restarts a still-booting gateway after one failed post-refresh probe",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1132
       },
       "workstream": "box-fleet",
@@ -5194,7 +5209,7 @@
       "finding": "Fleet sync restarts every unit under a live turn",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1133
       },
       "workstream": "box-fleet",
@@ -5221,7 +5236,7 @@
       "finding": "Every cold message issues two `resume` calls (prewarm + `ensureBoxAwake`)",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1134
       },
       "workstream": "box-fleet",
@@ -5246,7 +5261,7 @@
       "finding": "`sync-box.sh` builds llama-cpp-python from source, unguarded and non-resumable, inside the single 600 s sync command",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1135
       },
       "workstream": "box-fleet",
@@ -5271,7 +5286,7 @@
       "finding": "`verify-box.sh` gates nothing about OpenViking, task router or learningd",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1136
       },
       "workstream": "box-fleet",
@@ -5296,7 +5311,7 @@
       "finding": "Supply chain still floats: `curl | sh` uv, nvm, `npm -g agent-browser`, Daytona `latest`, a GGUF from `resolve/main` with no…",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1137
       },
       "workstream": "box-fleet",
@@ -5321,7 +5336,7 @@
       "finding": "Task router runs on every box with `Restart=always` and a q4_k_m GGUF in…",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1138
       },
       "workstream": "template-steering",
@@ -5348,7 +5363,7 @@
       "finding": "Canonical: MEM-03, §4. Fresh forks never run `ovctl ensure` (same root as MEM-03)",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1139
       },
       "workstream": "box-fleet",
@@ -5373,7 +5388,7 @@
       "finding": "Fleet sync resumes boxes with no start-budget check",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1140
       },
       "workstream": "box-fleet",
@@ -5398,7 +5413,7 @@
       "finding": "Canonical: LAT-05, §5. On a cold wake the first health probe fails (the box reports ready before the gateway is up) and the…",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1141
       },
       "workstream": "box-fleet",
@@ -5423,7 +5438,7 @@
       "finding": "No hardening, priorities or memory limits on gateway/dashboard/openviking/taskrouter",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1142
       },
       "workstream": "box-fleet",
@@ -5448,7 +5463,7 @@
       "finding": "No resident-memory or cold-start telemetry, although three specs require it",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1143
       },
       "workstream": "box-fleet",
@@ -5473,7 +5488,7 @@
       "finding": "Sync's `finally` stop can stop a box a user woke mid-sync",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1144
       },
       "workstream": "box-fleet",
@@ -5500,7 +5515,7 @@
       "finding": "The provisioning fork path runs configure, host and skill commands inside the hydration window",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1145
       },
       "workstream": "box-fleet",
@@ -5525,7 +5540,7 @@
       "finding": "The fleet wave runs first inside the same 800 s sweep invocation as the C10 draft backstop, version retention, the origin…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1146
       },
       "workstream": "box-fleet",
@@ -5550,7 +5565,7 @@
       "finding": "A desktop-only wake writes `state: 'starting'` without `last_active_at`, so a box asleep for hours still looks stale to the…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1147
       },
       "workstream": "box-fleet",
@@ -5575,7 +5590,7 @@
       "finding": "Template warm step is manual and unrecorded",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1148
       },
       "workstream": "box-fleet",
@@ -5600,7 +5615,7 @@
       "finding": "Two Node runtimes and a C++ toolchain ride every fork's snapshot",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1149
       },
       "workstream": "box-fleet",
@@ -5625,7 +5640,7 @@
       "finding": "`systemctl restart hermes-host` (a oneshot with a 420 s timeout) inside sync can eat the 600 s budget",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1150
       },
       "workstream": "box-fleet",
@@ -5650,7 +5665,7 @@
       "finding": "Alternate environments drift: two hand-copied `HERMES_REF`s (template and template-macos; `release.sh` greps the first),…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1151
       },
       "workstream": "box-fleet",
@@ -5675,7 +5690,7 @@
       "finding": "Provisioning never passes a box size and records none",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1152
       },
       "workstream": "box-fleet",
@@ -5700,7 +5715,7 @@
       "finding": "Sync jobs enrol only boxes in `ready` or `stopped` at job creation, but the control plane writes `starting` and `stopping`…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1153
       },
       "workstream": "box-fleet",
@@ -5725,7 +5740,7 @@
       "finding": "Two voices answer every owner burst, warm or cold",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1154
       },
       "workstream": "cognitive-architecture",
@@ -5752,7 +5767,7 @@
       "finding": "Every new inbound cancels the in-flight reply",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1155
       },
       "workstream": "cognitive-architecture",
@@ -5781,7 +5796,7 @@
       "finding": "The agent describes instead of does",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1156
       },
       "workstream": "cognitive-architecture",
@@ -5815,7 +5830,7 @@
       "finding": "Canonical for opening the `agent_runs` row at `createRun`",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1157
       },
       "workstream": "cognitive-architecture",
@@ -5828,9 +5843,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "5048eab1 bound imessage completion latency"
+      ],
+      "notes": "agent_runs row now inserted at createRun in flush.ts:1373-1381 (iMessage lane) as relay.ts already did; calendar sweep still inserts post-delivery."
     },
     {
       "id": "CA-05",
@@ -5840,7 +5857,7 @@
       "finding": "No progress reporting for long tasks on iMessage",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1158
       },
       "workstream": "cognitive-architecture",
@@ -5868,7 +5885,7 @@
       "finding": "Canonical: MEM-06/MEM-16. Prompt budget unbounded",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1159
       },
       "workstream": "cognitive-architecture",
@@ -5894,7 +5911,7 @@
       "finding": "Web chat is a different agent from iMessage",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1160
       },
       "workstream": "cognitive-architecture",
@@ -5923,7 +5940,7 @@
       "finding": "Canonical: §5 (LAT-02/03/05/09/10)",
       "review_verification": "confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1161
       },
       "workstream": "cognitive-architecture",
@@ -5952,7 +5969,7 @@
       "finding": "\"Own number\" is provisioned as optional and is a commercial dependency, not a code path",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1162
       },
       "workstream": "product-commercial",
@@ -5981,7 +5998,7 @@
       "finding": "Tier-1 contacts run inside the owner's `air-main` session with no identity or tier in the prompt",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1163
       },
       "workstream": "cognitive-architecture",
@@ -6008,7 +6025,7 @@
       "finding": "A Hermes run failure after the drain silently loses the burst",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1164
       },
       "workstream": "cognitive-architecture",
@@ -6021,9 +6038,13 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "1ce2547c",
+        "5048eab1 bound imessage completion latency",
+        "d27f1323"
+      ],
+      "notes": "createRun and stream run under beforeDeadline; failures notifyFirstRetry, stopRun, write agent_runs outcome first_response_failed (flush.ts:1476) and retry via carryMessages+rescheduleWithBackoff."
     },
     {
       "id": "CA-22",
@@ -6033,7 +6054,7 @@
       "finding": "Canonical for session coherence (MEM-24, §4, cross-references it)",
       "review_verification": "author-verified",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1165
       },
       "workstream": "cognitive-architecture",
@@ -6063,7 +6084,7 @@
       "finding": "The approval loop is open on both ends",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1166
       },
       "workstream": "cognitive-architecture",
@@ -6092,7 +6113,7 @@
       "finding": "Canonical: WEB-02 for the credit exhaustion and silent fallback",
       "review_verification": "partially confirmed",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1167
       },
       "workstream": "cognitive-architecture",
@@ -6119,7 +6140,7 @@
       "finding": "Four session namespaces, three memory substrates plus the un-indexed context files (§4.1), three instruction channels",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1168
       },
       "workstream": "cognitive-architecture",
@@ -6146,7 +6167,7 @@
       "finding": "Canonical: TC-12. Learning plane dark end to end",
       "review_verification": "cross-reference",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1169
       },
       "workstream": "cognitive-architecture",
@@ -6171,7 +6192,7 @@
       "finding": "Canonical: BOX-08 for the service",
       "review_verification": "cross-reference",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1170
       },
       "workstream": "template-steering",
@@ -6198,7 +6219,7 @@
       "finding": "Proactive behaviour incoherent: no Brief (ARCHITECTURE promises \"Hermes cron → delivery\"), three…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1171
       },
       "workstream": "cognitive-architecture",
@@ -6223,7 +6244,7 @@
       "finding": "Onboarding hand-off relies on the model guessing the user is \"brand new\"",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1172
       },
       "workstream": "cognitive-architecture",
@@ -6248,7 +6269,7 @@
       "finding": "Email policy diverges from SECURITY-DECISIONS (doc: tier-1 auto-sends; code: holds tier 1 as a draft) and runs without owner…",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1173
       },
       "workstream": "cognitive-architecture",
@@ -6275,7 +6296,7 @@
       "finding": "Stop/cancel semantics differ on every surface",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1174
       },
       "workstream": "cognitive-architecture",
@@ -6302,7 +6323,7 @@
       "finding": "Canonical: TC-01. `completed` on stream end in all three lanes, including the calendar sweep and email",
       "review_verification": "cross-reference",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1175
       },
       "workstream": "cognitive-architecture",
@@ -6327,7 +6348,7 @@
       "finding": "Cancelled and failed iMessage turns leave no `agent_runs` receipt",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1176
       },
       "workstream": "cognitive-architecture",
@@ -6341,9 +6362,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "5048eab1 bound imessage completion latency"
+      ],
+      "notes": "Row opens at createRun and failures write first_response_failed; cancelled turns still carryMessages+return with no terminal receipt (flush.ts:1577)."
     },
     {
       "id": "CA-25",
@@ -6353,7 +6376,7 @@
       "finding": "History replay drops every tool row",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1177
       },
       "workstream": "cognitive-architecture",
@@ -6378,7 +6401,7 @@
       "finding": "The Speed & Intelligence knob is inert on the default family (canonical: LAT-18, §5)",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1178
       },
       "workstream": "cognitive-architecture",
@@ -6405,7 +6428,7 @@
       "finding": "Schedule and email deliveries bypass the renderer (canonical for the schedule lane: TC-24, §7)",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1179
       },
       "workstream": "cognitive-architecture",
@@ -6430,7 +6453,7 @@
       "finding": "Calendar sync is an LLM cron turn every 15 minutes on every awake box",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1180
       },
       "workstream": "template-steering",
@@ -6455,7 +6478,7 @@
       "finding": "The eval suite runs against the founder's live production box",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1181
       },
       "workstream": "evals",
@@ -6480,7 +6503,7 @@
       "finding": "First-run experience: `handleOnboarding` consumes the first inbound as the claim and the second as the OTP, neither reaches the…",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1182
       },
       "workstream": "cognitive-architecture",
@@ -6505,7 +6528,7 @@
       "finding": "Owner-tier email is an unconditional autoresponder",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1183
       },
       "workstream": "cognitive-architecture",
@@ -6532,7 +6555,7 @@
       "finding": "Feature sprawl outpaces the core",
       "review_verification": "reviewer-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1184
       },
       "workstream": "product-freeze",
@@ -6559,7 +6582,7 @@
       "finding": "`run_approval` is one decision kind carrying four unrelated semantics",
       "review_verification": "critic-evidenced",
       "source": {
-        "path": "review.md",
+        "path": "docs/review-2026-09/astra-ultra-review.md",
         "line": 1185
       },
       "workstream": "cognitive-architecture",
@@ -6577,6 +6600,1816 @@
       "implementation_status": "not_verified",
       "evidence": [],
       "notes": ""
+    },
+    {
+      "id": "R-P0-1",
+      "severity": "P0",
+      "effort": "S",
+      "area": "security",
+      "finding": "Muse wallet send skips the decision gate and has no cap",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 446
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-1"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-2",
+      "severity": "P0",
+      "effort": "S",
+      "area": "security",
+      "finding": "Open-run timestamp inference makes a tier-1 run owner-initiated",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 447
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-2"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-3",
+      "severity": "P0",
+      "effort": "S",
+      "area": "security",
+      "finding": "send-file admits `~/.hermes/.env`; not tier-gated",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 448
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-3"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-4",
+      "severity": "P0",
+      "effort": "S",
+      "area": "supply chain",
+      "finding": "`next` critical advisory; no audit gate",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 449
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-4"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-5",
+      "severity": "P0",
+      "effort": "M",
+      "area": "data",
+      "finding": "Migrations to prod with no shadow apply; six tables without RLS",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 450
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-5"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-6",
+      "severity": "P0",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Workers deploy untested on Node 20 from a cancellable job",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 451
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-6"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-CI-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Run Python suites; fail on skips",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 452
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Coverage floor and per-module floors",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 453
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Lint ignores for built bundles; `--max-warnings 0`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 454
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "One Node version",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 455
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-05",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "shellcheck and systemd-analyze",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 456
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Run or remove the 72 skill tests",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 457
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "create-kit typechecks all components",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 458
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Typecheck and test the eval harness",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 459
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-09",
+      "severity": "P2",
+      "effort": "M",
+      "area": "ci",
+      "finding": "Test collection time",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 460
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-10",
+      "severity": "P3",
+      "effort": "S",
+      "area": "process",
+      "finding": "Stale PRs",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 461
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "tests",
+      "finding": "One filter-recording Supabase fake",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 462
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Fail on unexpected stderr",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 463
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "tests",
+      "finding": "Route tests for the three untested webhooks",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 464
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Test auth primitives and `resolveTrustTier` directly",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 465
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Fix the millisecond flake; fake timers",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 466
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-06",
+      "severity": "P2",
+      "effort": "M",
+      "area": "tests",
+      "finding": "Route tests for money and secrets",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 467
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Cron and internal route tests; shared cron guard",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 468
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Replace source-grep tests",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 469
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-09",
+      "severity": "P2",
+      "effort": "M",
+      "area": "tests",
+      "finding": "Smoke tests for the five largest client files",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 470
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-10",
+      "severity": "P3",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Mitosis probe: test or delete",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 471
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Report `gating_expected`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 472
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Execution on tool events only; negation-aware `must_not_do`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 473
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Honesty regex and judge; `must_cite`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 474
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Remove routing freebies",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 475
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Scorer tests in CI; fix lexical sort",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 476
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-06",
+      "severity": "P1",
+      "effort": "M",
+      "area": "evals",
+      "finding": "`suite.json`, committed raw results, seed script, per-case sessions",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 477
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-07",
+      "severity": "P1",
+      "effort": "L",
+      "area": "evals",
+      "finding": "Contract tier on PRs; model tier nightly",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 478
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-08",
+      "severity": "P1",
+      "effort": "M",
+      "area": "evals",
+      "finding": "iMessage-path eval with first-bubble timing",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 479
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Run K-cases; hold-out set",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 480
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-10",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Explain the routing jump",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 481
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Memory recall eval",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 482
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-12",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Create suite report writer and grader fixes",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 483
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-13",
+      "severity": "P3",
+      "effort": "S",
+      "area": "evals",
+      "finding": "model-bench validity",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 484
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "latency",
+      "finding": "Stream non-OpenAI SSE",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 485
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "latency",
+      "finding": "Served-model headers",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 486
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "latency",
+      "finding": "Drop the per-turn transcript replay",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 487
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "latency",
+      "finding": "One Spectrum sender per turn",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 488
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-05",
+      "severity": "P2",
+      "effort": "S",
+      "area": "latency",
+      "finding": "Health-driven wake waiter",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 489
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "cost",
+      "finding": "Cron cadence from measured work",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 490
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "latency",
+      "finding": "Mini-app bundle sizes",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 491
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-08",
+      "severity": "P2",
+      "effort": "M",
+      "area": "latency",
+      "finding": "Fast-lane ack policy from data",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 492
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-09",
+      "severity": "P3",
+      "effort": "S",
+      "area": "dx",
+      "finding": "Test wall time (= R-CI-09)",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 493
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "alias",
+      "canonical_ids": [
+        "R-CI-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "trust",
+      "finding": "Tier to Hermes; contact sessions",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 494
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Mixed-sender bursts take minimum trust",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 495
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "trust",
+      "finding": "Hermes approval mode: decide and enforce",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 496
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Nonce on the Create bridge",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 497
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Approval relay failures surface",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 498
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Authenticate the Onairos relay",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 499
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Revocable sessions",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 500
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Token off the command line",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 501
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "`COMMAND_LANE_KEY` required",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 502
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-10",
+      "severity": "P3",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Admin operator identity",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 503
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "process",
+      "finding": "Re-sync the ledger",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 504
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "process",
+      "finding": "IDs in commits, enforced",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 505
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "ffbbf0b70eee7bedbda051ec21dd05473b82e789 scripts/check-commit-ids.sh + commit-ids job in ci.yml"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "process",
+      "finding": "This document in the ledger",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 506
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-04",
+      "severity": "P2",
+      "effort": "S",
+      "area": "process",
+      "finding": "Freeze: honour or lift",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 507
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-05",
+      "severity": "P3",
+      "effort": "S",
+      "area": "process",
+      "finding": "README claims",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 508
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "shape",
+      "finding": "One auth module",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 509
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "shape",
+      "finding": "Env validated at boot",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 510
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "shape",
+      "finding": "Schema on every body",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 511
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "shape",
+      "finding": "A logger with required ids",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 512
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-05",
+      "severity": "P1",
+      "effort": "M",
+      "area": "shape",
+      "finding": "Check every Supabase write",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 513
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-06",
+      "severity": "P1",
+      "effort": "S",
+      "area": "shape",
+      "finding": "The swallowed promises that matter; run idempotency",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 514
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-07",
+      "severity": "P2",
+      "effort": "M",
+      "area": "shape",
+      "finding": "Thin the route handlers",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 515
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "shape",
+      "finding": "One box seam",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 516
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-09",
+      "severity": "P3",
+      "effort": "S",
+      "area": "shape",
+      "finding": "Enforce learning contracts",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 517
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
     }
-  ]
+  ],
+  "work_order": "review.md",
+  "resynced_commit": "0f80c2c44b89c5650c27874d980d207db6ac08a3"
 }
