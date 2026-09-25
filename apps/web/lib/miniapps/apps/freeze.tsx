@@ -128,7 +128,7 @@ function renderStudio(
   const body = `<div id="freeze-studio" style="width:100%;flex:1;display:flex;flex-direction:column" data-payload="${esc(
     JSON.stringify(payload)
   )}"></div>
-<script src="/creator-os/freeze-studio.js" defer></script>
+<script src="/creator-os/freeze-studio.js" type="module"></script>
 <noscript><section class="panel"><p class="muted">Freeze needs JavaScript — open the card on your phone.</p></section></noscript>`;
   return studioShellHtml(
     renderShell({

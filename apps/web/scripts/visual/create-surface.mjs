@@ -112,7 +112,7 @@ const SHELL_HTML = `<!doctype html>
 <style>${SHELL_CSS}</style>
 </head><body>
 <main><div id="create" data-payload='{"slug":"alice-tour"}'></div></main>
-<script src="/creator-os/create.js"></script>
+<script src="/creator-os/create.js" type="module"></script>
 </body></html>`;
 
 function serve() {
