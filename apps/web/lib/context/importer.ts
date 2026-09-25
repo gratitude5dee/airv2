@@ -122,7 +122,6 @@ export class ImportInputError extends Error {}
  * endpoint must not trust the client. */
 export function isSafeImportPath(path: string): boolean {
   if (!path || path.length > MAX_PATH_LENGTH) return false;
-  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(path)) return false;
   if (path.startsWith("/") || path.startsWith("~")) return false;
   if (path.includes("\\")) return false;

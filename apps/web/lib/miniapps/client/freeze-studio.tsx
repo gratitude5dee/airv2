@@ -747,7 +747,6 @@ function VideoFramePick(props: {
           {thumbs.length > 0 && (
             <div className="fz-strip">
               {thumbs.map((t, i) => (
-                // eslint-disable-next-line @next/next/no-img-element -- jpeg data URLs, not optimizable
                 <img
                   key={i}
                   src={t.src}
