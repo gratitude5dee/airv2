@@ -9,7 +9,7 @@
  * GET /v1/models still exposes tier names only (C2).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 interface EntitlementRow {
   speed_tier: string;
@@ -32,28 +32,15 @@ const entitlement: { row: EntitlementRow } = {
   },
 };
 
+const db = new FakeSupabase();
+db.tables["boxes"] = [{ user_id: "user-1", gateway_token: "token-1" }];
+
 /** Rows written into agent_runs by the gateway's meter() — the router trace. */
-const meteredRows: Record<string, unknown>[] = [];
+const metered = () =>
+  db.inserts.filter((i) => i.table === "agent_runs").map((i) => i.row);
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: (table: string) => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () =>
-              table === "boxes"
-                ? { data: { user_id: "user-1" } }
-                : { data: entitlement.row },
-          }),
-        }),
-        insert: async (row: Record<string, unknown>) => {
-          if (table === "agent_runs") meteredRows.push(row);
-          return { error: null };
-        },
-      }),
-      rpc: async () => ({ error: null }),
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.client(),
 }));
 // meter() runs through next/server's after(), which needs a request scope
 // vitest doesn't provide — run the work inline instead.
@@ -79,6 +66,7 @@ vi.mock("@/lib/env", () => ({
 import { NextRequest } from "next/server";
 import { GET, POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 function completionRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest("https://air.test/api/gateway/v1/chat/completions", {
     method: "POST",
@@ -121,6 +109,7 @@ async function upstreamBody(
 
 function setEntitlement(patch: Partial<EntitlementRow>): void {
   entitlement.row = { ...entitlement.row, ...patch };
+  db.tables["entitlements"] = [{ user_id: "user-1", ...entitlement.row }];
 }
 
 describe("gateway reasoning_effort gating (P1-7)", () => {
@@ -229,6 +218,7 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
       String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)
     ) as Record<string, unknown>;
     expect(secondBody["reasoning_effort"]).toBe("none");
+    expectLog(/gateway\ responses\ unsupported,\ using\ chat\/completions/, { level: "warn" });
   });
 
   it("round-trips reasoning items so tool turns resume the model's thought", async () => {
@@ -505,7 +495,7 @@ describe("gateway task-router traces", () => {
   beforeEach(() => {
     setEntitlement({ speed_tier: "balanced", model_family: "openai" });
     process.env["MODEL_REASONING_FAST"] = "low";
-    meteredRows.length = 0;
+    db.inserts.length = 0;
   });
   afterEach(() => {
     delete process.env["MODEL_REASONING_FAST"];
@@ -543,8 +533,8 @@ describe("gateway task-router traces", () => {
     expect(response.status).toBe(200);
     // meter() is queued via after(); the mock runs it as a floating promise.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(meteredRows.length).toBe(1);
-    return meteredRows[0]!;
+    expect(metered().length).toBe(1);
+    return metered()[0]!;
   }
 
   it("stamps the resolved tier, requested model, effort, and latency", async () => {
@@ -628,6 +618,7 @@ describe("gateway model families", () => {
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
   });
 
   it("retries GMI when a streamed turn contains reasoning but no user-visible answer", async () => {
@@ -662,6 +653,7 @@ describe("gateway model families", () => {
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
     expect(await response.text()).toContain("Here is the answer.");
+    expectLog(/gateway\ response\ missing\ user\-visible\ work/, { level: "warn" });
   });
 
   it("falls back from a timed-out GMI Astra turn to GLM on the same GMI key", async () => {
@@ -702,6 +694,7 @@ describe("gateway model families", () => {
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
+    expectLog(/gateway\ gmi\ astra\ latency\ fallback/, { level: "warn" });
   });
 
   it("falls back from an Astra compatibility 400 to GLM on the same GMI key", async () => {
@@ -748,6 +741,7 @@ describe("gateway model families", () => {
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
+    expectLog(/gateway\ gmi\ astra\ compatibility\ fallback/, { level: "warn" });
   });
 
   it("falls back to GLM when Astra times out after opening its stream", async () => {
@@ -789,6 +783,7 @@ describe("gateway model families", () => {
       "zai-org/GLM-5.3-Flash",
     ]);
     expect(await response.text()).toContain("Recovered answer");
+    expectLog(/gateway\ gmi\ astra\ latency\ fallback/, { level: "warn" });
   });
 
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
@@ -856,6 +851,7 @@ describe("gateway model families", () => {
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect((await response.json()).choices[0].message.content).toBe("hi");
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
   });
 
   it("falls back to OpenAI after a retryable GMI error repeats", async () => {
@@ -896,6 +892,8 @@ describe("gateway model families", () => {
       "https://upstream.test/v1/responses"
     );
     expect((await response.json()).choices[0].message.content).toBe("hi");
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
   });
 
   it("resolves the gmi family per tier on chat/completions", async () => {
@@ -1037,7 +1035,7 @@ describe("gateway model families", () => {
 
   it("meters gmi usage at the served GLM slug's rates", async () => {
     setEntitlement({ speed_tier: "fast", model_family: "gmi", gmi_model: null });
-    meteredRows.length = 0;
+    db.inserts.length = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -1059,7 +1057,7 @@ describe("gateway model families", () => {
     });
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const row = meteredRows[0]!;
+    const row = metered()[0]!;
     expect(row["model_family"]).toBe("gmi");
     expect(row["model"]).toBe("zai-org/GLM-5.3-Flash");
     expect(row["reasoning_effort"]).toBe("low");
@@ -1101,6 +1099,8 @@ describe("gateway model families", () => {
     expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
       "https://upstream.test/v1/responses"
     );
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
   });
 
   it("falls back to the OpenAI tier model when OpenRouter answers empty", async () => {
@@ -1155,7 +1155,7 @@ describe("gateway model families", () => {
 
   it("attributes a fallback turn to OpenAI and records the requested family", async () => {
     setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
-    meteredRows.length = 0;
+    db.inserts.length = 0;
     const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
       String(url).includes("openrouter")
         ? new Response("no endpoints found", { status: 404 })
@@ -1183,7 +1183,7 @@ describe("gateway model families", () => {
     });
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const row = meteredRows[0]!;
+    const row = metered()[0]!;
     expect(row["model_family"]).toBe("openai");
     expect(row["model"]).toBe("gpt-5.6-luna");
     expect(row["fallback_from"]).toBe("openrouter");
@@ -1191,11 +1191,14 @@ describe("gateway model families", () => {
     expect(row["completion_tokens"]).toBe(5);
     // OpenAI tier rates, not the family's — the cost follows what served.
     expect(row["cost_usd"]).toBeCloseTo((3 * 0.4 + 5 * 2.4) / 1_000_000, 12);
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expectLog(/gateway\ provider\ fallback/, { level: "warn" });
   });
 
   it("leaves fallback_from null when the requested family serves", async () => {
     setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
-    meteredRows.length = 0;
+    db.inserts.length = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -1213,7 +1216,7 @@ describe("gateway model families", () => {
     });
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const row = meteredRows[0]!;
+    const row = metered()[0]!;
     expect(row["model_family"]).toBe("openrouter");
     expect(row["fallback_from"]).toBeNull();
   });
@@ -1254,6 +1257,9 @@ describe("gateway model families", () => {
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(await (response as Response).text()).toContain('"content":"hi"');
+    expectLog(/gateway\ response\ missing\ user\-visible\ work/, { level: "warn" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expectLog(/gateway\ provider\ fallback/, { level: "warn" });
   });
 
   it("replays a streamed OpenRouter answer that has content", async () => {

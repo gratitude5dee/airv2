@@ -1,20 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { makeApp } from "@/app/mini/loader-test-utils";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
-const boxes = vi.hoisted(() => ({ userId: null as string | null }));
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: (table: string) => {
-        if (table !== "boxes") throw new Error(`unexpected table ${table}`);
-        return {
-          select: () => ({
-            eq: () => ({ maybeSingle: async () => ({ data: boxes.userId ? { user_id: boxes.userId } : null }) }),
-          }),
-        };
-      },
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.client(),
 }));
 
 const app = makeApp({
@@ -96,8 +86,9 @@ function payloadOf(): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  db.reset();
   vi.clearAllMocks();
-  boxes.userId = "user-alice";
+  db.tables["boxes"] = [{ user_id: "user-alice", gateway_token: "gw-1" }];
   publish.createDraft.mockResolvedValue({ id: app.id, slug: app.slug, name: "Promo", created: false });
   publish.ownedApp.mockResolvedValue(app);
   versions.getVersion.mockResolvedValue(version);
@@ -106,7 +97,7 @@ beforeEach(() => {
 
 describe("POST /api/miniapps/publish", () => {
   it("401 without a gateway token", async () => {
-    boxes.userId = null;
+    db.tables["boxes"] = [];
     expect((await POST(post({ appname: "promo", name: "Promo" }))).status).toBe(401);
     expect(publish.createDraft).not.toHaveBeenCalled();
   });

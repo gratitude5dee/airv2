@@ -1,52 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const sessionUserIdMock = vi.fn<() => string | undefined>(() => "user-1");
 vi.mock("@/lib/auth/user", () => ({
   sessionUserId: (...args: unknown[]) => sessionUserIdMock(...(args as [])),
 }));
 
-const serviceClientMock = vi.fn();
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => serviceClientMock(),
+  serviceClient: () => db.client(),
 }));
 
 import { POST } from "./route";
 
-interface SupabaseStub {
-  inserts: Record<string, unknown>[];
-  client: unknown;
+import { expectLog } from "@/lib/testing/expectLog";
+// The route rate-limits by counting this user's stt rows newer than an hour
+// ago, so seeding N fresh rows simulates N recent clips.
+function seedSttEvents(count: number): void {
+  const now = new Date().toISOString();
+  db.tables["cost_events"] = Array.from({ length: count }, (_, i) => ({
+    id: `stt-${i}`,
+    user_id: "user-1",
+    kind: "stt",
+    occurred_at: now,
+    amount_cents: 1,
+    ref: null,
+  }));
 }
 
-function supabaseStub(
-  sttCountLastHour: number,
-  opts: { countError?: string; insertError?: string } = {}
-): SupabaseStub {
-  const inserts: Record<string, unknown>[] = [];
-  const client = {
-    from: (table: string) => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            gte: () =>
-              Promise.resolve(
-                opts.countError
-                  ? { count: null, error: { message: opts.countError } }
-                  : { count: sttCountLastHour, error: null }
-              ),
-          }),
-        }),
-      }),
-      insert: (row: Record<string, unknown>) => {
-        if (opts.insertError) {
-          return Promise.resolve({ error: { message: opts.insertError } });
-        }
-        inserts.push({ table, ...row });
-        return Promise.resolve({ error: null });
-      },
-    }),
-  };
-  return { inserts, client };
+function costInserts(): Record<string, unknown>[] {
+  return db.inserts
+    .filter((i) => i.table === "cost_events")
+    .map((i) => i.row);
 }
 
 function audioRequest(
@@ -74,8 +60,7 @@ describe("POST /api/voice/transcribe", () => {
     delete process.env["STT_MODEL"];
     delete process.env["STT_COST_CENTS_PER_MIN"];
     sessionUserIdMock.mockReturnValue("user-1");
-    const stub = supabaseStub(0);
-    serviceClientMock.mockReturnValue(stub.client);
+    db.reset();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ text: "hello world" })))
@@ -120,29 +105,26 @@ describe("POST /api/voice/transcribe", () => {
   });
 
   it("rate limits the 21st clip in an hour", async () => {
-    serviceClientMock.mockReturnValue(supabaseStub(20).client);
+    seedSttEvents(20);
     const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: "rate_limited" });
   });
 
   it("fails closed when the rate-limit count is unavailable", async () => {
-    serviceClientMock.mockReturnValue(
-      supabaseStub(0, { countError: "connection refused" }).client
-    );
+    db.opErrors["cost_events:select"] = { message: "connection refused" };
     const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
     expect(res.status).toBe(500);
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).not.toHaveBeenCalled();
+    expectLog(/stt\ rate\-limit\ count\ failed/, { level: "error" });
   });
 
   it("logs a rejected cost-event insert instead of dropping it silently", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    serviceClientMock.mockReturnValue(
-      supabaseStub(0, {
-        insertError: 'violates check constraint "cost_events_kind_check"',
-      }).client
-    );
+    db.opErrors["cost_events:insert"] = {
+      message: 'violates check constraint "cost_events_kind_check"',
+    };
     const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
     expect(res.status).toBe(200);
     expect(errorSpy).toHaveBeenCalledWith(
@@ -156,31 +138,27 @@ describe("POST /api/voice/transcribe", () => {
       "fetch",
       vi.fn(async () => new Response("upstream broke", { status: 500 }))
     );
-    const stub = supabaseStub(0);
-    serviceClientMock.mockReturnValue(stub.client);
     const res = await POST(audioRequest(clip("audio/webm"), { durationS: 10 }));
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "transcription_failed" });
-    expect(stub.inserts).toHaveLength(0);
+    expect(costInserts()).toHaveLength(0);
+    expectLog(/stt\ failed/, { level: "error" });
   });
 
   it("transcribes a valid clip and records one stt cost event", async () => {
-    const stub = supabaseStub(3);
-    serviceClientMock.mockReturnValue(stub.client);
+    seedSttEvents(3);
     const res = await POST(
       audioRequest(clip("audio/webm;codecs=opus"), { durationS: 90 })
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ text: "hello world", duration_s: 90 });
-    expect(stub.inserts).toEqual([
-      {
-        table: "cost_events",
-        user_id: "user-1",
-        kind: "stt",
-        amount_cents: 2,
-        ref: null,
-      },
-    ]);
+    expect(costInserts()).toHaveLength(1);
+    expect(costInserts()[0]).toMatchObject({
+      user_id: "user-1",
+      kind: "stt",
+      amount_cents: 2,
+      ref: null,
+    });
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://stt.test/v1/audio/transcriptions");

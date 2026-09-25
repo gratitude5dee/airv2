@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ConnectedAccount } from "../composio/client";
+import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 
 const listAllConnectedAccounts = vi.fn(
   async (): Promise<ConnectedAccount[]> => []
@@ -38,35 +39,23 @@ vi.mock("../provisioning/connectors", () => ({
 
 import { syncConnections } from "./manage";
 
-interface Row {
-  id: string;
-  toolkit: string;
-  status: string;
-  external_account_id: string | null;
+const db = new FakeSupabase();
+
+function makeSupabase(rows: Row[]): SupabaseClient {
+  // user_id is the tenant filter the code narrows on — it must exist on the
+  // seeded rows or the blind read silently returns everything.
+  db.tables["connections"] = rows.map((row) => ({
+    user_id: "user-1",
+    provider: "composio",
+    ...row,
+  }));
+  return db.client();
 }
 
-function makeSupabase(rows: Row[]) {
-  const updates: { id: string; patch: Record<string, unknown> }[] = [];
-  const supabase = {
-    from: (table: string) => {
-      expect(table).toBe("connections");
-      return {
-        select: () => ({
-          eq: () => Promise.resolve({ data: rows, error: null }),
-        }),
-        update: (patch: Record<string, unknown>) => ({
-          eq: (_col: string, id: string) => {
-            updates.push({ id, patch });
-            return Promise.resolve({ data: null, error: null });
-          },
-        }),
-      };
-    },
-  } as unknown as SupabaseClient;
-  return { supabase, updates };
-}
+const updates = () => db.updates.filter((u) => u.table === "connections");
 
 beforeEach(() => {
+  db.reset();
   listAllConnectedAccounts.mockClear();
   installComposioMcp.mockClear();
   writeConnectedToolsFile.mockClear();
@@ -77,7 +66,7 @@ describe("syncConnections", () => {
     listAllConnectedAccounts.mockResolvedValueOnce([
       { id: "ca_new", toolkit: { slug: "gmail" }, status: "ACTIVE" },
     ]);
-    const { supabase, updates } = makeSupabase([
+    const supabase = makeSupabase([
       {
         id: "row-1",
         toolkit: "gmail",
@@ -86,11 +75,12 @@ describe("syncConnections", () => {
       },
     ]);
     await syncConnections(supabase, "user-1");
-    expect(updates).toHaveLength(1);
-    expect(updates[0]?.patch).toMatchObject({
+    expect(updates()).toHaveLength(1);
+    expect(updates()[0]?.patch).toMatchObject({
       status: "active",
       external_account_id: "ca_new",
     });
+    expect(db.rows("connections")[0]?.["status"]).toBe("active");
     expect(installComposioMcp).toHaveBeenCalledTimes(1);
     expect(writeConnectedToolsFile).toHaveBeenCalledTimes(1);
   });
@@ -99,7 +89,7 @@ describe("syncConnections", () => {
     listAllConnectedAccounts.mockResolvedValueOnce([
       { id: "ca_dead", toolkit: { slug: "gmail" }, status: "EXPIRED" },
     ]);
-    const { supabase, updates } = makeSupabase([
+    const supabase = makeSupabase([
       {
         id: "row-1",
         toolkit: "gmail",
@@ -108,14 +98,17 @@ describe("syncConnections", () => {
       },
     ]);
     await syncConnections(supabase, "user-1");
-    expect(updates).toEqual([{ id: "row-1", patch: { status: "revoked" } }]);
+    expect(updates()).toEqual([
+      { table: "connections", patch: { status: "revoked" } },
+    ]);
+    expect(db.rows("connections")[0]?.["status"]).toBe("revoked");
     expect(installComposioMcp).not.toHaveBeenCalled();
     expect(writeConnectedToolsFile).toHaveBeenCalledTimes(1);
   });
 
   it("marks a pending row revoked when its account no longer exists", async () => {
     listAllConnectedAccounts.mockResolvedValueOnce([]);
-    const { supabase, updates } = makeSupabase([
+    const supabase = makeSupabase([
       {
         id: "row-1",
         toolkit: "gmail",
@@ -124,14 +117,16 @@ describe("syncConnections", () => {
       },
     ]);
     await syncConnections(supabase, "user-1");
-    expect(updates).toEqual([{ id: "row-1", patch: { status: "revoked" } }]);
+    expect(updates()).toEqual([
+      { table: "connections", patch: { status: "revoked" } },
+    ]);
   });
 
   it("keeps a pending row whose Connect Link is still INITIATED", async () => {
     listAllConnectedAccounts.mockResolvedValueOnce([
       { id: "ca_live", toolkit: { slug: "gmail" }, status: "INITIATED" },
     ]);
-    const { supabase, updates } = makeSupabase([
+    const supabase = makeSupabase([
       {
         id: "row-1",
         toolkit: "gmail",
@@ -140,14 +135,14 @@ describe("syncConnections", () => {
       },
     ]);
     await syncConnections(supabase, "user-1");
-    expect(updates).toHaveLength(0);
+    expect(updates()).toHaveLength(0);
   });
 
   it("keeps a pending row whose Connect Link is still INITIALIZING", async () => {
     listAllConnectedAccounts.mockResolvedValueOnce([
       { id: "ca_fresh", toolkit: { slug: "gmail" }, status: "INITIALIZING" },
     ]);
-    const { supabase, updates } = makeSupabase([
+    const supabase = makeSupabase([
       {
         id: "row-1",
         toolkit: "gmail",
@@ -156,7 +151,7 @@ describe("syncConnections", () => {
       },
     ]);
     await syncConnections(supabase, "user-1");
-    expect(updates).toHaveLength(0);
+    expect(updates()).toHaveLength(0);
     expect(writeConnectedToolsFile).not.toHaveBeenCalled();
   });
 
@@ -164,7 +159,7 @@ describe("syncConnections", () => {
     listAllConnectedAccounts.mockResolvedValueOnce([
       { id: "ca_x", toolkit: { slug: "gmail" }, status: "FAILED" },
     ]);
-    const { supabase, updates } = makeSupabase([
+    const supabase = makeSupabase([
       {
         id: "row-1",
         toolkit: "gmail",
@@ -173,7 +168,7 @@ describe("syncConnections", () => {
       },
     ]);
     await syncConnections(supabase, "user-1");
-    expect(updates).toHaveLength(0);
+    expect(updates()).toHaveLength(0);
     expect(installComposioMcp).not.toHaveBeenCalled();
   });
 });

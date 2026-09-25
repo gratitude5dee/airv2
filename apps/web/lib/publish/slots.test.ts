@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   capHeadroom,
   claimSlot,
@@ -7,6 +7,11 @@ import {
   zonedTimeToInstant,
   type ContentSlot,
 } from "./slots";
+
+const db = new FakeSupabase();
+const supabase = db.client();
+
+beforeEach(() => db.reset());
 
 describe("zonedTimeToInstant", () => {
   it("resolves a wall-clock time before a DST transition", () => {
@@ -48,35 +53,6 @@ describe("isValidTimeZone", () => {
   });
 });
 
-/** Chainable stub standing in for the supabase update path: records the
- * filters applied and returns rows only when the CAS filters would match. */
-function updateStub(rowsWhenMatched: unknown[], matches: (filters: Record<string, unknown>) => boolean) {
-  const filters: Record<string, unknown> = {};
-  const calls: { update?: Record<string, unknown> } = {};
-  const chain = {
-    update(values: Record<string, unknown>) {
-      calls.update = values;
-      return chain;
-    },
-    eq(column: string, value: unknown) {
-      filters[`eq:${column}`] = value;
-      return chain;
-    },
-    lt(column: string, value: unknown) {
-      filters[`lt:${column}`] = value;
-      return chain;
-    },
-    async select() {
-      return { data: matches(filters) ? rowsWhenMatched : [] };
-    },
-  };
-  return {
-    client: { from: () => chain } as unknown as SupabaseClient,
-    filters,
-    calls,
-  };
-}
-
 const slot = (overrides: Partial<ContentSlot> = {}): ContentSlot => ({
   id: "slot-1",
   user_id: "user-1",
@@ -100,59 +76,99 @@ const slot = (overrides: Partial<ContentSlot> = {}): ContentSlot => ({
 
 describe("claimSlot", () => {
   it("wins only while attempt_epoch is unchanged — one winner per race", async () => {
-    const won = updateStub([slot()], (filters) => filters["eq:attempt_epoch"] === 3);
-    expect(await claimSlot(won.client, slot())).toBeDefined();
-    expect(won.calls.update).toMatchObject({
+    db.tables["content_slots"] = [{ ...slot() }];
+    expect(await claimSlot(supabase, slot())).toBeDefined();
+    expect(db.updates[0]?.patch).toMatchObject({
       status: "publishing",
       attempt_epoch: 4,
     });
 
-    const lost = updateStub([], () => false);
-    expect(await claimSlot(lost.client, slot())).toBeUndefined();
+    // The loser sees a row whose epoch already moved — the CAS misses.
+    db.tables["content_slots"] = [{ ...slot({ attempt_epoch: 4 }) }];
+    expect(await claimSlot(supabase, slot())).toBeUndefined();
   });
 
   it("filters scheduled slots on status", async () => {
-    const stub = updateStub([slot()], () => true);
-    await claimSlot(stub.client, slot());
-    expect(stub.filters["eq:status"]).toBe("scheduled");
-    expect(stub.filters["lt:claimed_at"]).toBeUndefined();
+    db.tables["content_slots"] = [{ ...slot() }];
+    await claimSlot(supabase, slot());
+    db.expectQuery({
+      table: "content_slots",
+      filters: { id: "slot-1", status: "scheduled", attempt_epoch: 3 },
+    });
+    expect(
+      db.filters.some((f) => f.op === "lt" && f.column === "claimed_at")
+    ).toBe(false);
   });
 
   it("reclaims a publishing slot only past the claim TTL", async () => {
-    const stub = updateStub([slot({ status: "publishing" })], () => true);
-    await claimSlot(stub.client, slot({ status: "publishing" }));
-    expect(stub.filters["eq:status"]).toBe("publishing");
-    expect(typeof stub.filters["lt:claimed_at"]).toBe("string");
+    const stale = new Date(Date.now() - 3_600_000).toISOString();
+    db.tables["content_slots"] = [
+      { ...slot({ status: "publishing", claimed_at: stale }) },
+    ];
+    const claimed = await claimSlot(
+      supabase,
+      slot({ status: "publishing", claimed_at: stale })
+    );
+    expect(claimed).toBeDefined();
+    db.expectQuery({
+      table: "content_slots",
+      filters: { id: "slot-1", status: "publishing" },
+    });
+    expect(
+      db.filters.some((f) => f.op === "lt" && f.column === "claimed_at")
+    ).toBe(true);
+
+    // A claim still inside its TTL does not match the CAS.
+    db.reset();
+    db.tables["content_slots"] = [
+      {
+        ...slot({
+          status: "publishing",
+          claimed_at: new Date().toISOString(),
+        }),
+      },
+    ];
+    expect(
+      await claimSlot(supabase, slot({ status: "publishing" }))
+    ).toBeUndefined();
   });
 });
 
-function selectStub(rows: Array<{ published_at: string }>) {
-  const chain = {
-    select: () => chain,
-    eq: () => chain,
-    gte: () => chain,
-    order: async () => ({ data: rows }),
-  };
-  return { from: () => chain } as unknown as SupabaseClient;
+function seedPublishes(publishedAts: string[]) {
+  db.tables["content_slots"] = publishedAts.map((published_at, index) => ({
+    ...slot({
+      id: `slot-pub-${index}`,
+      user_id: "u",
+      account_ref: "a",
+      status: "published",
+      published_at,
+    }),
+  }));
 }
 
 describe("capHeadroom", () => {
   it("allows under the cap", async () => {
-    const client = selectStub([
-      { published_at: "2026-08-10T01:00:00.000Z" },
-    ]);
-    const headroom = await capHeadroom(client, "u", "instagram", "a", 25);
-    expect(headroom).toMatchObject({ allowed: true, used: 1, cap: 25, nextWindow: null });
+    seedPublishes([new Date(Date.now() - 3_600_000).toISOString()]);
+    const headroom = await capHeadroom(supabase, "u", "instagram", "a", 25);
+    expect(headroom).toMatchObject({
+      allowed: true,
+      used: 1,
+      cap: 25,
+      nextWindow: null,
+    });
   });
 
   it("defers at the cap with the next window from the oldest publish", async () => {
-    const rows = Array.from({ length: 25 }, (_, index) => ({
-      published_at: new Date(
-        Date.UTC(2026, 7, 10, 7, 40) + index * 60_000
-      ).toISOString(),
-    }));
-    const headroom = await capHeadroom(selectStub(rows), "u", "instagram", "a", 25);
+    const oldest = Date.now() - 23 * 3_600_000;
+    seedPublishes(
+      Array.from({ length: 25 }, (_, index) =>
+        new Date(oldest + index * 60_000).toISOString()
+      )
+    );
+    const headroom = await capHeadroom(supabase, "u", "instagram", "a", 25);
     expect(headroom.allowed).toBe(false);
-    expect(headroom.nextWindow).toBe("2026-08-11T07:40:00.000Z");
+    expect(headroom.nextWindow).toBe(
+      new Date(oldest + 24 * 3_600_000).toISOString()
+    );
   });
 });

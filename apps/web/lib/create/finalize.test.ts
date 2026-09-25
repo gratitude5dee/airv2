@@ -4,6 +4,7 @@ import { makeApp } from "@/app/mini/loader-test-utils";
 import type { IntakeRow } from "./intake";
 import type { VersionRow } from "./versions";
 
+import { expectLog } from "../testing/expectLog";
 /* ------------------------------------------------------------ fake db */
 
 interface Call {
@@ -431,6 +432,7 @@ describe("onPublishApproved", () => {
     expect(write?.filters).toEqual({ id: "intake-1" });
     expect(JSON.stringify(write?.values)).not.toContain("https://");
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(expect.anything(), "mirror", "user-alice", "alice-promo:failed");
+    expectLog(/mirror\ failed\ after\ publish\ approval/, { level: "error" });
   });
 
   it("a V11 decision (no production payload) is left alone", async () => {

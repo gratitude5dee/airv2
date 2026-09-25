@@ -7,14 +7,18 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import type { IngestStatus } from "@/lib/imessage/ingest";
 import type { ResolutionView } from "@/lib/imessage/archiveResolutions";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const boxFiles = new Map<string, string>();
-const mirrorRows: Array<Record<string, unknown>> = [];
+const db = new FakeSupabase();
+const mirrorRows = (): Array<Record<string, unknown>> =>
+  db.upserts
+    .filter((upsert) => upsert.table === "onboarding_status_mirror")
+    .map((upsert) => upsert.row);
 const logs: string[] = [];
 const ensureBoxAwake = vi.fn(async () => ({ boxId: "box-1", target: "target-1" }));
 const readIngestStatus = vi.fn<() => Promise<IngestStatus>>();
@@ -114,43 +118,35 @@ function seedBox(pending: ResolutionView["unresolved"], resolutions: ResolutionV
 }
 const resolutionReads = () => readFile.mock.calls.filter(([, path]) => path === PENDING_RESOLUTION_PATH || path === RESOLUTIONS_PATH);
 
-function thenable(rows: unknown, single: unknown = null) {
-  const builder: Record<string, unknown> = {};
-  const chain = () => builder;
-  for (const method of ["select", "eq", "is", "order", "limit", "gte", "lt"]) {
-    builder[method] = vi.fn(chain);
-  }
-  builder["upsert"] = vi.fn((row: Record<string, unknown>) => {
-    mirrorRows.push(row);
-    return builder;
-  });
-  builder["maybeSingle"] = async () => ({ data: single, error: null });
-  builder["then"] = (resolve: (value: { data: unknown; count: number }) => unknown) =>
-    Promise.resolve({ data: rows, count: 0 }).then(resolve);
-  return builder;
-}
-
 function makeCtx(options: { boxState?: string; mirror?: Record<string, unknown> | null } = {}) {
-  const tables: Record<string, ReturnType<typeof thenable>> = {
-    users: thenable([], { username: "grat" }),
-    agent_addresses: thenable([], { address: "grat@wzrd.tech" }),
-    connections: thenable([]),
-    vault_items: thenable([]),
-    entitlements: thenable([], { speed_tier: "balanced" }),
-    plugin_tokens: thenable([]),
-    boxes: thenable([], {
+  db.tables["users"] = [{ id: "user-1", username: "grat" }];
+  db.tables["agent_addresses"] = [
+    {
+      user_id: "user-1",
+      address: "grat@wzrd.tech",
+      is_primary: true,
+      retired_at: null,
+    },
+  ];
+  db.tables["entitlements"] = [
+    { user_id: "user-1", speed_tier: "balanced" },
+  ];
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
       provider_box_id: "box-1",
       environment: "ubuntu",
       control_url: null,
       control_token: null,
       state: options.boxState ?? "ready",
-    }),
-    onboarding_status_mirror: thenable([], options.mirror ?? null),
-    imessage_destinations: thenable([], null),
-  };
+    },
+  ];
+  db.tables["onboarding_status_mirror"] = options.mirror
+    ? [{ user_id: "user-1", ...options.mirror }]
+    : [];
   return {
     request: new NextRequest("https://mini.example/mini/setup?step=imessage"),
-    supabase: { from: (table: string) => tables[table] ?? thenable([]) } as unknown as SupabaseClient,
+    supabase: db.client(),
     app: makeApp({ slug: "setup", kind: "input" }),
     session: { userId: "user-1", resourceId: "default", role: "owner" },
     basePath: "/mini/setup",
@@ -167,7 +163,7 @@ const freshMirror = (pending: number) => ({
 });
 
 function expectNoContentLeaked() {
-  const persisted = JSON.stringify(mirrorRows) + JSON.stringify(boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "") + logs.join("\n");
+  const persisted = JSON.stringify(mirrorRows()) + JSON.stringify(boxFiles.get(".hermes/miniapps/onboarding/state.json") ?? "") + logs.join("\n");
   for (const canary of CANARIES) expect(persisted).not.toContain(canary);
 }
 
@@ -178,8 +174,8 @@ const spies = [
 ];
 
 afterEach(() => {
+  db.reset();
   boxFiles.clear();
-  mirrorRows.length = 0;
   logs.length = 0;
   ensureBoxAwake.mockClear();
   readFile.mockClear();
@@ -212,8 +208,8 @@ describe("onboarding iMessage step: legacy label resolution", () => {
     expect(body).toContain('<option value="">Keep as its own thread</option>');
     expect(body).toContain(`<input type="hidden" name="label_1" value="${LABEL_B}"><select name="id_1"><option value="">No match — keep as its own thread</option></select>`);
     expect(body).toContain("rerun the upload command");
-    expect(mirrorRows.length).toBeGreaterThan(0);
-    expect(JSON.stringify(mirrorRows)).toContain('"pending_resolutions":2');
+    expect(mirrorRows().length).toBeGreaterThan(0);
+    expect(JSON.stringify(mirrorRows())).toContain('"pending_resolutions":2');
     expectNoContentLeaked();
   });
 
@@ -236,7 +232,7 @@ describe("onboarding iMessage step: legacy label resolution", () => {
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(body).toContain("Book club &lt;friends&gt; &amp; co");
     expect(body).not.toContain("computer is asleep");
-    expect(mirrorRows).toEqual([]);
+    expect(mirrorRows()).toEqual([]);
     expectNoContentLeaked();
   });
 
@@ -247,7 +243,7 @@ describe("onboarding iMessage step: legacy label resolution", () => {
     expect(body).toContain("<strong>1</strong> earlier chat label needs");
     expect(body).toContain("computer is asleep");
     expect(body).not.toContain("resolve_threads");
-    expect(mirrorRows).toEqual([]);
+    expect(mirrorRows()).toEqual([]);
   });
 
   it("resolve_threads posts every decision through saveResolutions untouched and reports the remaining count", async () => {

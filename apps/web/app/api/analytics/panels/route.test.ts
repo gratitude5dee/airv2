@@ -1,25 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const state = vi.hoisted(() => ({
-  userId: "user-1" as string | null,
+  fake: null as unknown as FakeSupabase,
 }));
 const allPanels = vi.hoisted(() => vi.fn());
 const windowStart = vi.hoisted(() => vi.fn(() => "2026-08-01T00:00:00.000Z"));
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: () => {
-      const chain: Record<string, (...args: unknown[]) => unknown> = {};
-      chain["select"] = () => chain;
-      chain["eq"] = () => chain;
-      chain["maybeSingle"] = async () => ({
-        data: state.userId ? { user_id: state.userId } : null,
-        error: null,
-      });
-      return chain;
-    },
-  }),
+  serviceClient: () => state.fake.client(),
 }));
 vi.mock("@/lib/miniapps/analytics", () => ({ allPanels, windowStart }));
 
@@ -36,7 +26,8 @@ function analyticsRequest(token: string | null = "box-token"): NextRequest {
 }
 
 beforeEach(() => {
-  state.userId = "user-1";
+  state.fake = new FakeSupabase();
+  state.fake.tables["boxes"] = [{ user_id: "user-1", gateway_token: "box-token" }];
   vi.mocked(mockedAllPanels).mockReset();
   vi.mocked(mockedWindowStart).mockClear();
   vi.mocked(mockedAllPanels).mockResolvedValue([
@@ -62,7 +53,7 @@ describe("GET /api/analytics/panels", () => {
     ["missing bearer token", null],
     ["unknown bearer token", "unknown-token"],
   ])("rejects %s", async (_label, token) => {
-    if (token === "unknown-token") state.userId = null;
+    if (token === "unknown-token") state.fake.tables["boxes"] = [];
     const response = await GET(analyticsRequest(token));
     expect(response.status).toBe(401);
   });

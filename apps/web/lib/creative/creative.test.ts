@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   AMBIGUOUS_COMMAND_LINE,
   parseExplicitGenerationCommand,
@@ -1259,22 +1260,20 @@ describe("iMessage lane fallthrough", () => {
       sendText: vi.fn().mockResolvedValue(undefined),
       getAttachment: vi.fn(),
     }) as unknown as Parameters<typeof maybeRunCreativeLane>[1];
-  const supabaseNever = () =>
-    ({
-      from: () => {
-        throw new Error("no database access expected");
-      },
-      storage: {
-        from: () => {
-          throw new Error("no storage access expected");
-        },
-      },
-    }) as unknown as Parameters<typeof maybeRunCreativeLane>[0];
+  // Tripwire: the fallthrough lane must never touch the database or storage.
+  const neverDb = () => {
+    const d = new FakeSupabase();
+    d.resolve = () => {
+      throw new Error("no database access expected");
+    };
+    return d;
+  };
 
   it("ordinary prose falls through to Hermes with zero creative work", async () => {
+    const db = neverDb();
     const s = sender();
     const handled = await maybeRunCreativeLane(
-      supabaseNever(),
+      db.client(),
       s,
       { spaceId: "sp", userId: "u1", phone: "+1555" },
       "what's on my calendar today?\n[attachment:att-1]",
@@ -1282,12 +1281,15 @@ describe("iMessage lane fallthrough", () => {
     expect(handled).toBe(false);
     expect(s.sendText).not.toHaveBeenCalled();
     expect(s.getAttachment).not.toHaveBeenCalled();
+    expect(db.queries).toHaveLength(0);
+    expect(db.storageCalls).toHaveLength(0);
   });
 
   it("mixed commands get the deterministic line with no provider work", async () => {
+    const db = neverDb();
     const s = sender();
     const handled = await maybeRunCreativeLane(
-      supabaseNever(),
+      db.client(),
       s,
       { spaceId: "sp", userId: "u1", phone: "+1555" },
       "/imagine or /animate a fox",
@@ -1299,22 +1301,22 @@ describe("iMessage lane fallthrough", () => {
       AMBIGUOUS_COMMAND_LINE,
     );
     expect(s.getAttachment).not.toHaveBeenCalled();
+    expect(db.queries).toHaveLength(0);
+    expect(db.storageCalls).toHaveLength(0);
   });
 });
 
 describe("underDailyLimit", () => {
-  const supabaseCounting = (count: number) =>
-    ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            gte: () => ({
-              in: () => Promise.resolve({ count, error: null }),
-            }),
-          }),
-        }),
-      }),
-    }) as unknown as Parameters<typeof underDailyLimit>[0];
+  const supabaseCounting = (count: number, userId = "u1") => {
+    const db = new FakeSupabase();
+    db.tables["creative_jobs"] = Array.from({ length: count }, (_, i) => ({
+      id: `job-${i}`,
+      user_id: userId,
+      status: "delivered",
+      created_at: new Date().toISOString(),
+    }));
+    return db.client();
+  };
 
   it("allows generation under the cap and blocks at it", async () => {
     vi.stubEnv("CREATIVE_DAILY_LIMIT", "20");
@@ -1327,8 +1329,8 @@ describe("underDailyLimit", () => {
     const ownerId = "7c8fc08b-bea7-48b4-a9da-ce3390968eb1";
     vi.stubEnv("CREATIVE_DAILY_LIMIT", "20");
     vi.stubEnv("CREATIVE_UNLIMITED_USER_IDS", ownerId);
-    expect(await underDailyLimit(supabaseCounting(35), ownerId)).toBe(true);
-    expect(await underDailyLimit(supabaseCounting(35), "other-user")).toBe(false);
+    expect(await underDailyLimit(supabaseCounting(35, ownerId), ownerId)).toBe(true);
+    expect(await underDailyLimit(supabaseCounting(35, "other-user"), "other-user")).toBe(false);
   });
 });
 

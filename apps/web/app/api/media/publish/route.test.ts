@@ -4,19 +4,11 @@
  * a box bypasses both by publishing directly.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { user_id: "user-1" } }),
-          }),
-        }),
-      }),
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.client(),
 }));
 vi.mock("@/lib/security/limits", () => ({
   uploadRateLimited: vi.fn(async () => false),
@@ -70,7 +62,9 @@ function publishRequest(body: Record<string, unknown>): NextRequest {
 
 describe("media_publish rate limit + ops ledger (P1-10)", () => {
   beforeEach(() => {
+    db.reset();
     vi.clearAllMocks();
+    db.tables["boxes"] = [{ user_id: "user-1", gateway_token: "token-1" }];
   });
 
   it("returns 429 before touching the box when rate limited", async () => {

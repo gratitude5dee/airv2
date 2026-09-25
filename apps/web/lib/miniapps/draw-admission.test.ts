@@ -4,7 +4,7 @@
  * PNG structural validation, and the animation status projection.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   admitDrawGeneration,
   animateDrawJob,
@@ -28,66 +28,24 @@ vi.mock("../creative/jobs", () => ({
 }));
 vi.mock("../creative/run", () => ({ executeCreativeJob: vi.fn() }));
 
-type Call = { table: string; method: string; args: unknown[] };
-type Result = { data?: unknown; error?: { message: string } | null };
-interface Query {
-  table: string;
-  op: string | null;
-  args: unknown[];
-  returning: boolean;
-  calls: Call[];
-}
-
-/** Same chain-mock contract as the location tests — see
- * location-store.test.ts for the mechanics. */
-function fakeDb(resolve: (q: Query) => Result) {
-  const calls: Call[] = [];
-  const OPS = new Set(["select", "insert", "update", "delete", "upsert"]);
-  const chain = (
-    table: string,
-    op: string | null,
-    args: unknown[],
-    returning: boolean
-  ): unknown => {
-    const self = new Proxy(() => {}, {
-      get(_t, prop) {
-        if (prop === "then" || prop === "catch" || prop === "finally") {
-          const p = Promise.resolve().then(() =>
-            resolve({ table, op, args, returning, calls })
-          );
-          if (prop === "then") return p.then.bind(p);
-          if (prop === "catch") return p.catch.bind(p);
-          return p.finally.bind(p);
-        }
-        const method = String(prop);
-        return (...a: unknown[]) => {
-          calls.push({ table, method, args: a });
-          if (OPS.has(method) && !op) return chain(table, method, a, returning);
-          if (method === "select" && op && op !== "select") {
-            return chain(table, op, args, true);
-          }
-          return chain(table, op, args, returning);
-        };
-      },
-      apply() {
-        return chain(table, op, args, returning);
-      },
-    });
-    return self;
-  };
-  const supabase = {
-    from: (table: string) => chain(table, null, [], false),
-    storage: {
-      from: () => ({
-        upload: async () => ({ error: null }),
-        createSignedUrl: async () => ({
-          data: { signedUrl: "https://signed/asset.mp4" },
-        }),
-        download: async () => ({ data: new Blob([Buffer.alloc(4)]) }),
-      }),
-    },
-  } as unknown as SupabaseClient;
-  return { supabase, calls };
+/** Seed the tables draw.ts touches; the session fixture is cloned so the
+ * fake's in-place updates never corrupt the caller's snapshot. */
+function makeDb(options?: {
+  session?: DrawSession;
+  assets?: Record<string, unknown>[];
+  jobs?: Record<string, unknown>[];
+  events?: Record<string, unknown>[];
+}) {
+  const db = new FakeSupabase();
+  db.tables["draw_sessions"] = options?.session
+    ? [{ ...options.session }]
+    : [];
+  db.tables["creative_assets"] = (options?.assets ?? []).map((a) => ({
+    ...a,
+  }));
+  db.tables["draw_events"] = (options?.events ?? []).map((e) => ({ ...e }));
+  db.tables["creative_jobs"] = (options?.jobs ?? []).map((j) => ({ ...j }));
+  return db;
 }
 
 function drawSession(over: Partial<DrawSession> = {}): DrawSession {
@@ -122,14 +80,12 @@ beforeEach(() => {
 
 describe("admitDrawGeneration", () => {
   it("rejects a caller-supplied asset owned by another user", async () => {
-    const { supabase } = fakeDb((q) => {
-      if (q.table === "creative_assets" && q.op === "select") {
-        return { data: null }; // not found under this owner
-      }
-      return { data: null, error: null };
+    const db = makeDb({
+      session: drawSession(),
+      assets: [{ id: "asset-not-mine", user_id: "someone-else" }],
     });
     await expect(
-      admitDrawGeneration(supabase, drawSession(), {
+      admitDrawGeneration(db.client(), drawSession(), {
         prompt: "a fox",
         mode: "fast",
         inputAssetId: "asset-not-mine",
@@ -144,17 +100,15 @@ describe("admitDrawGeneration", () => {
       id: "job-busy",
       status: "polling",
     } as never);
-    const { supabase } = fakeDb((q) => {
-      // Claim attempts always lose — slot never empties.
-      if (q.op === "update" && q.returning) return { data: [] };
-      return { data: null, error: null };
-    });
+    const session = drawSession({ active_job_id: "job-busy" });
+    const db = makeDb({ session });
+    const supabase = db.client();
     await expect(
-      admitDrawGeneration(
-        supabase,
-        drawSession({ active_job_id: "job-busy" }),
-        { prompt: "a fox", mode: "fast", channel: "web" }
-      )
+      admitDrawGeneration(supabase, session, {
+        prompt: "a fox",
+        mode: "fast",
+        channel: "web",
+      })
     ).rejects.toMatchObject({ code: "JOB_ALREADY_ACTIVE" });
     expect(vi.mocked(updateCreativeJob)).toHaveBeenCalledWith(
       supabase,
@@ -168,34 +122,30 @@ describe("admitDrawGeneration", () => {
       id: "job-dead",
       status: "failed",
     } as never);
-    const { supabase, calls } = fakeDb((q) => {
-      if (q.op === "update" && q.returning) {
-        // First claim loses (stale pointer), second wins after release.
-        const releases = q.calls.filter(
-          (c) =>
-            c.method === "update" &&
-            (c.args[0] as { active_job_id?: string | null }).active_job_id ===
-              null
-        ).length;
-        return { data: releases ? [{ id: "sess-1" }] : [] };
-      }
-      if (q.op === "select" && q.args[0] === "sequence") {
-        return { data: null }; // event feed empty → sequence 0
-      }
-      return { data: null, error: null };
+    const session = drawSession({ active_job_id: "job-dead" });
+    const db = makeDb({ session });
+    const job = await admitDrawGeneration(db.client(), session, {
+      prompt: "a fox",
+      mode: "fast",
+      channel: "web",
     });
-    const job = await admitDrawGeneration(
-      supabase,
-      drawSession({ active_job_id: "job-dead" }),
-      { prompt: "a fox", mode: "fast", channel: "web" }
-    );
     expect(job.id).toBe("job-new");
-    const claimPayloads = calls
-      .filter((c) => c.method === "update")
-      .map((c) => c.args[0] as Record<string, unknown>)
+    const claimPayloads = db.updates
+      .filter((u) => u.table === "draw_sessions")
+      .map((u) => u.patch)
       .filter((p) => p["active_job_id"] === "job-new");
     expect(claimPayloads.length).toBeGreaterThan(0);
     expect(claimPayloads[0]).toMatchObject({ latest_job_id: "job-new" });
+    // The stale pointer was cleared by its own id before the retry landed.
+    const release = db.filters.find(
+      (f) =>
+        f.table === "draw_sessions" &&
+        f.op === "eq" &&
+        f.column === "active_job_id" &&
+        f.value === "job-dead"
+    );
+    expect(release).toBeDefined();
+    expect(db.rows("draw_sessions")[0]?.["active_job_id"]).toBe("job-new");
   });
 });
 
@@ -206,6 +156,7 @@ describe("animateDrawJob", () => {
     status: "delivered",
     output_asset_id: "a-src",
   };
+  const sourceAsset = { id: "a-src", user_id: "u1", storage_key: "k" };
 
   it("runs under the in-flight lease and releases it by identity", async () => {
     vi.mocked(getCreativeJob).mockResolvedValue(source as never);
@@ -214,33 +165,32 @@ describe("animateDrawJob", () => {
       line: "ok",
       asset: { id: "a-out" },
     } as never);
-    const { supabase, calls } = fakeDb((q) => {
-      if (q.op === "update" && q.returning) {
-        return { data: [{ id: "sess-1" }] };
-      }
-      if (q.table === "creative_assets") return { data: { storage_key: "k" } };
-      if (q.op === "select" && q.args[0] === "sequence") return { data: null };
-      return { data: null, error: null };
-    });
-    const { job } = await animateDrawJob(supabase, drawSession(), "job-src");
+    const db = makeDb({ session: drawSession(), assets: [sourceAsset] });
+    const { job } = await animateDrawJob(
+      db.client(),
+      drawSession(),
+      "job-src"
+    );
     expect(job.id).toBe("job-new");
     // The zap job holds the slot while executing…
-    const claim = calls
-      .filter((c) => c.method === "update")
-      .map((c) => c.args[0] as Record<string, unknown>)
+    const claim = db.updates
+      .filter((u) => u.table === "draw_sessions")
+      .map((u) => u.patch)
       .find((p) => p["active_job_id"] === "job-new");
     // …but an animation never anchors the revision strip.
     expect(claim).toMatchObject({ active_job_id: "job-new" });
     expect(claim).not.toHaveProperty("latest_job_id");
     expect(vi.mocked(executeCreativeJob)).toHaveBeenCalledOnce();
     // …and the finally-path clears only its own claim.
-    const releaseEq = calls.find(
-      (c) =>
-        c.method === "eq" &&
-        c.args[0] === "active_job_id" &&
-        c.args[1] === "job-new"
+    const releaseEq = db.filters.find(
+      (f) =>
+        f.table === "draw_sessions" &&
+        f.op === "eq" &&
+        f.column === "active_job_id" &&
+        f.value === "job-new"
     );
     expect(releaseEq).toBeDefined();
+    expect(db.rows("draw_sessions")[0]?.["active_job_id"]).toBeNull();
   });
 
   it("refuses when the slot is held — no paid render runs", async () => {
@@ -248,17 +198,11 @@ describe("animateDrawJob", () => {
       if (id === "job-src") return source as never;
       return { id, status: "submitted" } as never;
     });
-    const { supabase } = fakeDb((q) => {
-      if (q.op === "update" && q.returning) return { data: [] };
-      if (q.table === "creative_assets") return { data: { storage_key: "k" } };
-      return { data: null, error: null };
-    });
+    const session = drawSession({ active_job_id: "job-busy" });
+    const db = makeDb({ session, assets: [sourceAsset] });
+    const supabase = db.client();
     await expect(
-      animateDrawJob(
-        supabase,
-        drawSession({ active_job_id: "job-busy" }),
-        "job-src"
-      )
+      animateDrawJob(supabase, session, "job-src")
     ).rejects.toMatchObject({ code: "JOB_ALREADY_ACTIVE" });
     expect(vi.mocked(executeCreativeJob)).not.toHaveBeenCalled();
     expect(vi.mocked(updateCreativeJob)).toHaveBeenCalledWith(
@@ -271,23 +215,15 @@ describe("animateDrawJob", () => {
 
 describe("runDrawJob", () => {
   it("fails the job instead of submitting when the edit source can't be signed", async () => {
-    const { supabase, calls } = fakeDb((q) => {
-      if (q.table === "creative_assets" && q.op === "select") {
-        return { data: null }; // the referenced asset row is gone
-      }
-      return { data: null, error: null };
-    });
+    const session = drawSession({ active_job_id: "job-1" });
+    const db = makeDb({ session, assets: [] });
+    const supabase = db.client();
     const job = {
       id: "job-1",
       draw_mode: "fast",
       input_asset_id: "asset-gone",
     } as never;
-    const result = await runDrawJob(
-      supabase,
-      drawSession(),
-      job,
-      "make it pop"
-    );
+    const result = await runDrawJob(supabase, session, job, "make it pop");
     expect(result.status).toBe("failed");
     // A paid submit without the edit source would render an unrelated
     // text-to-image — it must never reach executeCreativeJob.
@@ -297,21 +233,16 @@ describe("runDrawJob", () => {
       "job-1",
       expect.objectContaining({ status: "failed" })
     );
-    const event = calls.find(
-      (c) => c.table === "draw_events" && c.method === "insert"
-    );
-    expect(event?.args[0]).toMatchObject({
+    const event = db.inserts.find((i) => i.table === "draw_events");
+    expect(event?.row).toMatchObject({
       kind: "state",
       state: "failed",
       error_code: "PARENT_EXPIRED",
     });
-    const release = calls.find(
-      (c) =>
-        c.table === "draw_sessions" &&
-        c.method === "update" &&
-        "active_job_id" in (c.args[0] as object)
+    const release = db.updates.find(
+      (u) => u.table === "draw_sessions" && "active_job_id" in u.patch
     );
-    expect(release?.args[0]).toMatchObject({
+    expect(release?.patch).toMatchObject({
       active_job_id: null,
       latest_job_id: "job-1",
     });
@@ -335,41 +266,27 @@ describe("storeDrawUpload", () => {
   const PNG_1PX =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-  function uploadDb() {
-    return fakeDb((q) => {
-      if (q.table === "creative_assets" && q.op === "select") {
-        return { data: null };
-      }
-      if (q.table === "creative_assets" && q.op === "insert") {
-        return {
-          data: {
-            id: "a1",
-            user_id: "u1",
-            box_asset_id: "draw:x",
-            sha256: "s",
-            ext: "png",
-            kind: "png",
-            bytes: 68,
-            storage_key: "k",
-          },
-        };
-      }
-      return { data: null, error: null };
-    });
-  }
-
   it("accepts a structurally valid PNG", async () => {
-    const { supabase } = uploadDb();
+    const db = makeDb();
     const asset = await storeDrawUpload(
-      supabase,
+      db.client(),
       "u1",
       `data:image/png;base64,${PNG_1PX}`
     );
-    expect(asset?.id).toBe("a1");
+    expect(asset?.id).toBeTruthy();
+    expect(asset).toMatchObject({
+      user_id: "u1",
+      ext: "png",
+      kind: "png",
+      bytes: Buffer.from(PNG_1PX, "base64").byteLength,
+    });
+    const upload = db.storageCalls.find((c) => c.method === "upload");
+    expect(upload?.bucket).toBe("creative-assets");
   });
 
   it("rejects magic-byte-only junk, truncation, and non-PNG types", async () => {
-    const { supabase } = uploadDb();
+    const db = makeDb();
+    const supabase = db.client();
     // 4-byte PNG magic followed by junk — the old check accepted this.
     const junk = Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47]),
@@ -398,51 +315,37 @@ describe("storeDrawUpload", () => {
 });
 
 describe("drawStatus", () => {
+  const zapJob = {
+    id: "zap-9",
+    user_id: "u1",
+    draw_session_id: "sess-1",
+    mode: "zap",
+    status: "delivered",
+    output_asset_id: "a-9",
+    created_at: "2026-09-11T00:00:00.000Z",
+  };
+
   it("projects the latest delivered zap job as latestAnimation", async () => {
-    const { supabase } = fakeDb((q) => {
-      if (q.table === "draw_events") return { data: [] };
-      if (
-        q.table === "creative_jobs" &&
-        q.op === "select" &&
-        q.args[0] === "id, output_asset_id, created_at"
-      ) {
-        return {
-          data: {
-            id: "zap-9",
-            output_asset_id: "a-9",
-            created_at: "2026-09-11T00:00:00.000Z",
-          },
-        };
-      }
-      if (q.table === "creative_jobs" && q.op === "select") {
-        return { data: [] };
-      }
-      if (q.table === "creative_assets") return { data: { storage_key: "k" } };
-      return { data: null, error: null };
+    const db = makeDb({
+      session: drawSession(),
+      jobs: [zapJob],
+      assets: [{ id: "a-9", user_id: "u1", storage_key: "k" }],
     });
-    const status = await drawStatus(supabase, drawSession(), -1);
+    const status = await drawStatus(db.client(), drawSession(), -1);
     expect(status.latestAnimation).toEqual({
       jobId: "zap-9",
-      url: "https://signed/asset.mp4",
+      url: "https://storage.test/creative-assets/k",
       createdAt: "2026-09-11T00:00:00.000Z",
     });
   });
 
   it("returns null when the delivered zap's asset can't be signed", async () => {
-    const { supabase } = fakeDb((q) => {
-      if (q.table === "draw_events") return { data: [] };
-      if (
-        q.table === "creative_jobs" &&
-        q.op === "select" &&
-        q.args[0] === "id, output_asset_id, created_at"
-      ) {
-        return { data: { id: "zap-9", output_asset_id: "a-9" } };
-      }
-      if (q.table === "creative_jobs") return { data: [] };
-      if (q.table === "creative_assets") return { data: null };
-      return { data: null, error: null };
+    const db = makeDb({
+      session: drawSession(),
+      jobs: [zapJob],
+      assets: [],
     });
-    const status = await drawStatus(supabase, drawSession(), -1);
+    const status = await drawStatus(db.client(), drawSession(), -1);
     expect(status.latestAnimation).toBeNull();
   });
 });

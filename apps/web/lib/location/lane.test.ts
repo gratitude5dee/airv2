@@ -22,6 +22,7 @@ vi.mock("./requests", () => ({
 
 import { maybeRunLocationLane } from "./lane";
 
+import { expectLog } from "../testing/expectLog";
 describe("maybeRunLocationLane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,5 +63,6 @@ describe("maybeRunLocationLane", () => {
       { status: "declined" }
     );
     expect(sender.sendText).not.toHaveBeenCalled();
+    expectLog(/find\ my\ request\ card\ unavailable/, { level: "error" });
   });
 });

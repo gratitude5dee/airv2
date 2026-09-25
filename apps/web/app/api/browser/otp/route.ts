@@ -163,14 +163,14 @@ async function pollOtp(
   if (status !== "resolved") {
     return { status };
   }
-  // Exactly-once pop: whoever wins this update owns the code; it is wiped in
-  // the same write so a retry or second caller can never re-read it.
+  // Exactly-once pop: whoever wins the status CAS owns the code — RETURNING
+  // hands the winner the row's pre-wipe code in the same atomic write, and a
+  // losing concurrent caller sees status already "popped" and gets no row.
   const { data: claimed } = await supabase
     .from("otp_requests")
     .update({
       status: "popped",
       popped_at: new Date().toISOString(),
-      code: null,
     })
     .eq("id", requestId)
     .eq("user_id", userId)
@@ -181,6 +181,11 @@ async function pollOtp(
     return { status: "popped" };
   }
   const code = claimed.code as string;
+  await supabase
+    .from("otp_requests")
+    .update({ code: null })
+    .eq("id", requestId)
+    .eq("status", "popped");
   registerVaultValue(code);
   return { status: "resolved", code };
 }

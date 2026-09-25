@@ -12,60 +12,11 @@ import { encodePayment } from "x402/schemes";
 import type { PaymentPayload } from "x402/types";
 import type { RegistryApp } from "@/lib/miniapps/registry";
 import { makeApp } from "../../app/mini/loader-test-utils";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
-interface PaymentsDb {
-  wallets: Record<string, string | null>;
-  receipts: { jti: string; app_id: string; payer_address: string }[];
-  gateEvents: { app_id: string; kind: string; ref: string | null }[];
-}
+const mockDb = new FakeSupabase();
 
-const db: PaymentsDb = { wallets: {}, receipts: [], gateEvents: [] };
-
-function fakeSupabase() {
-  return {
-    from(table: string) {
-      if (table === "users") {
-        return {
-          select() {
-            return {
-              eq(_col: string, id: string) {
-                return {
-                  async maybeSingle() {
-                    return id in db.wallets
-                      ? { data: { wallet_address: db.wallets[id] }, error: null }
-                      : { data: null, error: null };
-                  },
-                };
-              },
-            };
-          },
-        };
-      }
-      if (table === "x402_receipts") {
-        return {
-          async insert(row: { jti: string; app_id: string; payer_address: string }) {
-            if (db.receipts.some((r) => r.jti === row.jti)) {
-              return { error: { code: "23505", message: "duplicate" } };
-            }
-            db.receipts.push(row);
-            return { error: null };
-          },
-        };
-      }
-      if (table === "miniapp_gate_events") {
-        return {
-          async insert(row: { app_id: string; kind: string; ref: string | null }) {
-            db.gateEvents.push(row);
-            return { error: null };
-          },
-        };
-      }
-      throw new Error(`unexpected table ${table}`);
-    },
-  };
-}
-
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => fakeSupabase() }));
+vi.mock("@/lib/supabase", () => ({ serviceClient: () => mockDb.client() }));
 
 import {
   setFacilitatorForTests,
@@ -136,9 +87,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  db.wallets = { [OWNER]: WALLET };
-  db.receipts = [];
-  db.gateEvents = [];
+  mockDb.reset();
+  mockDb.tables["users"] = [{ id: OWNER, wallet_address: WALLET }];
+  mockDb.uniques["x402_receipts"] = ["jti"];
   setFacilitatorForTests(okFacilitator());
 });
 
@@ -173,12 +124,12 @@ describe("x402 challenge", () => {
   });
 
   it("stays payment-gated with no accepts when the publisher wallet is missing", async () => {
-    db.wallets = { [OWNER]: null };
+    mockDb.tables["users"] = [{ id: OWNER, wallet_address: null }];
     const res = await x402PaymentGate(request(), paidApp());
     expect(res?.status).toBe(402);
     const body = (await res?.json()) as { accepts: unknown[] };
     expect(body.accepts).toHaveLength(0);
-    expect(db.receipts).toHaveLength(0);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(0);
   });
 
   it("renders a pay page for browsers using the same payload", async () => {
@@ -201,10 +152,13 @@ describe("x402 settlement", () => {
       paidApp()
     );
     expect(res?.status).toBe(303);
-    expect(db.receipts).toHaveLength(1);
-    expect(db.receipts[0]?.jti).toBe(NONCE);
-    expect(db.receipts[0]?.payer_address).toBe(PAYER);
-    expect(db.gateEvents.map((e) => e.kind)).toContain("gate_settled");
+    const receipts = mockDb.rows("x402_receipts");
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.["jti"]).toBe(NONCE);
+    expect(receipts[0]?.["payer_address"]).toBe(PAYER);
+    expect(
+      mockDb.rows("miniapp_gate_events").map((e) => e["kind"])
+    ).toContain("gate_settled");
     expect(res?.headers.get("x-payment-response")).toBeTruthy();
     const cookie = res?.cookies.get("mini_paidapp");
     expect(cookie?.value).toBeTruthy();
@@ -247,7 +201,7 @@ describe("x402 settlement", () => {
     expect(body.url).toBe("https://mini.wzrd.tech/paidapp");
     expect(res?.headers.get("x-payment-response")).toBeTruthy();
     expect(res?.cookies.get("mini_paidapp")?.path).toBe("/paidapp");
-    expect(db.receipts).toHaveLength(1);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(1);
   });
 
   it("rejects a replayed payment (same nonce) without minting", async () => {
@@ -256,7 +210,7 @@ describe("x402 settlement", () => {
     expect(first?.status).toBe(303);
     const replay = await x402PaymentGate(request({ "x-payment": header }), paidApp());
     expect(replay?.status).toBe(402);
-    expect(db.receipts).toHaveLength(1);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(1);
     expect(replay?.cookies.get("mini_paidapp")).toBeUndefined();
   });
 
@@ -275,7 +229,7 @@ describe("x402 settlement", () => {
     );
     expect(res?.status).toBe(402);
     expect(facilitator.settle).not.toHaveBeenCalled();
-    expect(db.receipts).toHaveLength(0);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(0);
   });
 
   it("rejects when settlement fails without writing a receipt", async () => {
@@ -293,7 +247,7 @@ describe("x402 settlement", () => {
       paidApp()
     );
     expect(res?.status).toBe(402);
-    expect(db.receipts).toHaveLength(0);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(0);
   });
 
   it("rejects a garbage X-PAYMENT header", async () => {
@@ -302,7 +256,7 @@ describe("x402 settlement", () => {
       paidApp()
     );
     expect(res?.status).toBe(402);
-    expect(db.receipts).toHaveLength(0);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(0);
   });
 
   it("rejects a payment on the wrong network", async () => {
@@ -327,6 +281,6 @@ describe("x402 settlement", () => {
       paidApp()
     );
     expect(res?.status).toBe(402);
-    expect(db.receipts).toHaveLength(0);
+    expect(mockDb.rows("x402_receipts")).toHaveLength(0);
   });
 });

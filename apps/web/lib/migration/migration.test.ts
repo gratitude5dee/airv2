@@ -5,10 +5,11 @@
  * same contract the real functions implement in 0106_compute_migrations.sql.
  */
 import { describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 import { classifyEntry, buildManifest, transferSet } from "./inventory";
 import {
@@ -30,96 +31,54 @@ import { AIR_TRANSFER_SCRIPT_B64, AIR_TRANSFER_SCRIPT_SHA256 } from "./airTransf
 import type { ComputeMigration, MigrationTarget, TargetRole } from "./types";
 import type { TargetCredentials } from "./credentials";
 
+import { expectLog } from "../testing/expectLog";
 // ─── supabase stubs ─────────────────────────────────────────────────────────
 
 interface StubOptions {
   admission?: "open" | "closed";
   rpcErrors?: Record<string, { code: string; message: string }>;
-  tables?: Record<string, unknown>;
+  tables?: Record<string, Record<string, unknown>[]>;
 }
 
 /**
- * An rpc()-only stub: each name maps to a function over in-memory state that
- * mirrors the SQL contract (admission_open returns boolean; admit_operation
- * returns admitted+ids; transition-shaped CAS is exercised separately).
+ * FakeSupabase with the admission RPC contract seeded (admission_open returns
+ * boolean; admit_operation returns admitted+ids; complete_operation returns
+ * completed) plus whatever table rows a test needs.
  */
 function stubSupabase(opts: StubOptions = {}) {
-  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
-  const ops: Array<Record<string, unknown>> = [];
-  const client = {
-    rpc: async (name: string, args: Record<string, unknown>) => {
-      calls.push({ name, args });
-      const failure = opts.rpcErrors?.[name];
-      if (failure) return { data: null, error: failure };
-      if (name === "admission_open") {
-        return { data: opts.admission !== "closed", error: null };
-      }
-      if (name === "admit_operation") {
-        if (opts.admission === "closed") {
-          return { data: { admitted: false }, error: null };
-        }
-        const op = { id: `op-${ops.length}`, ...args };
-        ops.push(op);
-        return {
-          data: { admitted: true, operation_id: op.id, routing_generation: 7 },
-          error: null,
-        };
-      }
-      if (name === "complete_operation") {
-        return { data: { completed: true }, error: null };
-      }
-      return { data: null, error: { code: "PGRST202", message: "unknown rpc" } };
-    },
-    from: (table: string) => {
-      const rows = (opts.tables?.[table] ?? []) as Record<string, unknown>[];
-      const filters: Array<{ col: string; op: string; val: unknown }> = [];
-      const builder: Record<string, unknown> = {
-        select: () => builder,
-        eq: (col: string, val: unknown) => {
-          filters.push({ col, op: "eq", val });
-          return builder;
-        },
-        in: (col: string, val: unknown) => {
-          filters.push({ col, op: "in", val });
-          return builder;
-        },
-        not: (col: string, op: string, val: unknown) => {
-          filters.push({ col, op: `not.${op}`, val });
-          return builder;
-        },
-        is: (col: string, val: unknown) => {
-          filters.push({ col, op: "is", val });
-          return builder;
-        },
-        limit: () => builder,
-        maybeSingle: async () => {
-          const match = rows.filter((r) =>
-            filters.every((f) => {
-              if (f.op === "eq") return r[f.col] === f.val;
-              if (f.op === "not.in")
-                return !(f.val as string[]).includes(r[f.col] as string);
-              return true;
-            })
-          );
-          return { data: match[0] ?? null, error: null };
-        },
-      };
-      return builder;
-    },
-  } as unknown as SupabaseClient;
-  return { client, calls, ops };
+  const db = new FakeSupabase();
+  for (const [table, rows] of Object.entries(opts.tables ?? {})) {
+    db.tables[table] = rows.map((row) => ({ ...row }));
+  }
+  db.rpcResults["admission_open"] = opts.admission !== "closed";
+  let admitted = 0;
+  db.rpcResults["admit_operation"] = () => {
+    if (opts.admission === "closed") return { admitted: false };
+    return {
+      admitted: true,
+      operation_id: `op-${admitted++}`,
+      routing_generation: 7,
+    };
+  };
+  db.rpcResults["complete_operation"] = { completed: true };
+  for (const [fn, error] of Object.entries(opts.rpcErrors ?? {})) {
+    db.rpcErrors[fn] = error;
+  }
+  return { client: db.client(), db };
 }
 
 // ─── admission ───────────────────────────────────────────────────────────────
 
 describe("admission", () => {
   it("admitOperation returns a lease while admission is open", async () => {
-    const { client, ops } = stubSupabase({ admission: "open" });
+    const { client, db } = stubSupabase({ admission: "open" });
     const op = await admitOperation(client, "u1", "turn", "turn:x");
     expect(op.operationId).toBe("op-0");
     expect(op.routingGeneration).toBe(7);
-    expect(ops[0]?.["p_kind"]).toBe("turn");
-    expect(ops[0]?.["p_ttl_seconds"]).toBe(OP_TTL_SECONDS.turn);
+    const args = db.rpcCalls.find((call) => call.fn === "admit_operation")
+      ?.args as Record<string, unknown>;
+    expect(args["p_kind"]).toBe("turn");
+    expect(args["p_ttl_seconds"]).toBe(OP_TTL_SECONDS.turn);
   });
 
   it("admitOperation throws MigrationBusyError under a pause", async () => {
@@ -149,6 +108,7 @@ describe("admission", () => {
     await expect(
       assertAdmissionOpen(client, "u1")
     ).resolves.toBeUndefined();
+    expectLog(/admission\ check\ failed\ open/, { level: "error" });
   });
 
   it("migrationBusyResponse maps only MigrationBusyError to 503+Retry-After", () => {
@@ -171,7 +131,6 @@ describe("exclusion", () => {
         ],
       },
     });
-    // .not("phase","in",...) filter emulation: our stub handles not.in.
     const live = await activeMigrationFor(client, "u1");
     expect(live?.id).toBe("mig-1");
   });
@@ -341,45 +300,28 @@ describe("target role sides", () => {
 
 describe("transition CAS", () => {
   it("writes only while worker token + phase still match", async () => {
-    // Emulate the row: phase precopy, worker w1.
-    const row = { id: "mig-1", phase: "precopy", worker_token: "w1", steps: {} };
-    const client = {
-      from: (table: string) => {
-        expect(table).toBe("compute_migrations");
-        let update: Record<string, unknown> = {};
-        const filters: Record<string, unknown> = {};
-        const builder: Record<string, unknown> = {
-          update: (u: Record<string, unknown>) => {
-            update = u;
-            return builder;
-          },
-          eq: (c: string, v: unknown) => {
-            filters[c] = v;
-            return builder;
-          },
-          in: (c: string, v: string[]) => {
-            filters[c] = { in: v };
-            return builder;
-          },
-          select: async () => {
-            const phaseFilter = filters["phase"] as { in: string[] };
-            const match =
-              filters["id"] === row.id &&
-              filters["worker_token"] === row.worker_token &&
-              phaseFilter.in.includes(row.phase);
-            if (!match) return { data: [] };
-            return { data: [{ ...row, ...update }] };
-          },
-        };
-        return builder;
-      },
-    } as unknown as SupabaseClient;
+    // Seeded row: phase precopy, worker w1 — the CAS filters drive whether
+    // the update lands at all.
+    const db = new FakeSupabase();
+    db.tables["compute_migrations"] = [
+      { id: "mig-1", user_id: "u1", phase: "precopy", worker_token: "w1", steps: {} },
+    ];
+    const client = db.client();
 
     const migration = makeMigration();
     const moved = await transition(client, migration, "w1", ["precopy"], {
       phase: "final_copy",
     });
     expect(moved.phase).toBe("final_copy");
+    db.expectQuery({
+      table: "compute_migrations",
+      filters: [
+        { op: "eq", column: "id", value: "mig-1" },
+        { op: "eq", column: "worker_token", value: "w1" },
+        { op: "in", column: "phase", value: ["precopy"] },
+      ],
+    });
+    expect(db.rows("compute_migrations")[0]?.["phase"]).toBe("final_copy");
 
     // Wrong worker loses the CAS.
     await expect(

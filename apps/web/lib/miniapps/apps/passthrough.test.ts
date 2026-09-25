@@ -9,6 +9,7 @@ import { renderPassthrough } from "./passthrough";
 import { desktopStreamUrlIfUp } from "@/lib/box/desktop";
 import type { MiniAppContext } from "./types";
 
+import { expectLog } from "../../testing/expectLog";
 vi.mock("@/lib/box/desktop", () => ({
   desktopStreamUrlIfUp: vi.fn(),
   desktopStreamOrigin: vi.fn(async () => null),
@@ -87,6 +88,7 @@ describe("renderPassthrough", () => {
     const html = await res.text();
     expect(html).toContain("Couldn't prepare your agent's computer right now");
     expect(html).toContain('href="/computer?view=live&amp;restart=1"');
+    expectLog(/computer\ mini\-app\ failed/, { level: "error" });
   });
 
   it("renders a bounded recovery page while the desktop daemon prepares", async () => {

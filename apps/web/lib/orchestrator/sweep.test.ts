@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { findSweepableBoxes, NULL_DEADLINE_GRACE_MS } from "./sweep";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 interface Row {
   provider_box_id: string;
@@ -10,40 +11,10 @@ interface Row {
   last_active_at: string;
 }
 
-/** In-memory boxes table honoring the exact filters the sweeper uses. */
 function makeSupabase(rows: Row[]): SupabaseClient {
-  return {
-    from: (table: string) => {
-      expect(table).toBe("boxes");
-      let matched = [...rows];
-      const builder = {
-        select: () => builder,
-        lt: (column: string, value: string) => {
-          matched = matched.filter((row) => {
-            const current = row[column as keyof Row];
-            return current !== null && (current as string) < value;
-          });
-          return builder;
-        },
-        is: (column: string, value: null) => {
-          matched = matched.filter(
-            (row) => row[column as keyof Row] === value
-          );
-          return builder;
-        },
-        in: (column: string, values: string[]) => {
-          matched = matched.filter((row) =>
-            values.includes(row[column as keyof Row] as string)
-          );
-          return builder;
-        },
-        then: (
-          resolve: (result: { data: Row[] }) => unknown
-        ): unknown => resolve({ data: matched }),
-      };
-      return builder;
-    },
-  } as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  db.tables["boxes"] = rows.map((row) => ({ ...row }));
+  return db.client();
 }
 
 const NOW = new Date("2026-08-20T12:00:00.000Z");

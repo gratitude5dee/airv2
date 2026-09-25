@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 
@@ -18,58 +19,16 @@ interface DecisionRow {
   payload: Record<string, unknown>;
 }
 
+const db = new FakeSupabase();
 let decisionRow: DecisionRow | null = null;
-const updates: Array<Record<string, unknown>> = [];
+
+const seedDecision = (row: DecisionRow | null) => {
+  decisionRow = row;
+  db.tables["decisions"] = row ? [{ ...row }] : [];
+};
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) => {
-      if (table === "decisions") {
-        const filters: Record<string, unknown> = {};
-        const chain = {
-          select: () => chain,
-          eq: (col: string, value: unknown) => {
-            filters[col] = value;
-            return chain;
-          },
-          maybeSingle: async () => ({
-            data:
-              decisionRow &&
-              decisionRow.id === filters["id"] &&
-              decisionRow.user_id === filters["user_id"]
-                ? decisionRow
-                : null,
-          }),
-          update: (values: Record<string, unknown>) => {
-            updates.push(values);
-            return chain;
-          },
-        };
-        return chain;
-      }
-      if (table === "users") {
-        const chain = {
-          select: () => chain,
-          eq: () => chain,
-          maybeSingle: async () => ({ data: { username: "instinct" } }),
-        };
-        return chain;
-      }
-      if (table === "vault_items") {
-        const chain = {
-          select: () => chain,
-          eq: () => chain,
-          is: () => chain,
-          order: () => chain,
-          maybeSingle: async () => ({ data: null }),
-          then: (resolve: (value: { data: unknown[] }) => unknown) =>
-            resolve({ data: [] }),
-        };
-        return chain;
-      }
-      throw new Error(`fake supabase: unexpected table ${table}`);
-    },
-  }),
+  serviceClient: () => db.client(),
 }));
 
 let sessionUser: string | undefined;
@@ -127,8 +86,9 @@ function postReq(id: string, body: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionUser = undefined;
-  updates.length = 0;
-  decisionRow = {
+  db.reset();
+  db.tables["users"] = [{ id: "user-1", username: "instinct" }];
+  seedDecision({
     id: "dec-1",
     user_id: "user-1",
     kind: "purchase_review",
@@ -143,7 +103,7 @@ beforeEach(() => {
       card_masked: "•••• 3321",
       link_supported: true,
     },
-  };
+  });
 });
 
 describe("GET /api/approvals/[id]", () => {
@@ -193,6 +153,7 @@ describe("GET /api/approvals/[id]", () => {
 
   it("404s non-hosted decision kinds", async () => {
     decisionRow!.kind = "email_draft";
+    seedDecision(decisionRow);
     const token = mintApprovalToken("user-1", "dec-1");
     const response = await GET(...getReq("dec-1", token));
     expect(response.status).toBe(404);
@@ -214,7 +175,7 @@ describe("POST /api/approvals/[id]", () => {
       expect.anything(),
       "fill"
     );
-    expect(updates.some((u) => u["status"] === "approved")).toBe(true);
+    expect(db.updates.some((u) => u.table === "decisions" && u.patch["status"] === "approved")).toBe(true);
   });
 
   it("declines without needing the box awake", async () => {
@@ -231,11 +192,12 @@ describe("POST /api/approvals/[id]", () => {
       expect.anything(),
       "fill"
     );
-    expect(updates.some((u) => u["status"] === "dismissed")).toBe(true);
+    expect(db.updates.some((u) => u.table === "decisions" && u.patch["status"] === "dismissed")).toBe(true);
   });
 
   it("409s an already-resolved decision", async () => {
     decisionRow!.status = "approved";
+    seedDecision(decisionRow);
     const token = mintApprovalToken("user-1", "dec-1");
     const response = await POST(
       ...postReq("dec-1", { action: "approve", k: token })
@@ -259,7 +221,7 @@ describe("POST /api/approvals/[id]", () => {
   });
 
   it("returns the checkout URL when approving a payment request", async () => {
-    decisionRow = {
+    seedDecision({
       id: "dec-2",
       user_id: "user-1",
       kind: "payment_request",
@@ -267,7 +229,7 @@ describe("POST /api/approvals/[id]", () => {
       status: "pending",
       label: null,
       payload: {},
-    };
+    });
     const token = mintApprovalToken("user-1", "dec-2");
     const response = await POST(
       ...postReq("dec-2", { action: "approve", k: token })
