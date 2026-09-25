@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const session = vi.hoisted(() => ({
@@ -11,28 +11,14 @@ const box = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth/box", () => box);
 
-/** Just enough PostgREST: `create_intakes` answers with the stubbed row (or
- * nothing — "table missing" reads as `confirmed`), `create_builds` with an
- * empty p50 sample. */
+/** Just enough PostgREST: `create_intakes` answers with the seeded row (or
+ * nothing — a missing table/read error reads as `confirmed`), `create_builds`
+ * with an empty p50 sample. */
 const db = vi.hoisted(() => ({
-  intake: null as unknown,
-  intakeThrows: false,
+  fake: null as unknown as FakeSupabase,
 }));
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: (table: string) => {
-        const builder: Record<string, unknown> = {};
-        for (const f of ["select", "eq", "order", "limit"]) builder[f] = () => builder;
-        builder["maybeSingle"] = async () => {
-          if (table === "create_intakes" && db.intakeThrows) throw new Error("relation does not exist");
-          return { data: table === "create_intakes" ? db.intake : null, error: null };
-        };
-        builder["then"] = (resolve: (v: unknown) => unknown) =>
-          Promise.resolve({ data: [], error: null }).then(resolve);
-        return builder;
-      },
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.fake.client(),
 }));
 
 const app = makeApp({
@@ -84,8 +70,7 @@ const running = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
-  db.intake = null;
-  db.intakeThrows = false;
+  db.fake = new FakeSupabase();
   ledger.latestBuild.mockReset().mockResolvedValue(null);
   versions.getVersion.mockReset().mockResolvedValue(null);
   session.storeSessionUserId.mockReturnValue(null);
@@ -129,7 +114,7 @@ describe("GET /api/create/progress", () => {
 
   it("a missing create_intakes table is not an error: the build alone drives the percent", async () => {
     session.storeSessionUserId.mockReturnValue("user-alice");
-    db.intakeThrows = true;
+    db.fake.errors["create_intakes"] = { message: "relation does not exist" };
     ledger.latestBuild.mockResolvedValue({ ...running, status: "queued" });
     const response = await GET(progressRequest("slug=alice-promo"));
     expect(response.status).toBe(200);
@@ -138,7 +123,9 @@ describe("GET /api/create/progress", () => {
 
   it("reads the intake stage and the draft's QA / test counts", async () => {
     session.storeSessionUserId.mockReturnValue("user-alice");
-    db.intake = { stage: "testing", failed_builds: 0, updated_at: new Date(T0 + 1_000).toISOString() };
+    db.fake.tables["create_intakes"] = [
+      { user_id: "user-alice", appname: "promo", stage: "testing", failed_builds: 0, opened_at: new Date(T0).toISOString(), updated_at: new Date(T0 + 1_000).toISOString() },
+    ];
     ledger.latestBuild.mockResolvedValue({
       ...running,
       status: "succeeded",
@@ -160,7 +147,9 @@ describe("GET /api/create/progress", () => {
 
   it("5 % for a confirmed plan with no build yet", async () => {
     session.storeSessionUserId.mockReturnValue("user-alice");
-    db.intake = { stage: "confirmed", failed_builds: 0, updated_at: new Date(T0).toISOString() };
+    db.fake.tables["create_intakes"] = [
+      { user_id: "user-alice", appname: "promo", stage: "confirmed", failed_builds: 0, opened_at: new Date(T0).toISOString(), updated_at: new Date(T0).toISOString() },
+    ];
     const response = await GET(progressRequest("app=promo"));
     expect(await response.json()).toMatchObject({ percent: 5, stage: "confirmed", detail: null });
   });
