@@ -1,10 +1,11 @@
 /**
  * An in-memory stand-in for the PostgREST query shapes the V12 admin routes
  * use (select with eq/is/in/gte/lte/not-is-null filters, order, limit,
- * range, maybeSingle; insert; update ... select). Test-only — imported by
- * app/api/admin/**\/route.test.ts files. Tables are plain row arrays;
- * `errors[table]` makes every read of that table fail the way an unapplied
- * migration does.
+ * range, maybeSingle; insert; update ... select; delete). Test-only —
+ * imported by app/api/admin/**\/route.test.ts files. Tables are plain row
+ * arrays; `errors[table]` makes every read of that table fail the way an
+ * unapplied migration does; give it a `code` to simulate a specific Postgres
+ * error (e.g. the 23505 unique-violation a dedupe insert expects).
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -13,15 +14,20 @@ export type Row = Record<string, unknown>;
 
 interface Result {
   data: Row[] | Row | null;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
   count: number | null;
 }
 
 export class AdminFakeDb {
   tables: Record<string, Row[]> = {};
-  errors: Record<string, { message: string } | undefined> = {};
+  errors: Record<
+    string,
+    { message: string; code?: string } | undefined
+  > = {};
   inserts: { table: string; row: Row }[] = [];
   updates: { table: string; patch: Row }[] = [];
+  /** Rows removed by delete(), most recent last. */
+  deletes: { table: string; row: Row }[] = [];
   /** Every filter applied, for asserting which columns a route narrows on. */
   filters: { table: string; op: string; column: string; value: unknown }[] = [];
 
@@ -34,6 +40,7 @@ export class AdminFakeDb {
     this.errors = {};
     this.inserts = [];
     this.updates = [];
+    this.deletes = [];
     this.filters = [];
   }
 
@@ -46,7 +53,7 @@ export class AdminFakeDb {
 
 function makeBuilder(db: AdminFakeDb, table: string) {
   const filters: ((row: Row) => boolean)[] = [];
-  let mode: "select" | "insert" | "update" = "select";
+  let mode: "select" | "insert" | "update" | "delete" = "select";
   let patch: Row = {};
   let single = false;
   let order: { column: string; ascending: boolean } | null = null;
@@ -64,6 +71,11 @@ function makeBuilder(db: AdminFakeDb, table: string) {
       return { data: single ? inserted : [inserted], error: null, count: 1 };
     }
     let matched = rows.filter((row) => filters.every((filter) => filter(row)));
+    if (mode === "delete") {
+      for (const row of matched) db.deletes.push({ table, row });
+      db.tables[table] = rows.filter((row) => !matched.includes(row));
+      return { data: null, error: null, count: matched.length };
+    }
     if (mode === "update") {
       for (const row of matched) Object.assign(row, patch);
       db.updates.push({ table, patch });
@@ -102,6 +114,10 @@ function makeBuilder(db: AdminFakeDb, table: string) {
     update(values: Row) {
       mode = "update";
       patch = values;
+      return api;
+    },
+    delete() {
+      mode = "delete";
       return api;
     },
     eq(column: string, value: unknown) {
