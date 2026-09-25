@@ -24,6 +24,7 @@ import {
   type CardClaim,
 } from "@/lib/miniapps/cardSends";
 import { ownedApp, PublishError } from "@/lib/miniapps/publish";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,22 +38,10 @@ export async function POST(
   if (!isCardKind(kind)) {
     return NextResponse.json({ error: "unknown card kind" }, { status: 404 });
   }
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const userId = box.user_id as string;
-
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
+  const userId = box.userId;
   // The owner's iMessage destination: only the durable per-user record,
   // written exclusively from tier-0 (owner-handle) inbounds. No flush_jobs
   // fallback — its latest row can belong to a tier-1 contact's thread on a

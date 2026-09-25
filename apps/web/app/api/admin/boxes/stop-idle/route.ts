@@ -6,11 +6,11 @@
  * (C6): a box mid-turn or mid-index defers exactly as it would on the cron.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { isChannelName, type ChannelName } from "@/lib/fleet/channels";
 import { stopIdleBoxes } from "@/lib/orchestrator/idleStop";
 import type { SweepableBox } from "@/lib/orchestrator/sweep";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +20,8 @@ const PAGE = 1000;
 const RUNNING_STATES = ["ready", "idle"];
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const deadlineMs = Date.now() + 150_000;
   let body: { channel?: unknown; after?: unknown } = {};
   const raw = await request.text();

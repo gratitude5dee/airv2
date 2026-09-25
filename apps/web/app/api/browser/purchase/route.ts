@@ -30,6 +30,7 @@ import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { mintApprovalUrl } from "@/lib/approvals/token";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,39 +41,12 @@ const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 // report line can never smuggle a value into the audit trail (C18).
 const FIELD_GROUPS = new Set(["number", "expiry", "cvv", "zip"]);
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string; boxId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id, provider_box_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return null;
-  return {
-    userId: box.user_id as string,
-    boxId: box.provider_box_id as string,
-  };
-}
 
-async function boxUserId(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<string | null> {
-  const box = await callingBox(supabase, request);
-  return box ? box.userId : null;
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
   const userId = box.userId;
   const [
     { data: cards, error: cardsError },
@@ -199,10 +173,9 @@ async function sendPurchaseCard(
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const body = (await request.json().catch(() => null)) as {
     action?: unknown;
     host?: unknown;

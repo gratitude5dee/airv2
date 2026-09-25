@@ -11,12 +11,12 @@
  * Thresholds are documented in docs/platform.md §Operations.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { miniAppOps, scheduleBudget, socialUsage } from "@/lib/admin/ops";
 import { serviceClient } from "@/lib/supabase";
 import { killBackend } from "@/lib/functions/approval";
 import { BackendError } from "@/lib/functions/backend";
 import { parseRegistryApp, REGISTRY_COLUMNS } from "@/lib/miniapps/registry";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,9 +34,8 @@ const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
  * Admins only kill — re-enabling is the owner's, from the Functions tab.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const body = (await request.json().catch(() => ({}))) as { action?: unknown; slug?: unknown };
   if (body.action !== "fn_kill" || typeof body.slug !== "string" || !SLUG_RE.test(body.slug)) {
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
@@ -62,9 +61,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const now = Date.now();
   const hourAgo = new Date(now - 3600_000).toISOString();

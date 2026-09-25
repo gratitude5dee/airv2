@@ -8,7 +8,6 @@
  * connections, decisions, moments — references users(id) on delete cascade).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import { BoxApiError, deleteBox, stop } from "@/lib/box/client";
 import { deletePod } from "@/lib/mail/client";
@@ -33,15 +32,15 @@ import {
   WAVE_TABLES,
   WAVE_TABLES_WITHOUT_USER_ID,
 } from "@/lib/security/c18";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const body = (await request.json().catch(() => ({}))) as {
     user_id?: string;
   };

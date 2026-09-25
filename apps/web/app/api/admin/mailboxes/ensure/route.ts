@@ -19,7 +19,6 @@
  * `continuation` body to finish a fleet that outruns the deadline.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { resume } from "@/lib/box/client";
 import { kindFor, toComputeEnvironment } from "@/lib/compute/environments";
 import {
@@ -27,6 +26,7 @@ import {
   provisionEmail,
 } from "@/lib/provisioning/email";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,9 +114,8 @@ async function addressedFor(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const body = (await request.json().catch(() => ({}))) as {
     user_id?: unknown;
     dry?: unknown;
