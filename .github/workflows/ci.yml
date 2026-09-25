@@ -51,3 +51,19 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+  evals:
+    # Scorer + harness checks: the evals run on a box, but the scorer itself
+    # is pure and its regression tests run here on every push.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -p evals/agent-suite/tsconfig.json --noEmit
+      - run: npx tsc -p evals/agent-suite/create/tsconfig.json --noEmit
+      - run: npx tsc -p evals/model-bench/tsconfig.json --noEmit
+      - run: npx vitest run evals/agent-suite/score.test.ts
