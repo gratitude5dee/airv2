@@ -8074,7 +8074,7 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "devin/1790354511-w6-ledger (this PR)"
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
       ],
       "notes": ""
     },
@@ -8099,9 +8099,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
-      "notes": "scripts/check-commit-ids.sh and the ci.yml job land in a later commit on devin/1790354511-w6-ledger."
+      "implementation_status": "implemented",
+      "evidence": [
+        "ffbbf0b70eee7bedbda051ec21dd05473b82e789 scripts/check-commit-ids.sh + commit-ids job in ci.yml"
+      ],
+      "notes": ""
     },
     {
       "id": "R-LED-03",
@@ -8126,7 +8128,7 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "devin/1790354511-w6-ledger (this PR)"
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
       ],
       "notes": ""
     },
@@ -8178,7 +8180,7 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "devin/1790354511-w6-ledger (this PR)"
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
       ],
       "notes": ""
     },
