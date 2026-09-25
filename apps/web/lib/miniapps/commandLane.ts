@@ -57,7 +57,7 @@ export const BUZZ_LANE: LaneConfig = {
  * it independently of web sessions. */
 function laneSealKey(): string {
   return (
-    process.env["COMMAND_LANE_KEY"] ??
+    env.commandLaneKey() ??
     createHash("sha256").update(env.sessionSecret()).digest("hex")
   );
 }

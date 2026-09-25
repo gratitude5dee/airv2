@@ -143,8 +143,11 @@ vi.mock("next/server", async (importOriginal) => {
 vi.mock("@/lib/entitlements/spend", () => ({
   currentPeriodSpend: vi.fn(async () => 0),
 }));
-vi.mock("@/lib/env", () => ({
+vi.mock("@/lib/env", async (importOriginal) => {
+  const { env: envReal } = await importOriginal<typeof import("@/lib/env")>();
+  return {
   env: {
+    ...envReal,
     modelProviderBaseUrl: () => "https://upstream.test/v1",
     modelProviderApiKey: () => "provider-key",
     openRouterBaseUrl: () => "https://openrouter.test/api/v1",
@@ -153,7 +156,8 @@ vi.mock("@/lib/env", () => ({
     gmiCloudApiKey: () => "gmi-key",
     appOrigin: () => "https://app.test",
   },
-}));
+  };
+});
 
 import { NextRequest } from "next/server";
 import { POST } from "./route";

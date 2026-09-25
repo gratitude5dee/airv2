@@ -24,6 +24,7 @@ import {
   redeemFillTicket,
   type FillTicketClaims,
 } from "./tickets";
+import { env } from "../env";
 
 export const PURCHASE_OUTCOMES = [
   "purchase_completed",
@@ -279,7 +280,7 @@ async function deliverTicket(
 
 /** Optional control-plane allowlist of staging store hosts (§8). */
 export function dryRunHosts(): string[] {
-  return (process.env["SHOPPING_DRY_RUN_HOSTS"] ?? "")
+  return env.shoppingDryRunHosts()
     .split(",")
     .map((h) => h.trim().toLowerCase().replace(/^www\./, ""))
     .filter((h) => h.length > 0);

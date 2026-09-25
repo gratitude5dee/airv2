@@ -3,6 +3,7 @@
  * conformance-tested, but resolves only when PUBLISH_TIKTOK=1 — flip the
  * flag when the V4 Content Posting API review clears.
  */
+import { env } from "../env";
 import type { Platform, PublishAdapter } from "./adapter";
 import { instagramAdapter } from "./adapters/instagram";
 import { facebookAdapter } from "./adapters/facebook";
@@ -32,7 +33,7 @@ export function allAdaptersIncludingDark(): PublishAdapter[] {
 
 export function adapterFor(platform: string): PublishAdapter | null {
   if (!Object.prototype.hasOwnProperty.call(ADAPTERS, platform)) return null;
-  if (platform === "tiktok" && process.env["PUBLISH_TIKTOK"] !== "1") {
+  if (platform === "tiktok" && !env.publishTiktokEnabled()) {
     return null;
   }
   return ADAPTERS[platform as Platform];
