@@ -29,18 +29,18 @@ interface Authed {
   tokenExp: number | null;
 }
 
-function authenticate(
+async function authenticate(
   request: NextRequest,
   decisionId: string,
   bodyToken?: string
-): Authed | null {
+): Promise<Authed | null> {
   const token =
     bodyToken ?? request.nextUrl.searchParams.get("k") ?? undefined;
   if (token) {
     const claims = verifyApprovalToken(token, decisionId);
     if (claims) return { userId: claims.userId, tokenExp: claims.exp };
   }
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   return userId ? { userId, tokenExp: null } : null;
 }
 
@@ -49,7 +49,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const { id } = await params;
-  const auth = authenticate(request, id);
+  const auth = await authenticate(request, id);
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -74,7 +74,7 @@ export async function POST(
     k?: string;
     card_item_id?: string;
   };
-  const auth = authenticate(
+  const auth = await authenticate(
     request,
     id,
     typeof body.k === "string" ? body.k : undefined
