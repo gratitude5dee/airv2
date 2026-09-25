@@ -1,0 +1,4 @@
+{"comment": "K165 \u2014 reminder persisted as an automation"}
+{"call": {"method": "POST", "path": "/api/calendar/schedule", "body": {"name": "Call mom", "cron": "0 18 * * 0", "timezone": "America/Los_Angeles", "prompt": "Remind the owner to call their mom.", "deliver": "imessage"}}}
+{"sse": {"event": "message.delta", "delta": "Reminder set for Sunday at 6pm \u2014 I'll ping you on iMessage then."}}
+{"sse": {"event": "run.completed"}}

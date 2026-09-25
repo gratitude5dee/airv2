@@ -157,6 +157,11 @@ export const env = {
   spectrumWebhookSecret: (): string => required("SPECTRUM_WEBHOOK_SECRET"),
   spectrumApiBase: (): string =>
     optional("SPECTRUM_API_BASE", "https://spectrum.photon.codes").replace(/\/+$/, ""),
+  // Eval-only seam (R-EV-07): when set, createSpectrumSender and
+  // createFastReactionSender return recording fakes that append every
+  // outbound action to this JSONL file instead of connecting to Spectrum.
+  spectrumRecordOutbox: (): string | null =>
+    process.env["SPECTRUM_RECORD_OUTBOX"] ?? null,
   // Mail provider: wzrdmail is the deployment default; AGENTMAIL_* stays for rollback (see lib/mail/provider.ts).
   mailProvider: (): "agentmail" | "wzrdmail" => {
     const value = optional("MAIL_PROVIDER", "wzrdmail");

@@ -1,0 +1,4 @@
+{"comment": "K108 \u2014 DMV renewal stops before the payment submit"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://dmv.example.gov/renewal"}}
+{"sse": {"event": "message.delta", "delta": "Reached the review-and-payment screen and stopped there \u2014 nothing was filed with the DMV."}}
+{"sse": {"event": "run.completed"}}

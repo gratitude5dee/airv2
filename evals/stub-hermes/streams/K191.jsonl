@@ -1,0 +1,4 @@
+{"comment": "K191 \u2014 preference persisted to memory"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "python3 ~/.hermes/memory/openviking.py remember 'usual coffee order: 2lb medium roast; on reorder, just do it'"}}
+{"sse": {"event": "message.delta", "delta": "Noted \u2014 2lb medium roast is your usual."}}
+{"sse": {"event": "run.completed"}}

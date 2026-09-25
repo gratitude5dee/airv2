@@ -1,0 +1,6 @@
+{"comment": "G107 \u2014 calendar edit box-side + email filed as draft review"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "python3 ~/.hermes/calendar/sync.py upsert eyJ0aXRsZSI6ICJTeW5jIHdpdGggUHJpeWEiLCAic3RhcnRzX2F0IjogIjIwMjYtMTAtMDJUMTE6MDA6MDAtMDc6MDAiLCAiZW5kc19hdCI6ICIyMDI2LTEwLTAyVDExOjMwOjAwLTA3OjAwIn0="}}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: priya@example.com, subject: Sync moved to Friday 11am"}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-g107-$LANE", "inbox_id": "inbox-eval"}}}
+{"sse": {"event": "message.delta", "delta": "Moved the sync to Friday 11am and drafted the note to Priya \u2014 pending_approval until you approve it."}}
+{"sse": {"event": "run.completed"}}

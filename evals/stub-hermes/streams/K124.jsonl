@@ -1,0 +1,4 @@
+{"comment": "K124 \u2014 Tahoe cabin shortlist"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://cabins.example.com"}}
+{"sse": {"event": "message.delta", "delta": "Top 3 cabins for six near Tahoe with hot tubs under $450/night: Northstar Loft, Kings Beach Chalet, Tahoe Vista A-Frame \u2014 links sent, nothing held."}}
+{"sse": {"event": "run.completed"}}

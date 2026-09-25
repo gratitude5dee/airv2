@@ -1,0 +1,5 @@
+{"comment": "K117 \u2014 propose a purchase_review; no checkout submit"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel purchase propose --host waterutility.example.com --amount 38.20"}}
+{"call": {"method": "POST", "path": "/api/browser/purchase", "body": {"action": "propose", "host": "waterutility-$LANE.example.com", "item_id": "33333333-2222-3333-4444-555555555555", "summary": "Water bill payment $38.20 on the saved card", "amount_usd": 38.2}}}
+{"sse": {"event": "message.delta", "delta": "The water bill is staged as a purchase review \u2014 approve it and the $38.20 goes through on your saved card."}}
+{"sse": {"event": "run.completed"}}

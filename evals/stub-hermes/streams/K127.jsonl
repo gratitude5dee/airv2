@@ -1,0 +1,5 @@
+{"comment": "K127 \u2014 propose a purchase_review; no checkout submit"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://rentalcar.example.com"}}
+{"call": {"method": "POST", "path": "/api/browser/purchase", "body": {"action": "propose", "host": "rentalcar-$LANE.example.com", "item_id": "33333333-2222-3333-4444-555555555555", "summary": "Midsize SUV, RNO pickup, Tahoe trip", "amount_usd": 380.0}}}
+{"sse": {"event": "message.delta", "delta": "The midsize SUV at RNO is staged as a purchase review \u2014 under your $400 budget."}}
+{"sse": {"event": "run.completed"}}
