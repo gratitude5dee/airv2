@@ -17,8 +17,11 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "review.md"
+SOURCE = ROOT / "docs/review-2026-09/astra-ultra-review.md"
+WORK_ORDER = ROOT / "review.md"
 LEDGER = ROOT / "docs/review-findings.json"
+SOURCE_PATH = "docs/review-2026-09/astra-ultra-review.md"
+WORK_ORDER_PATH = "review.md"
 
 ALIASES = {
     "WEB-01": ["LAT-01"], "LAT-03": ["MS-01"],
@@ -105,6 +108,8 @@ DEFAULTS = {
 }
 
 WORKSTREAMS = {"MEM": "memory", "LAT": "imessage", "WEB": "gateway-web", "MS": "miniapps-spectrum", "TC": "task-spine", "WZ": "mail", "SOC": "social", "BOX": "box-fleet", "CA": "cognitive-architecture"}
+R_WORKSTREAMS = {"P0": "p0", "CI": "w1-ci", "TQ": "w2-tests", "EV": "w3-evals", "PERF": "w4-latency-cost", "SEC": "w5-trust", "LED": "w6-process", "ARCH": "w7-shape"}
+R_ALIASES = {"R-PERF-09": ["R-CI-09"]}
 OVERRIDES = {**{k: "evals" for k in ids("TC-21 TC-27 TC-15 MEM-11 MEM-29 CA-29 WEB-24 SOC-15")}, **{k: "template-steering" for k in ids("TC-19 TC-05 TC-26 TC-13 TC-14 TC-18 TC-30 BOX-08 CA-11 CA-28")}, "CA-18": "product-commercial", "CA-19": "product-freeze"}
 STATES = {"not_verified", "in_progress", "implemented", "verified", "external_dependency", "not_applicable"}
 
@@ -130,7 +135,7 @@ def parse_review() -> list[dict]:
         rows.append({
             "id": key, "severity": severity, "effort": effort, "area": area,
             "finding": finding, "review_verification": columns[-1],
-            "source": {"path": "review.md", "line": line_number},
+            "source": {"path": SOURCE_PATH, "line": line_number},
             "workstream": OVERRIDES.get(key, WORKSTREAMS[key.split("-")[0]]),
             "phase": phase, "kind": kind,
             "canonical_ids": UMBRELLAS.get(key, canonical),
@@ -142,13 +147,51 @@ def parse_review() -> list[dict]:
     return rows
 
 
-def check(ledger: dict, source_rows: list[dict]) -> list[str]:
+def parse_work_order() -> tuple[list[dict], set[str]]:
+    text = WORK_ORDER.read_text()
+    lines = text.splitlines()
+    appendix = text.index("## Appendix B")
+    appendix_end = text.index("\n## ", appendix)
+    body_ids = {
+        match.group(1)
+        for offset, line in enumerate(lines)
+        if sum(len(part) + 1 for part in lines[:offset]) < appendix
+        for match in [re.match(r"\| (R-[A-Z][A-Z0-9]*-\d+)\b", line), re.match(r"### (R-[A-Z][A-Z0-9]*-\d+) ", line)]
+        if match
+    }
+    rows = []
+    for line_number, line in enumerate(lines, 1):
+        offset = sum(len(part) + 1 for part in lines[: line_number - 1])
+        if not appendix <= offset < appendix_end or not re.match(r"\| R-[A-Z][A-Z0-9]*-\d+ \|", line):
+            continue
+        columns = [part.strip().replace("\\|", "|") for part in re.split(r"(?<!\\)\|", line)[1:-1]]
+        key, severity, effort, area = columns[:4]
+        finding = "|".join(columns[4:])
+        prefix = key.split("-")[1]
+        rows.append({
+            "id": key, "severity": severity, "effort": effort, "area": area,
+            "finding": finding, "review_verification": "n/a",
+            "source": {"path": WORK_ORDER_PATH, "line": line_number},
+            "workstream": R_WORKSTREAMS.get(prefix, "work-order"),
+            "phase": "work-order",
+            "kind": "alias" if key in R_ALIASES else "engineering",
+            "canonical_ids": R_ALIASES.get(key, [key]),
+            "depends_on": [], "co_ship_with": [],
+            "review_defaults": [], "external_evidence_needed": [],
+            "implementation_status": "not_verified", "evidence": [], "notes": "",
+        })
+    return rows, body_ids
+
+
+def check(ledger: dict, source_rows: list[dict], body_ids: set[str]) -> list[str]:
     errors = []
     rows = ledger.get("findings", [])
     by_id = {row["id"]: row for row in rows}
     expected = {row["id"]: row for row in source_rows}
-    if len(rows) != 249 or len(by_id) != 249 or set(by_id) != set(expected):
-        errors.append("Ledger must contain exactly the 249 unique Appendix A IDs.")
+    if len(rows) != len(by_id) or set(by_id) != set(expected):
+        errors.append(f"Ledger must contain exactly the {len(expected)} unique review IDs.")
+    for key in sorted(body_ids - set(expected)):
+        errors.append(f"{key}: named in the work order body but missing from Appendix B.")
     for key, row in by_id.items():
         for field in ("severity", "effort", "area", "finding", "review_verification", "source"):
             if row.get(field) != expected.get(key, {}).get(field):
@@ -174,17 +217,20 @@ def main() -> int:
     parser.add_argument("--sync", action="store_true", help="Refresh review metadata, preserving implementation evidence.")
     parser.add_argument("--check", action="store_true", help="Validate metadata and evidence (also the default).")
     args = parser.parse_args()
-    source_rows = parse_review()
+    work_order_rows, body_ids = parse_work_order()
+    source_rows = parse_review() + work_order_rows
     old = json.loads(LEDGER.read_text()) if LEDGER.exists() else {"findings": []}
     if args.sync:
         old_rows = {row["id"]: row for row in old["findings"]}
         for row in source_rows:
             for field in ("implementation_status", "evidence", "notes"):
                 row[field] = old_rows.get(row["id"], {}).get(field, row[field])
-        old = {"schema_version": 1, "review": "review.md", "reviewed_commit": "bb82c05", "acceptance_document": "docs/review-implementation-plan.md", "product_acceptance": {"status": "not_measured", "target_percent": 95, "evidence": []}, "findings": source_rows, **({"product_acceptance": old["product_acceptance"]} if "product_acceptance" in old else {})}
+        merged = dict(old)
+        merged.update({"schema_version": 1, "review": SOURCE_PATH, "work_order": WORK_ORDER_PATH, "reviewed_commit": old.get("reviewed_commit", "bb82c05"), "acceptance_document": "docs/review-implementation-plan.md", "product_acceptance": old.get("product_acceptance", {"status": "not_measured", "target_percent": 95, "evidence": []}), "findings": source_rows})
+        old = merged
         LEDGER.parent.mkdir(parents=True, exist_ok=True)
         LEDGER.write_text(json.dumps(old, indent=2, ensure_ascii=False) + "\n")
-    errors = check(old, source_rows)
+    errors = check(old, source_rows, body_ids)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
