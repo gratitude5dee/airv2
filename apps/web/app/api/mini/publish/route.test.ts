@@ -6,46 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { verifyPassword } from "@/lib/miniapps/gates";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
-const opsEvents: { kind: string; ref: string | null }[] = [];
-const updates: Record<string, unknown>[] = [];
-let appRow: Record<string, unknown> | null = null;
-
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) => {
-      if (table === "ops_events") {
-        const chain = {
-          eq: () => chain,
-          gte: async () => ({ count: 0, error: null }),
-        };
-        return {
-          insert: async (row: { kind: string; ref: string | null }) => {
-            opsEvents.push(row);
-            return { error: null };
-          },
-          select: () => chain,
-        };
-      }
-      if (table === "mini_apps") {
-        return {
-          select: () => ({
-            eq: () => ({ maybeSingle: async () => ({ data: appRow }) }),
-          }),
-          update: (payload: Record<string, unknown>) => {
-            updates.push(payload);
-            const chain = {
-              eq: () => chain,
-              then: (resolve: (value: { error: null }) => void) =>
-                resolve({ error: null }),
-            };
-            return chain;
-          },
-        };
-      }
-      throw new Error(`fake supabase: unexpected table ${table}`);
-    },
-  }),
+  serviceClient: () => db.client(),
 }));
 vi.mock("@/lib/miniapps/storeSession", () => ({
   storeSessionUserId: () => "owner-1",
@@ -76,22 +41,32 @@ function app(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
+function seedApp(overrides: Record<string, unknown> = {}): void {
+  db.tables["mini_apps"] = [app(overrides)];
+}
+
+/** Patches the route applied to mini_apps rows, in order. */
+function appUpdates(): Record<string, unknown>[] {
+  return db.updates
+    .filter((u) => u.table === "mini_apps")
+    .map((u) => u.patch);
+}
+
 beforeEach(() => {
-  opsEvents.length = 0;
-  updates.length = 0;
-  appRow = app();
+  db.reset();
+  seedApp();
 });
 
 describe("PATCH /api/mini/publish", () => {
   it("403s when the app belongs to someone else", async () => {
-    appRow = app({ owner_user_id: "someone-else" });
+    seedApp({ owner_user_id: "someone-else" });
     const res = await PATCH(patch({ slug: "alice-notes", access: "multiplayer" }));
     expect(res.status).toBe(403);
-    expect(updates).toHaveLength(0);
+    expect(appUpdates()).toHaveLength(0);
   });
 
   it("404s an unknown slug", async () => {
-    appRow = null;
+    db.tables["mini_apps"] = [];
     const res = await PATCH(patch({ slug: "nope", access: "single" }));
     expect(res.status).toBe(404);
   });
@@ -109,7 +84,7 @@ describe("PATCH /api/mini/publish", () => {
       const res = await PATCH(patch(body));
       expect(res.status).toBe(400);
     }
-    expect(updates).toHaveLength(0);
+    expect(appUpdates()).toHaveLength(0);
   });
 
   it("requires a positive price to enable x402", async () => {
@@ -119,12 +94,12 @@ describe("PATCH /api/mini/publish", () => {
       );
       expect(res.status).toBe(400);
     }
-    expect(updates).toHaveLength(0);
+    expect(appUpdates()).toHaveLength(0);
     const ok = await PATCH(
       patch({ slug: "alice-notes", x402_enabled: true, x402_price_usdc: 0.25 })
     );
     expect(ok.status).toBe(200);
-    expect(updates[0]).toMatchObject({
+    expect(db.rows("mini_apps")[0]).toMatchObject({
       x402_enabled: true,
       x402_price_usdc: 0.25,
     });
@@ -133,7 +108,7 @@ describe("PATCH /api/mini/publish", () => {
   it("hashes the password, never storing the plaintext", async () => {
     const res = await PATCH(patch({ slug: "alice-notes", password: "hunter22" }));
     expect(res.status).toBe(200);
-    const stored = updates[0]?.["password_hash"] as string;
+    const stored = db.rows("mini_apps")[0]?.["password_hash"] as string;
     expect(stored).toMatch(/^scrypt:/);
     expect(stored).not.toContain("hunter22");
     expect(verifyPassword("hunter22", stored)).toBe(true);
@@ -141,10 +116,10 @@ describe("PATCH /api/mini/publish", () => {
   });
 
   it("clears the password with null", async () => {
-    appRow = app({ password_hash: "scrypt:aa:bb" });
+    seedApp({ password_hash: "scrypt:aa:bb" });
     const res = await PATCH(patch({ slug: "alice-notes", password: null }));
     expect(res.status).toBe(200);
-    expect(updates[0]).toMatchObject({ password_hash: null });
+    expect(db.rows("mini_apps")[0]).toMatchObject({ password_hash: null });
   });
 
   it("writes access and plugin_signin_enabled and ledgers the change", async () => {
@@ -156,12 +131,14 @@ describe("PATCH /api/mini/publish", () => {
       })
     );
     expect(res.status).toBe(200);
-    expect(updates[0]).toMatchObject({
+    expect(db.rows("mini_apps")[0]).toMatchObject({
       access: "multiplayer",
       plugin_signin_enabled: true,
     });
     expect(
-      opsEvents.filter((e) => e.kind === "publish" && e.ref === "gates:alice-notes")
+      db
+        .rows("ops_events")
+        .filter((e) => e["kind"] === "publish" && e["ref"] === "gates:alice-notes")
     ).toHaveLength(1);
   });
 });
