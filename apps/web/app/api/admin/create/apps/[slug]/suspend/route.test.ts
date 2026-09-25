@@ -7,7 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const db = vi.hoisted(() => ({ fake: null as unknown as { client(): unknown } }));
@@ -50,13 +50,13 @@ const app = makeApp({
   dev_expires_at: "2026-09-15T00:00:00.000Z",
 });
 
-let fake: AdminFakeDb;
+let fake: FakeSupabase;
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
   vi.clearAllMocks();
   calls.order = [];
-  fake = new AdminFakeDb();
+  fake = new FakeSupabase();
   db.fake = fake;
   fake.tables["mini_apps"] = [
     { ...app },

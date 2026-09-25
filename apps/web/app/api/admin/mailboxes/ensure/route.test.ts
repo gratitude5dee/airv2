@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 type BoxRow = {
   user_id: string;
@@ -16,10 +17,7 @@ type BoxRow = {
 };
 
 const db = vi.hoisted(() => ({
-  boxes: [] as BoxRow[],
-  users: new Map<string, string | null>(),
-  addressed: new Set<string>(),
-  error: null as { message: string } | null,
+  fake: null as unknown as FakeSupabase,
 }));
 
 const ensureMailboxOnBox = vi.hoisted(() => vi.fn(async () => true));
@@ -32,56 +30,7 @@ const provisionEmail = vi.hoisted(() =>
 const resume = vi.hoisted(() => vi.fn(async () => ({ id: "x", state: "ready" })));
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) => {
-      const chain: Record<string, unknown> = {};
-      let userFilter: string | null = null;
-      for (const method of [
-        "select",
-        "gt",
-        "in",
-        "is",
-        "not",
-        "order",
-        "limit",
-      ]) {
-        chain[method] = vi.fn(() => chain);
-      }
-      chain["eq"] = vi.fn((field: string, value: string) => {
-        if (field === "user_id") userFilter = value;
-        return chain;
-      });
-      const dataFor = () => {
-        if (db.error) return { data: null, error: db.error };
-        if (table === "boxes") {
-          return {
-            data: userFilter
-              ? db.boxes.filter((b) => b.user_id === userFilter)
-              : db.boxes,
-            error: null,
-          };
-        }
-        if (table === "users") {
-          return {
-            data: [...db.users.entries()].map(([id, username]) => ({
-              id,
-              username,
-            })),
-            error: null,
-          };
-        }
-        if (table === "agent_addresses") {
-          return {
-            data: [...db.addressed].map((user_id) => ({ user_id })),
-            error: null,
-          };
-        }
-        return { data: [], error: null };
-      };
-      chain["then"] = (resolve: (v: unknown) => void) => resolve(dataFor());
-      return chain;
-    },
-  }),
+  serviceClient: () => db.fake.client(),
 }));
 
 vi.mock("@/lib/provisioning/email", () => ({
@@ -111,10 +60,7 @@ const box = (overrides: Partial<BoxRow> = {}): BoxRow => ({
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
-  db.boxes = [];
-  db.users = new Map();
-  db.addressed = new Set();
-  db.error = null;
+  db.fake = new FakeSupabase();
   ensureMailboxOnBox.mockReset().mockResolvedValue(true);
   provisionEmail.mockReset().mockResolvedValue({
     address: "u123@wzrd.tech",
@@ -130,17 +76,17 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("ensures mailboxes on every box, resuming stopped ones", async () => {
-    db.boxes = [
+    db.fake.tables["boxes"] = [
       box({ user_id: "u1", provider_box_id: "bx_1", state: "stopped" }),
       box({ user_id: "u2", provider_box_id: "bx_2", state: "ready" }),
       box({ user_id: "u3", provider_box_id: "bx_3" }),
     ];
-    db.users = new Map([
-      ["u1", "sam"],
-      ["u2", "kim"],
-      ["u3", "jo"],
-    ]);
-    db.addressed = new Set(["u3"]);
+    db.fake.tables["users"] = [
+      { id: "u1", username: "sam" },
+      { id: "u2", username: "kim" },
+      { id: "u3", username: "jo" },
+    ];
+    db.fake.tables["agent_addresses"] = [{ user_id: "u3", is_primary: true, retired_at: null }];
 
     const response = await POST(post({}));
     expect(response.status).toBe(200);
@@ -167,9 +113,9 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("ensures addressed users even with no username (no synth mint)", async () => {
-    db.boxes = [box({ user_id: "u1", provider_box_id: "bx_1" })];
-    db.users = new Map([["u1", null]]);
-    db.addressed = new Set(["u1"]);
+    db.fake.tables["boxes"] = [box({ user_id: "u1", provider_box_id: "bx_1" })];
+    db.fake.tables["users"] = [{ id: "u1", username: null }];
+    db.fake.tables["agent_addresses"] = [{ user_id: "u1", is_primary: true, retired_at: null }];
     const json = await (await POST(post({}))).json();
     expect(json.counts).toMatchObject({ ensured: 1 });
     expect(ensureMailboxOnBox).toHaveBeenCalledWith(
@@ -181,8 +127,8 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("reports username-less users and skips them without generate_handles", async () => {
-    db.boxes = [box({ user_id: "u1", provider_box_id: "bx_1" })];
-    db.users = new Map([["u1", null]]);
+    db.fake.tables["boxes"] = [box({ user_id: "u1", provider_box_id: "bx_1" })];
+    db.fake.tables["users"] = [{ id: "u1", username: null }];
     const json = await (await POST(post({}))).json();
     expect(json.counts).toMatchObject({ no_username: 1, ensured: 0 });
     expect(ensureMailboxOnBox).not.toHaveBeenCalled();
@@ -191,8 +137,8 @@ describe("POST /api/admin/mailboxes/ensure", () => {
 
   it("synthesizes a u<id8> address for username-less users with generate_handles", async () => {
     const uid = "a2f6246c-4e20-4b90-b1d0-23cb573e0c09";
-    db.boxes = [box({ user_id: uid, provider_box_id: "bx_1" })];
-    db.users = new Map([[uid, null]]);
+    db.fake.tables["boxes"] = [box({ user_id: uid, provider_box_id: "bx_1" })];
+    db.fake.tables["users"] = [{ id: uid, username: null }];
     provisionEmail.mockResolvedValueOnce({
       address: "ua2f6246c@wzrd.tech",
       installedBoxId: "bx_1",
@@ -212,8 +158,8 @@ describe("POST /api/admin/mailboxes/ensure", () => {
 
   it("falls through to ensure when the synth install landed on another box", async () => {
     const uid = "a2f6246c-4e20-4b90-b1d0-23cb573e0c09";
-    db.boxes = [box({ user_id: uid, provider_box_id: "bx_1" })];
-    db.users = new Map([[uid, null]]);
+    db.fake.tables["boxes"] = [box({ user_id: uid, provider_box_id: "bx_1" })];
+    db.fake.tables["users"] = [{ id: uid, username: null }];
     provisionEmail.mockResolvedValueOnce({
       address: "ua2f6246c@wzrd.tech",
       installedBoxId: "bx_other",
@@ -227,17 +173,17 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("dry mode reports the plan without resuming or mutating", async () => {
-    db.boxes = [
+    db.fake.tables["boxes"] = [
       box({ user_id: "u1", provider_box_id: "bx_1" }),
       box({ user_id: "u2", provider_box_id: "bx_2" }),
       box({ user_id: "u3", provider_box_id: "bx_3" }),
     ];
-    db.users = new Map([
-      ["u1", "sam"],
-      ["u2", null],
-      ["u3", "jo"],
-    ]);
-    db.addressed = new Set(["u3"]);
+    db.fake.tables["users"] = [
+      { id: "u1", username: "sam" },
+      { id: "u2", username: null },
+      { id: "u3", username: "jo" },
+    ];
+    db.fake.tables["agent_addresses"] = [{ user_id: "u3", is_primary: true, retired_at: null }];
     const json = await (await POST(post({ dry: true }))).json();
     expect(json.dry).toBe(true);
     expect(json.counts).toMatchObject({
@@ -251,14 +197,14 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("collects a per-box error without failing the sweep", async () => {
-    db.boxes = [
+    db.fake.tables["boxes"] = [
       box({ user_id: "u1", provider_box_id: "bx_1" }),
       box({ user_id: "u2", provider_box_id: "bx_2" }),
     ];
-    db.users = new Map([
-      ["u1", "sam"],
-      ["u2", "kim"],
-    ]);
+    db.fake.tables["users"] = [
+      { id: "u1", username: "sam" },
+      { id: "u2", username: "kim" },
+    ];
     ensureMailboxOnBox
       .mockRejectedValueOnce(new Error("box api down"))
       .mockResolvedValueOnce(true);
@@ -270,14 +216,14 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("user_id targets a single box", async () => {
-    db.boxes = [
+    db.fake.tables["boxes"] = [
       box({ user_id: "u1", provider_box_id: "bx_1" }),
       box({ user_id: "u2", provider_box_id: "bx_2" }),
     ];
-    db.users = new Map([
-      ["u1", "sam"],
-      ["u2", "kim"],
-    ]);
+    db.fake.tables["users"] = [
+      { id: "u1", username: "sam" },
+      { id: "u2", username: "kim" },
+    ];
     const json = await (await POST(post({ user_id: "u1" }))).json();
     expect(json.targeted).toBe(1);
     expect(ensureMailboxOnBox).toHaveBeenCalledTimes(1);
@@ -289,7 +235,7 @@ describe("POST /api/admin/mailboxes/ensure", () => {
   });
 
   it("500s when the boxes lookup fails", async () => {
-    db.error = { message: "db down" };
+    db.fake.resolve = () => ({ error: { message: "db down" } });
     const response = await POST(post({}));
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "boxes page failed: db down" });
