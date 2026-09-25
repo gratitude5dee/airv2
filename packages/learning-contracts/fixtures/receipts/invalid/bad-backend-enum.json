@@ -1,0 +1,8 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "experiment_started",
+  "idempotency_key": "8f7e6d5c4b3a2918017f6e5d4c3b2a19",
+  "occurred_at": "2026-09-20T05:00:00Z",
+  "experiment_id": "exp_4f6a8c2d1e0b",
+  "backend": "kubernetes"
+}

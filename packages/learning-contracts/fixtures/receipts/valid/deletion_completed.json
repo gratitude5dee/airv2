@@ -1,0 +1,10 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "deletion_completed",
+  "idempotency_key": "de1e7e001deadbeefde1e7e001dead",
+  "occurred_at": "2026-09-22T02:40:19Z",
+  "status": "complete",
+  "aggregate": {
+    "sample_count": 118
+  }
+}
