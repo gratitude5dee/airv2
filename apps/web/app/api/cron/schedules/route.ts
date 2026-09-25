@@ -25,7 +25,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!authorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const startedAtMs = Date.now();
   const supabase = serviceClient();
   const { fired } = await sweepSchedules(supabase);
+  // R-PERF-06: duration + rows-touched per run; a week of these feeds the
+  // 95%-idle decision on this every-minute cron's schedule.
+  console.info(
+    JSON.stringify({
+      msg: "cron schedules",
+      duration_ms: Date.now() - startedAtMs,
+      fired,
+    })
+  );
   return NextResponse.json({ ok: true, fired });
 }

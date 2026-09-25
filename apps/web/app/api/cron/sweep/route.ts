@@ -45,6 +45,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!authorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const startedAtMs = Date.now();
   const supabase = serviceClient();
   const now = new Date();
   const nowIso = now.toISOString();
@@ -245,18 +246,68 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Rows-touched counts for the TTL pass (R-PERF-06): count: "exact"
+  // returns the deleted row count without changing what is deleted.
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
-  await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
-  await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
-  await supabase
-    .from("carried_messages")
-    .delete()
-    .lt("received_at", ttlCutoff);
-  await supabase.from("github_deliveries").delete().lt("received_at", ttlCutoff);
-  await supabase
+  const [{ count: inboundEventsDeleted }, { count: batchQueueDeleted }] =
+    await Promise.all([
+      supabase
+        .from("inbound_events")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+      supabase
+        .from("batch_queue")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+    ]);
+  const [{ count: carriedMessagesDeleted }, { count: githubDeliveriesDeleted }] =
+    await Promise.all([
+      supabase
+        .from("carried_messages")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+      supabase
+        .from("github_deliveries")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+    ]);
+  const { count: slugHoldsExpired } = await supabase
     .from("miniapp_slug_holds")
-    .delete()
+    .delete({ count: "exact" })
     .lt("held_until", new Date().toISOString());
+  const ttlRows = {
+    inbound_events: inboundEventsDeleted ?? 0,
+    batch_queue: batchQueueDeleted ?? 0,
+    carried_messages: carriedMessagesDeleted ?? 0,
+    github_deliveries: githubDeliveriesDeleted ?? 0,
+    miniapp_slug_holds: slugHoldsExpired ?? 0,
+  };
+
+  // R-PERF-06: one duration + rows-touched line per run. A week of these
+  // feeds the decision on whether this every-minute cron should keep its
+  // schedule, stretch, or move to a queue trigger.
+  console.info(
+    JSON.stringify({
+      msg: "cron sweep",
+      duration_ms: Date.now() - startedAtMs,
+      stopped,
+      indexingDeferred,
+      indexing,
+      reconciled,
+      orphanedCarried,
+      flushed,
+      uploadsReleased,
+      fleet,
+      draftsFiled,
+      versionsRetired,
+      originsMarked,
+      originsRepaired,
+      migrationsDriven,
+      locationsResolved,
+      locationsExpired,
+      ttl_rows: ttlRows,
+    })
+  );
 
   return NextResponse.json({
     ok: true,
@@ -275,5 +326,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     migrationsDriven,
     locationsResolved,
     locationsExpired,
+    ttl_rows: ttlRows,
   });
 }

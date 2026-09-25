@@ -33,6 +33,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!authorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const startedAtMs = Date.now();
   const supabase = serviceClient();
   const expired = await expireTradeApprovals(supabase).catch(() => -1);
 
@@ -49,5 +50,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const fired = await tickWatchlists(supabase).catch(() => -1);
+  // R-PERF-06: duration + rows-touched per run; a week of these feeds the
+  // 95%-idle decision on this every-minute cron's schedule.
+  console.info(
+    JSON.stringify({
+      msg: "cron trade",
+      duration_ms: Date.now() - startedAtMs,
+      expired,
+      synced,
+      fired,
+      owners: owners.length,
+    })
+  );
   return NextResponse.json({ ok: true, expired, synced, fired });
 }
