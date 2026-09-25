@@ -20,30 +20,23 @@ import {
   resolveInboundRoute,
 } from "@/lib/routing/inbound";
 import {
-  carryQuickAckMarker,
-  dropQuickAckMarker,
   enqueueInbound,
   flushAfterDebounce,
-  isBurstStart,
-  updateQuickAckMarker,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
-import {
-  initialResponse,
-  type InitialResponse,
-} from "@/lib/orchestrator/sharedBridge";
-import {
-  ACK_REACTION,
-  hasExplicitResponseLane,
-  INITIAL_REPLY_SLA_MS,
-  REACTION_SLA_MS,
-} from "@/lib/orchestrator/ttfk";
+import { initialResponse } from "@/lib/orchestrator/sharedBridge";
 import { prewarmBox } from "@/lib/orchestrator/boxes";
-import { createSpectrumSender } from "@/lib/spectrum/sender";
 import {
-  createFastReactionSender,
-  type FastReactionSender,
-} from "@/lib/spectrum/fast-reaction";
+  closeWarmSpectrumSender,
+  closeWarmSpectrumSenderAfter,
+  composeInboundBody,
+  sendImmediateReaction,
+  sendInitialReply,
+  sendLineReply,
+  warmSpectrumSender,
+  withWarmSenderCleanup,
+} from "@/lib/routing/imessage";
+import { createFastReactionSender } from "@/lib/spectrum/fast-reaction";
 import {
   handleOnboarding,
   signupSender,
@@ -71,170 +64,6 @@ export const maxDuration = 800;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Reply on the line: thread under the source message when the target
- * resolves, plain send otherwise.
- */
-async function sendLineReply(
-  spaceId: string,
-  phone: string,
-  messageId: string,
-  text: string,
-  senderPromise?: ReturnType<typeof warmSpectrumSender>,
-): Promise<void> {
-  const sender = await (senderPromise ?? warmSpectrumSender());
-  if (!sender) return;
-  try {
-    const threaded = await sender
-      .sendReply(spaceId, phone, messageId, text)
-      .catch(() => false);
-    if (!threaded) await sender.sendText(spaceId, phone, text);
-  } finally {
-    await sender.close().catch(() => undefined);
-  }
-}
-
-/**
- * Token minting and gRPC client construction are read-only, but account for a
- * material part of first-kindness latency. Start them as soon as a known user
- * route exists, while dedupe/onboarding/trust checks continue. No send occurs
- * until those gates pass, so tier-2 contacts still cause zero outbound work.
- */
-function warmSpectrumSender() {
-  return createSpectrumSender().catch(() => undefined);
-}
-
-async function closeWarmSpectrumSender(
-  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
-): Promise<void> {
-  const sender = await senderPromise;
-  await sender?.close().catch(() => undefined);
-}
-
-function closeWarmSpectrumSenderAfter(
-  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
-): void {
-  if (!senderPromise) return;
-  after(() => closeWarmSpectrumSender(senderPromise));
-}
-
-async function withWarmSenderCleanup<T>(
-  operation: Promise<T>,
-  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
-): Promise<T> {
-  try {
-    return await operation;
-  } catch (error) {
-    closeWarmSpectrumSenderAfter(senderPromise);
-    throw error;
-  }
-}
-
-/**
- * Starts before the HTTP response is returned. The promise is awaited from
- * `after()` so serverless teardown cannot interrupt it, but establishing the
- * Spectrum connection and sending the tapback do not wait for debounce,
- * box wake, or a model request.
- */
-async function sendImmediateReaction(
-  fastSenderPromise: Promise<FastReactionSender | undefined> | undefined,
-  senderPromise: ReturnType<typeof warmSpectrumSender>,
-  message: InboundMessage,
-  receivedAtMs: number
-): Promise<void> {
-  let transport: "grpc-direct" | "spectrum-fallback" = "grpc-direct";
-  let fastSender: FastReactionSender | undefined;
-  let reacted = false;
-  try {
-    fastSender = await fastSenderPromise?.catch(() => undefined);
-    reacted = fastSender
-      ? await fastSender
-          .react(message.spaceId, message.messageId, ACK_REACTION)
-          .catch(() => false)
-      : false;
-  } finally {
-    await fastSender?.close().catch(() => undefined);
-  }
-  if (!reacted) {
-    transport = "spectrum-fallback";
-    const sender = await senderPromise;
-    reacted = sender
-      ? await sender
-          .react(
-            message.spaceId,
-            message.phone,
-            message.messageId,
-            ACK_REACTION,
-          )
-          .catch(() => false)
-      : false;
-  }
-  const elapsedMs = Date.now() - receivedAtMs;
-  console.info(
-    JSON.stringify({
-      msg: "imessage ttfk reaction",
-      user_id: message.userId,
-      space_id: message.spaceId,
-      delivered: reacted,
-      transport,
-      elapsed_ms: elapsedMs,
-      within_sla: elapsedMs <= REACTION_SLA_MS,
-    })
-  );
-}
-
-/**
- * A single first bubble per settled burst. The marker is present for normal
- * agent turns so the final model reply never repeats the acknowledgement.
- * Explicit commands own their deterministic response lane, so they receive
- * the visible line without introducing a marker into their command input.
- */
-async function sendInitialReply(
-  supabase: ReturnType<typeof serviceClient>,
-  sender: Awaited<ReturnType<typeof createSpectrumSender>> | undefined,
-  message: InboundMessage,
-  body: string,
-  response: InitialResponse,
-  receivedAtMs: number
-): Promise<boolean> {
-  if (!sender || !(await isBurstStart(supabase, message.spaceId))) return false;
-  const isCommand =
-    body.trimStart().startsWith("/") || hasExplicitResponseLane(body);
-  const markerId = isCommand || response.disposition === "final"
-    ? undefined
-    : await carryQuickAckMarker(supabase, message.userId, message.spaceId);
-  let sent = false;
-  try {
-    await sender.sendText(message.spaceId, message.phone, response.body);
-    sent = true;
-    if (markerId) {
-      await updateQuickAckMarker(
-        supabase,
-        message.spaceId,
-        markerId,
-        response.body
-      );
-    }
-    console.info(
-      JSON.stringify({
-        msg: "imessage ttfk initial reply",
-        user_id: message.userId,
-        space_id: message.spaceId,
-        elapsed_ms: Date.now() - receivedAtMs,
-        within_sla: Date.now() - receivedAtMs <= INITIAL_REPLY_SLA_MS,
-        kind: isCommand ? "command" : "agent",
-        disposition: response.disposition,
-        source: response.source,
-      })
-    );
-    return response.disposition === "final";
-  } finally {
-    if (markerId && !sent) {
-      await dropQuickAckMarker(supabase, message.spaceId, markerId);
-    }
-  }
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Keep SLA accounting anchored to request receipt, rather than after the
@@ -326,15 +155,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
-  const marker =
-    inbound.attachmentIds.length > 0
-      ? `[attachment:${inbound.attachmentIds.join(",")}]`
-      : "";
-  // A private Find My share is persisted as a marker only — the
-  // coordinates never reach Postgres (§2.6, C4).
-  const body = inbound.locationSignal
-    ? ["[location shared]", inbound.text ?? ""].filter(Boolean).join("\n")
-    : [marker, inbound.text ?? ""].filter(Boolean).join("\n");
+  const body = composeInboundBody(inbound);
   if (!body) {
     // Identifiers only (C4): a conversational payload whose content parsed to
     // nothing would otherwise vanish without a trace.
