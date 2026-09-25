@@ -10,7 +10,6 @@
  * is never stored (CR21).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { ReleaseError, revokeDev } from "@/lib/create/release";
 import { removeMirror } from "@/lib/create/mirror";
@@ -24,6 +23,7 @@ import {
 } from "@/lib/miniapps/registry";
 import { serviceClient } from "@/lib/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,9 +71,8 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const { slug } = await context.params;
   if (!SLUG_RE.test(slug)) {
     return NextResponse.json({ error: "invalid slug" }, { status: 400 });

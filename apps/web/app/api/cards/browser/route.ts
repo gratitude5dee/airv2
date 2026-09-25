@@ -12,28 +12,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const userId = box.user_id as string;
-
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
+  const userId = box.userId;
   const { data: dest } = await supabase
     .from("imessage_destinations")
     .select("space_id, phone")

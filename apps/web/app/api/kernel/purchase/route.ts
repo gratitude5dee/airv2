@@ -1,5 +1,5 @@
 /**
- * Kernel purchase lane (box-auth, gateway_token bearer like
+ * Kernel purchase lane (box-auth, GATEWAY_TOKEN bearer like
  * /api/browser/purchase). The box proposes, polls, submits, and reconciles;
  * every verification, decision, authorize, and provider URL happens
  * control-plane-side (C26–C30).
@@ -26,6 +26,7 @@ import {
 import { PurchaseError } from "@/lib/vault/purchase";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,24 +40,6 @@ function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string; boxId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id, provider_box_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return null;
-  return {
-    userId: box.user_id as string,
-    boxId: box.provider_box_id as string,
-  };
-}
 
 function mapError(error: unknown): NextResponse | null {
   if (error instanceof PurchaseError) {
@@ -123,9 +106,8 @@ async function sendKernelPurchaseCard(
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const gated = kernelGate();
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const gated = kernelGate();
   if (gated) return gated;
   const purchaseId = request.nextUrl.searchParams.get("purchase_id") ?? "";
   if (!PURCHASE_ID_RE.test(purchaseId)) {
@@ -143,9 +125,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const gated = kernelGate();
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const gated = kernelGate();
   if (gated) return gated;
   const body = (await request.json().catch(() => null)) as {
     action?: unknown;

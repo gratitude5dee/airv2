@@ -10,38 +10,23 @@
  * There is no path here that publishes, charges, or sends.
  */
 import { NextRequest, NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { requestCatalogPublish } from "@/lib/commerce/catalog";
 import { CommerceError } from "@/lib/commerce/merchants";
 import { createPaymentRequest } from "@/lib/commerce/paymentRequests";
 import { WalletSendError } from "@/lib/wallet/send";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function boxUserId(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<string | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  return box ? (box.user_id as string) : null;
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const body = (await request.json().catch(() => null)) as {
     action?: unknown;
     currency?: unknown;

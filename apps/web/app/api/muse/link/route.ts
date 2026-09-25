@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { museEnabled } from "@/lib/muse/auth";
 import { listMuseKeys } from "@/lib/muse/keys";
@@ -7,13 +6,14 @@ import { listMuseLink, revokeMuseLink } from "@/lib/muse/link";
 import { getMuseSettings } from "@/lib/muse/settings";
 import { callMuseWorker } from "@/lib/muse/worker";
 import { writeConnectedToolsFile } from "@/lib/provisioning/connectors";
+import { guardResponse, requireOwner } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function owner(request: NextRequest): Promise<string | NextResponse> {
-  const userId = sessionUserId(request);
-  return userId ?? NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const principal = await requireOwner(request).catch(guardResponse);
+  return principal instanceof NextResponse ? principal : principal.userId;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

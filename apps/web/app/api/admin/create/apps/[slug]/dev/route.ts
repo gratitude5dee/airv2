@@ -6,11 +6,11 @@
  * row (metadata only) plus the release receipt.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { ReleaseError, renewDev, revokeDev, type DevRelease } from "@/lib/create/release";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,9 +34,8 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const { slug } = await context.params;
   if (!SLUG_RE.test(slug)) {
     return NextResponse.json({ error: "invalid slug" }, { status: 400 });

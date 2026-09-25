@@ -10,7 +10,7 @@ import { z } from "zod";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { parseBody } from "@/lib/http/body";
-import { callingBox } from "@/lib/box/auth";
+import { guardResponse, requireOwner, tryBoxPrincipal } from "@/lib/auth/guard";
 import { command, writeFile } from "@/lib/box/client";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import {
@@ -52,10 +52,9 @@ const DeleteScheduleSchema = z.object({
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireOwner(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const supabase = serviceClient();
   const { data } = await supabase
     .from("agent_schedules")
@@ -73,7 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
   // The owner's session or the box itself (watch_for files watches the
   // same way — the persistent check is a schedule, not a promise).
-  const box = await callingBox(supabase, request);
+  const box = await tryBoxPrincipal(supabase, request);
   const userId = sessionUserId(request) ?? box?.userId;
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -138,10 +137,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireOwner(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const parsed = await parseBody(request, PatchScheduleSchema);
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
@@ -218,10 +216,9 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireOwner(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const parsed = await parseBody(request, DeleteScheduleSchema);
   if (!parsed.ok) return parsed.response;
   const { id } = parsed.data;

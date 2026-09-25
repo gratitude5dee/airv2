@@ -7,7 +7,6 @@
  * consistent for /home and future surfaces).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import {
   listTradeOrders,
@@ -25,24 +24,12 @@ import {
 } from "@/lib/trade/watch";
 import { deliverTradeApproval } from "@/lib/trade/imessage";
 import { TradeVenueError } from "@/lib/trade/venue";
+import { guardResponse, requireBoxOrOwner } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function callerUserId(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (token) {
-    const { data: box } = await serviceClient()
-      .from("boxes")
-      .select("user_id")
-      .eq("gateway_token", token)
-      .maybeSingle();
-    if (box && typeof box.user_id === "string") return box.user_id;
-  }
-  return (await sessionUserId(request)) ?? null;
-}
 
 function toErrorResponse(error: unknown): NextResponse {
   if (error instanceof TradeError || error instanceof TradeVenueError) {
@@ -61,11 +48,10 @@ function toErrorResponse(error: unknown): NextResponse {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = await callerUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
   const supabase = serviceClient();
+  const auth = await requireBoxOrOwner(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const resource = request.nextUrl.searchParams.get("resource") ?? "balance";
   try {
     if (resource === "balance") {
@@ -93,11 +79,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = await callerUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
   const supabase = serviceClient();
+  const auth = await requireBoxOrOwner(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   const body = (await request.json().catch(() => null)) as {
     action?: unknown;
     order?: unknown;
