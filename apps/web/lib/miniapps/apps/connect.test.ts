@@ -51,6 +51,7 @@ vi.mock("@/lib/orchestrator/boxes", () => ({
 
 import { connect } from "@/lib/miniapps/apps/connect";
 
+import { expectLog } from "../../testing/expectLog";
 beforeAll(() => {
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
@@ -137,6 +138,7 @@ describe("connect mini-app card sessions", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("can't be connected right now");
+    expectLog(/connect\ link\ failed/, { level: "error" });
   });
 
   it("refresh surfaces a sync failure instead of hiding it", async () => {
@@ -147,5 +149,6 @@ describe("connect mini-app card sessions", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("Couldn't refresh statuses");
+    expectLog(/connections\ sync\ failed/, { level: "error" });
   });
 });

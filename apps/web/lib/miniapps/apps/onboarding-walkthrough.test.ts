@@ -66,6 +66,7 @@ vi.mock("@/lib/miniapps/cardSends", () => ({
 
 import { onboarding } from "@/lib/miniapps/apps/onboarding";
 
+import { expectLog } from "../../testing/expectLog";
 const db = new FakeSupabase();
 
 function makeCtx(options: { destination?: boolean } = {}) {
@@ -187,6 +188,7 @@ describe("onboarding walkthrough finish", () => {
     expect(release).toHaveBeenCalled();
     const written = boxFiles.get(".hermes/miniapps/onboarding/state.json");
     expect(written).toContain('"walkthrough": "done"');
+    expectLog(/walkthrough\ home\ card\ send\ failed/, { level: "error" });
   });
 
   it("skip on walkthrough does not send the card", async () => {

@@ -52,6 +52,7 @@ vi.mock("./cardSends", async (importOriginal) => ({
 
 import { createSpectrumSender } from "../spectrum/sender";
 
+import { expectLog } from "../testing/expectLog";
 beforeEach(() => {
   vi.clearAllMocks();
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
@@ -238,6 +239,7 @@ describe("sendOrUpdateAppCard", () => {
     expect(sender.sendApp).not.toHaveBeenCalled();
     expect(sends.claimCardSend).not.toHaveBeenCalled();
     expect(sessions.deleteMiniAppCardSession).not.toHaveBeenCalled();
+    expectLog(/mini\-app\ card\ update\ failed/, { level: "error" });
   });
 
   it("fails rather than claiming success when no destination is on file", async () => {
@@ -292,6 +294,7 @@ describe("sendMarkedCards app markers", () => {
     expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(0);
     expect(sender.sendApp).not.toHaveBeenCalled();
     expect(sends.claimCardSend).not.toHaveBeenCalled();
+    expectLog(/card\ send\ failed/, { level: "error" });
   });
 
   it("skips another owner's app", async () => {
@@ -302,6 +305,7 @@ describe("sendMarkedCards app markers", () => {
     expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(0);
     expect(sender.sendApp).not.toHaveBeenCalled();
     expect(sender.editApp).not.toHaveBeenCalled();
+    expectLog(/card\ send\ failed/, { level: "error" });
   });
 
   it("sends the owner's own app", async () => {

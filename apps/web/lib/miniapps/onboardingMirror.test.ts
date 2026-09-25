@@ -22,6 +22,7 @@ vi.mock("../box/client", () => ({
 import { ensureBoxAwake, peekBoxState, StartLimitError } from "../orchestrator/boxes";
 import { readFile } from "../box/client";
 import { ensureComputeAwake } from "../compute/awake";
+import { expectLog } from "../testing/expectLog";
 import {
   readImportStatusOrMirror,
   readIngestStatusOrMirror,
@@ -109,6 +110,7 @@ describe("writeStatusMirror", () => {
     await expect(
       writeStatusMirror(supabase, "user-1", { ingest: null })
     ).resolves.toBeUndefined();
+    expectLog(/onboarding\ mirror\ write\ failed/, { level: "error" });
   });
 });
 

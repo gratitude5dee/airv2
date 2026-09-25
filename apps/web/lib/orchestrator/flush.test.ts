@@ -29,6 +29,7 @@ import { probeForTapback } from "../spectrum/tapbacks";
 import { sendMarkedCards } from "../miniapps/cards";
 import { FakeSupabase } from "../testing/fakeSupabase";
 
+import { expectLog } from "../testing/expectLog";
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
@@ -719,6 +720,7 @@ describe("runFlush history replay", () => {
       "I need a little more time. I’m continuing with the same request."
     );
     vi.useRealTimers();
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
   });
 
   it("notifies the user at the deadline without waiting for a slow Hermes stop", async () => {
@@ -779,6 +781,7 @@ describe("runFlush history replay", () => {
 
     expect(notifiedBeforeStopSettled).toBe(true);
     vi.useRealTimers();
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
   });
 
   it("logs receipt write failures without suppressing the delivered answer", async () => {

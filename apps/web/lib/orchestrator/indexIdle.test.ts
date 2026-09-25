@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { command } from "@/lib/box/client";
+import { expectLog } from "../testing/expectLog";
 import {
   claimIdleStop,
   commandMissing,
@@ -64,6 +65,7 @@ describe("claimIdleStop on a box with the claim command", () => {
       kind: "deferred",
       reason: "probe_failed",
     });
+    expectLog(/ovctl\ probe\ failed/, { level: "error", optional: true });
   });
 
   it("defers when the box command itself fails", async () => {
@@ -72,6 +74,7 @@ describe("claimIdleStop on a box with the claim command", () => {
       kind: "deferred",
       reason: "probe_failed",
     });
+    expectLog(/ovctl\ probe\ failed/, { level: "error" });
   });
 });
 
@@ -102,6 +105,8 @@ describe("claimIdleStop on old boxes", () => {
     expect(await claimIdleStop("box", LEGACY_STOP_GRACE_MS * 10)).toEqual({ kind: "deferred", reason: "probe_failed" });
     box({ "idle-check": new Error("timeout") });
     expect(await claimIdleStop("box", LEGACY_STOP_GRACE_MS * 10)).toEqual({ kind: "deferred", reason: "probe_failed" });
+    expectLog(/ovctl\ probe\ failed/, { level: "error" });
+    expectLog(/ovctl\ probe\ failed/, { level: "error" });
   });
 
   it("bounds the deferral of a box with no idle command at all", async () => {
@@ -144,6 +149,7 @@ describe("claimIdleStop on old boxes", () => {
     box({ "stop-claim": { exitCode: 2, stdout: "", stderr: "ovctl: error: argument --grace-seconds: invalid int value" } });
     expect(await claimIdleStop("box", LEGACY_STOP_GRACE_MS)).toEqual({ kind: "deferred", reason: "probe_failed" });
     expect(command).toHaveBeenCalledTimes(1);
+    expectLog(/ovctl\ probe\ failed/, { level: "error" });
   });
 });
 
@@ -163,5 +169,7 @@ describe("releaseIdleStop", () => {
     expect(await releaseIdleStop("box", TOKEN)).toBe(false);
     box({ "stop-release": new Error("box stopped") });
     expect(await releaseIdleStop("box", TOKEN)).toBe(false);
+    expectLog(/ovctl\ probe\ failed/, { level: "error" });
+    expectLog(/ovctl\ probe\ failed/, { level: "error" });
   });
 });

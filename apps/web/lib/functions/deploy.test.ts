@@ -58,6 +58,7 @@ import {
 import { makeApp } from "@/app/mini/loader-test-utils";
 import type { RegistryApp } from "../miniapps/registry";
 
+import { expectLog } from "../testing/expectLog";
 interface AppRow extends Partial<RegistryApp> {
   id: string;
   slug: string;
@@ -340,6 +341,7 @@ describe("deployStaticVersion — deletion that begins mid-deploy", () => {
     expect(cloudflare.deleteDispatchScript).not.toHaveBeenCalled();
     expect(manifest.deleteManifest).not.toHaveBeenCalled();
     expect(db.apps[0]!.app_origin_deployed_at).toBe("2026-03-02T00:00:00.000Z");
+    expectLog(/app\ origin\ slug\ reassigned;\ teardown\ skipped/, { level: "warn" });
   });
 
   it("still tears down when the row is gone and nobody else holds the slug", async () => {
@@ -500,6 +502,7 @@ describe("reconcileAppOriginMarks — vendor inventory is the source of truth", 
     expect(result).toEqual({ marked: 1, unmatched: ["carol-gone"] });
     expect(db.apps[0]!.app_origin_deployed_at).not.toBeNull();
     expect(db.apps[1]!.app_origin_deployed_at).toBe("2026-01-01T00:00:00.000Z");
+    expectLog(/dispatch\ scripts\ without\ an\ app\ row/, { level: "error" });
   });
 
   it("matches a live script for an app whose slug itself ends in -draft", async () => {

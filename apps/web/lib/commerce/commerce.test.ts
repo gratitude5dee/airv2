@@ -327,6 +327,7 @@ import {
 } from "./paymentRequests";
 import { startOnboarding, syncAccountFromEvent } from "./merchants";
 
+import { expectLog } from "../testing/expectLog";
 const MERCHANT = "user-merchant";
 
 function seed(): void {
@@ -467,6 +468,7 @@ describe("checkout: server-derived money (order tampering)", () => {
     ).rejects.toMatchObject({ status: 502 });
     // No orphan pending row: the order is released back to expired.
     expect(at(tables.orders, 0)["status"]).toBe("expired");
+    expectLog(/checkout\ session\ create\ failed/, { level: "error" });
   });
 
   it("rejects tampered quantities and unknown products", async () => {
@@ -600,6 +602,8 @@ describe("fulfillment: webhook-only, replay-safe", () => {
       )
     ).toBe(true);
     expect(at(tables.orders, 0)["status"]).toBe("paid");
+    expectLog(/checkout\ session\ amount\ mismatch;\ order\ left\ pending\ for\ reconciliation/, { level: "error" });
+    expectLog(/checkout\ session\ amount\ mismatch;\ order\ left\ pending\ for\ reconciliation/, { level: "error" });
   });
 });
 

@@ -14,6 +14,7 @@ vi.mock("@/lib/supabase", () => ({
 
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 // The route rate-limits by counting this user's stt rows newer than an hour
 // ago, so seeding N fresh rows simulates N recent clips.
 function seedSttEvents(count: number): void {
@@ -116,6 +117,7 @@ describe("POST /api/voice/transcribe", () => {
     expect(res.status).toBe(500);
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).not.toHaveBeenCalled();
+    expectLog(/stt\ rate\-limit\ count\ failed/, { level: "error" });
   });
 
   it("logs a rejected cost-event insert instead of dropping it silently", async () => {
@@ -140,6 +142,7 @@ describe("POST /api/voice/transcribe", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "transcription_failed" });
     expect(costInserts()).toHaveLength(0);
+    expectLog(/stt\ failed/, { level: "error" });
   });
 
   it("transcribes a valid clip and records one stt cost event", async () => {

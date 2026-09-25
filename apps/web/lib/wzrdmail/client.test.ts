@@ -25,6 +25,7 @@ import {
 } from "./client";
 import { MailApiError } from "../mail/errors";
 
+import { expectLog } from "../testing/expectLog";
 type Call = { url: string; init: RequestInit };
 
 function stubFetch(
@@ -278,6 +279,7 @@ describe("ensureWebhook", () => {
       pod_ids: ["pod_1"],
       client_id: "air-inbound",
     });
+    expectLog(/wzrdmail\ webhook\ created\ —\ set\ WZRDMAIL_WEBHOOK_SECRET\ to\ its\ signing\ secret/, { level: "error" });
   });
 
   it("PATCHes new pods onto the existing webhook instead of creating a second one", async () => {

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import type { VersionRow } from "./versions";
 
+import { expectLog } from "../testing/expectLog";
 const github = vi.hoisted(() => ({ installationToken: vi.fn(async () => "ghs_token") }));
 vi.mock("../github/app", () => ({ installationToken: github.installationToken }));
 
@@ -389,6 +390,7 @@ describe("mirrorVersion", () => {
       },
     ]);
     expect(limits.recordOpsEvent).not.toHaveBeenCalled();
+    expectLog(/mirror\ failed/, { level: "error" });
   });
 
   it("an unconfigured installation is a 503 MirrorError before any GitHub call", async () => {
@@ -399,6 +401,7 @@ describe("mirrorVersion", () => {
     ).rejects.toMatchObject({ status: 503, message: "mirror_unconfigured" });
     expect(gh.calls).toEqual([]);
     expect(github.installationToken).not.toHaveBeenCalled();
+    expectLog(/mirror\ failed/, { level: "error" });
   });
 
   it("refuses a version row that belongs to another app", async () => {
