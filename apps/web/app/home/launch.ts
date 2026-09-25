@@ -1,5 +1,6 @@
-import { log } from "@/lib/log";
 "use client";
+
+import { log } from "@/lib/log";
 
 /**
  * D12 shared mini-app launcher: every "open app" affordance in /home goes
