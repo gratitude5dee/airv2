@@ -92,7 +92,7 @@ export async function resolveActiveTurn(
 ): Promise<{ runId: string | null; ownerInitiated: boolean }> {
   const { data: openRun, error: runError } = await supabase
     .from("agent_runs")
-    .select("hermes_run_id, started_at")
+    .select("hermes_run_id, started_at, sender_tier")
     .eq("user_id", userId)
     .is("ended_at", null)
     .not("hermes_run_id", "is", null)
@@ -126,7 +126,12 @@ export async function resolveActiveTurn(
     };
   }
   if (openRun) {
-    return { runId: openRun.hermes_run_id as string, ownerInitiated: true };
+    // Unknown tier (legacy rows, bots, schedules) is NOT owner — the same
+    // fail-closed rule the flush branch already applies.
+    return {
+      runId: openRun.hermes_run_id as string,
+      ownerInitiated: openRun.sender_tier === 0,
+    };
   }
   return { runId: null, ownerInitiated: false };
 }

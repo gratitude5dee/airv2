@@ -58,6 +58,9 @@ export async function startChatRun(
       user_id: userId,
       hermes_run_id: run.run_id,
       trigger,
+      // This path is only reached from the authenticated web/desktop/voice
+      // composer routes — the turn is the owner's by construction.
+      sender_tier: 0,
     });
     return run.run_id;
   } finally {
