@@ -519,6 +519,7 @@ Flag: `CREATE_V13=true` routes `air-create go` and **Build this** through the jo
 2. **Gate strictness.** Recommended: smoke test plus locked tests; QA score informational. Stricter (V12's QA ≥ 70 plus all tests) means fewer broken links and more stuck jobs.
 3. **Where planning runs.** Recommended: keep the planning conversation in the chat session (`air-main` on Messages, the project session on the web), with brief, code and fix turns always in the project session. Moving Messages planning into the project session too would unify context, but needs routing rules for mixed conversations.
 4. **When to move the build into a Container** (M7). Recommended: after two green weeks of GP1, since builds are already fast and cheap on Vercel.
+5. **The 90-day freeze on new mini-apps, skills, card kinds and decision kinds (CA-19).** Lifted. The freeze was written when nothing enforced the discipline; the CI gates now in force — typecheck, lint, tests and build on every pull request — take over that job, so new kinds land when the work clears them rather than after a date on the calendar.
 
 ---
 
