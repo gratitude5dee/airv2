@@ -1,6 +1,6 @@
 # Review implementation and acceptance
 
-The scope is all 249 findings in `review.md`. `review-findings.json` preserves
+The scope is all 249 findings in `docs/review-2026-09/astra-ultra-review.md`. `review-findings.json` preserves
 each Appendix A ID and dependency. Run `python3 scripts/review-tracker.py --check`
 to check inventory consistency. This check is not a product-quality score.
 
