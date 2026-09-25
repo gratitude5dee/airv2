@@ -56,6 +56,7 @@ export NVM_DIR="$HOME_DIR/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] || { curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash; }
 # nvm.sh's auto-use returns non-zero when no default alias exists yet, which
 # set -e would turn fatal; the install below creates the alias.
+# shellcheck source=/dev/null
 . "$NVM_DIR/nvm.sh" || true
 nvm install 24 && nvm alias default 24
 

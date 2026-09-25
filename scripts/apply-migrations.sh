@@ -50,7 +50,8 @@ if [ -f "$RENAMES_FILE" ]; then
 fi
 
 pending=0
-for file in $(ls "$MIGRATIONS_DIR"/*.sql | sort); do
+shopt -s nullglob
+for file in "$MIGRATIONS_DIR"/*.sql; do
   name=$(basename "$file")
   if grep -qxF "$name" <<< "$applied"; then
     continue
