@@ -10,7 +10,7 @@
  * `agent_runs.create_stage`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 interface EntitlementRow {
   speed_tier: string;
@@ -52,89 +52,51 @@ const state: {
   spent: {},
 };
 
-const meteredRows: Record<string, unknown>[] = [];
+const db = new FakeSupabase();
 
-/** PostgREST-style chain: every filter returns the same builder and `eq`
- * filters are remembered, so the terminal (`maybeSingle` or `await`) can
- * answer by table *and* by the row the query asked for. */
-function table(name: string): Record<string, unknown> {
-  const eqs: Record<string, unknown> = {};
-  const notNull: string[] = [];
-  const answer = (): { data: unknown } => {
-    switch (name) {
-      case "boxes":
-        return { data: { user_id: "user-1" } };
-      case "entitlements":
-        return { data: state.entitlement };
-      case "agent_runs": {
-        // No exact label: soleAttributableCreateSlug listing the owner's
-        // run rows. With one: createSpendUsd over the project's meter rows.
-        if (eqs["label"] === undefined) {
-          return {
-            data: state.runs
-              .filter(
-                (row) =>
-                  row.user_id === eqs["user_id"] &&
-                  row.label.startsWith("create:") &&
-                  notNull.every((column) => row[column] !== null)
-              )
-              .map((row) => ({ label: row.label })),
-          };
-        }
-        const label = String(eqs["label"]);
-        return { data: state.spent[label] ?? [] };
-      }
-      case "mini_apps": {
-        const slug = String(eqs["slug"]);
-        const budget = state.budgets[slug];
-        return {
-          data:
-            budget === undefined || eqs["owner_user_id"] !== "user-1"
-              ? null
-              : { create_budget_usd: budget },
-        };
-      }
-      default:
-        return { data: null };
-    }
-  };
-  const builder: Record<string, unknown> = {};
-  for (const f of ["select", "like", "is", "or", "gte", "order", "limit"]) {
-    builder[f] = () => builder;
-  }
-  builder["eq"] = (column: string, value: unknown) => {
-    eqs[column] = value;
-    return builder;
-  };
-  builder["not"] = (column: string, operator: string, value: unknown) => {
-    if (operator === "is" && value === null) notNull.push(column);
-    return builder;
-  };
-  builder["maybeSingle"] = async () => {
-    if (name !== "agent_runs") return answer();
-    const run = state.runs.find(
-      (row) =>
-        row.user_id === eqs["user_id"] &&
-        row.label === eqs["label"] &&
-        notNull.every((column) => row[column] !== null)
-    );
-    return { data: run ? { id: "row-1" } : null };
-  };
-  builder["then"] = (resolve: (v: unknown) => unknown) =>
-    Promise.resolve(answer()).then(resolve);
-  builder["insert"] = async (row: Record<string, unknown>) => {
-    if (name === "agent_runs") meteredRows.push(row);
-    return { error: null };
-  };
-  return builder;
-}
+const metered = () =>
+  db.inserts.filter((i) => i.table === "agent_runs").map((i) => i.row);
+
+/** agent_runs serves both the attribution read (open/recent Create runs) and
+ * the spend read (metered completion rows); the columns the route's real
+ * filters touch are seeded so the clauses actually filter. */
+const setRuns = (rows: Record<string, unknown>[]) => {
+  db.tables["agent_runs"] = rows.map((row) => ({
+    trigger: "web",
+    started_at: new Date().toISOString(),
+    ended_at: null,
+    hermes_run_id: null,
+    ...row,
+  }));
+};
+const setSpent = (label: string, costs: Record<string, unknown>[]) => {
+  db.tables["agent_runs"] = [
+    ...(db.tables["agent_runs"] ?? []),
+    ...costs.map((row) => ({
+      user_id: "user-1",
+      label,
+      outcome: "gateway_completion",
+      ...row,
+    })),
+  ];
+};
+const setBudgets = (budgets: Record<string, number>, owner = "user-1") => {
+  db.tables["mini_apps"] = [
+    ...(db.tables["mini_apps"] ?? []),
+    ...Object.entries(budgets).map(([slug, usd]) => ({
+      slug,
+      owner_user_id: owner,
+      create_budget_usd: usd,
+    })),
+  ];
+};
+const setEntitlement = (patch: Record<string, unknown>) => {
+  state.entitlement = { ...state.entitlement, ...patch };
+  db.tables["entitlements"] = [{ user_id: "user-1", ...state.entitlement }];
+};
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: (name: string) => table(name),
-      rpc: async () => ({ error: null }),
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.client(),
 }));
 vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
@@ -197,11 +159,11 @@ const ASTRA = "openai/gpt-6-astra";
 
 describe("gateway Create tier family (MC4 §9.1)", () => {
   beforeEach(() => {
-    state.entitlement = { ...state.entitlement, speed_tier: "balanced", model_family: "inkling" };
-    state.runs = [{ user_id: "user-1", label: "create:alice-countdown" }];
-    state.budgets = { "alice-countdown": 5 };
-    state.spent = {};
-    meteredRows.length = 0;
+    db.reset();
+    db.tables["boxes"] = [{ user_id: "user-1", gateway_token: "token-1" }];
+    setEntitlement({ speed_tier: "balanced", model_family: "inkling" });
+    setRuns([{ user_id: "user-1", label: "create:alice-countdown" }]);
+    setBudgets({ "alice-countdown": 5 });
   });
   afterEach(() => {
     for (const key of [
@@ -222,19 +184,19 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
     const { response, sent } = await complete({ messages: [], model: "create-deep:alice-countdown" });
     expect(response.status).toBe(200);
     expect(sent?.["model"]).toBe(GLM);
-    expect(meteredRows[0]?.["speed_tier"]).toBe("balanced");
-    expect(meteredRows[0]?.["requested_model"]).toBe("create-deep:alice-countdown");
+    expect(metered()[0]?.["speed_tier"]).toBe("balanced");
+    expect(metered()[0]?.["requested_model"]).toBe("create-deep:alice-countdown");
   });
 
   it("never upgrades: create-balanced for a Fast owner lands on fast", async () => {
-    state.entitlement = { ...state.entitlement, speed_tier: "fast" };
+    setEntitlement({ speed_tier: "fast"  });
     const { sent } = await complete({ messages: [], model: COUNTDOWN });
     expect(sent?.["model"]).toBe(GLM);
-    expect(meteredRows[0]?.["speed_tier"]).toBe("fast");
+    expect(metered()[0]?.["speed_tier"]).toBe("fast");
   });
 
   it("downgrades create-fast for a Deep owner", async () => {
-    state.entitlement = { ...state.entitlement, speed_tier: "deep" };
+    setEntitlement({ speed_tier: "deep"  });
     const { sent } = await complete({ messages: [], model: "create-fast:alice-countdown" });
     expect(sent?.["model"]).toBe(GLM);
   });
@@ -244,13 +206,13 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
     expect(url).toBe("https://gmi.test/v1/chat/completions");
     expect(url).not.toContain("openrouter");
     expect(sent?.["model"]).toBe(GLM);
-    expect(meteredRows[0]?.["model_family"]).toBe("gmi");
-    expect(meteredRows[0]?.["model"]).toBe(GLM);
+    expect(metered()[0]?.["model_family"]).toBe("gmi");
+    expect(metered()[0]?.["model"]).toBe(GLM);
   });
 
   describe("V12 §7.1 — Astra plans, GLM builds (CR18)", () => {
     it("create-deep for a Deep owner serves openai/gpt-6-astra through the GMI base URL", async () => {
-      state.entitlement = { ...state.entitlement, speed_tier: "deep" };
+      setEntitlement({ speed_tier: "deep"  });
       const { response, url, sent } = await complete({
         messages: [],
         model: "create-deep:alice-countdown",
@@ -260,9 +222,9 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       expect(sent?.["model"]).toBe(ASTRA);
       // The Planner sends no effort.
       expect(sent?.["reasoning_effort"]).toBeUndefined();
-      expect(meteredRows[0]?.["model_family"]).toBe("gmi");
-      expect(meteredRows[0]?.["model"]).toBe(ASTRA);
-      expect(meteredRows[0]?.["speed_tier"]).toBe("deep");
+      expect(metered()[0]?.["model_family"]).toBe("gmi");
+      expect(metered()[0]?.["model"]).toBe(ASTRA);
+      expect(metered()[0]?.["speed_tier"]).toBe("deep");
     });
 
     it("create-balanced serves GLM with reasoning_effort medium, winning over the fleet GLM default", async () => {
@@ -270,7 +232,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       const { sent } = await complete({ messages: [], model: COUNTDOWN });
       expect(sent?.["model"]).toBe(GLM);
       expect(sent?.["reasoning_effort"]).toBe("medium");
-      expect(meteredRows[0]?.["reasoning_effort"]).toBe("medium");
+      expect(metered()[0]?.["reasoning_effort"]).toBe("medium");
     });
 
     it("GMI_CREATE_BUILD_EFFORT re-pins the Builder's effort; the Reviewer stays low", async () => {
@@ -283,7 +245,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
     });
 
     it("an OpenAI slug override routes to OpenAI and meters on the openai family", async () => {
-      state.entitlement = { ...state.entitlement, speed_tier: "deep" };
+      setEntitlement({ speed_tier: "deep"  });
       process.env["MODEL_CREATE_DEEP"] = "gpt-5.6-terra";
       const { response, url, sent } = await complete({
         messages: [],
@@ -293,7 +255,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       expect(url).toBe("https://upstream.test/v1/responses");
       expect(url).not.toContain("gmi.test");
       expect(sent?.["model"]).toBe("gpt-5.6-terra");
-      expect(meteredRows[0]?.["model_family"]).toBe("openai");
+      expect(metered()[0]?.["model_family"]).toBe("openai");
     });
 
     it("meters the #<stage> suffix as create_stage and strips it before resolution (§7.3)", async () => {
@@ -303,11 +265,11 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       });
       expect(response.status).toBe(200);
       expect(sent?.["model"]).toBe(GLM);
-      expect(meteredRows[0]?.["create_stage"]).toBe("build");
-      expect(meteredRows[0]?.["label"]).toBe("create:alice-countdown");
-      expect(meteredRows[0]?.["requested_model"]).toBe("create-balanced:alice-countdown#build");
+      expect(metered()[0]?.["create_stage"]).toBe("build");
+      expect(metered()[0]?.["label"]).toBe("create:alice-countdown");
+      expect(metered()[0]?.["requested_model"]).toBe("create-balanced:alice-countdown#build");
       await complete({ messages: [], model: COUNTDOWN });
-      expect(meteredRows[1]?.["create_stage"]).toBeNull();
+      expect(metered()[1]?.["create_stage"]).toBeNull();
     });
 
     it("refuses a malformed #<stage> with 400 rather than serving it unattributed", async () => {
@@ -324,7 +286,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
         });
         expect(url).toBeNull();
       }
-      expect(meteredRows.length).toBe(0);
+      expect(metered().length).toBe(0);
     });
   });
 
@@ -336,7 +298,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
   });
 
   it("leaves a plain model:fast delegation on the ordinary family", async () => {
-    state.entitlement = { ...state.entitlement, model_family: "openai" };
+    setEntitlement({ model_family: "openai"  });
     process.env["MODEL_CREATE_FAST"] = "gpt-5.6-sol";
     const { sent } = await complete({ messages: [], model: "fast" });
     expect(sent?.["model"]).toBe("gpt-5.6-luna");
@@ -344,17 +306,17 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
 
   it("attributes the completion to the project the request names", async () => {
     await complete({ messages: [], model: COUNTDOWN });
-    expect(meteredRows[0]?.["label"]).toBe("create:alice-countdown");
-    expect(meteredRows[0]?.["outcome"]).toBe("gateway_completion");
+    expect(metered()[0]?.["label"]).toBe("create:alice-countdown");
+    expect(metered()[0]?.["outcome"]).toBe("gateway_completion");
   });
 
   it("does not label non-Create completions", async () => {
     await complete({ messages: [], model: "balanced" });
-    expect(meteredRows[0]?.["label"]).toBeUndefined();
+    expect(metered()[0]?.["label"]).toBeUndefined();
   });
 
   it("returns exactly 429 insufficient_quota / create_budget when the budget is spent", async () => {
-    state.spent = { "create:alice-countdown": [{ cost_usd: 3 }, { cost_usd: 2.5 }] };
+    setSpent("create:alice-countdown", [{ cost_usd: 3 }, { cost_usd: 2.5 }]);
     const { response, url } = await complete({ messages: [], model: COUNTDOWN });
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({
@@ -362,45 +324,45 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
       reason: "create_budget",
     });
     expect(url).toBeNull();
-    expect(meteredRows.length).toBe(0);
+    expect(metered().length).toBe(0);
   });
 
   it("serves while spend is under the budget", async () => {
-    state.spent = { "create:alice-countdown": [{ cost_usd: 4.99 }] };
+    setSpent("create:alice-countdown", [{ cost_usd: 4.99 }]);
     const { response } = await complete({ messages: [], model: COUNTDOWN });
     expect(response.status).toBe(200);
   });
 
   it("refuses create-* with no open or recent Create run (403 create_run_required)", async () => {
-    state.runs = [];
+    setRuns([]);
     const { response, url } = await complete({ messages: [], model: COUNTDOWN });
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "forbidden", reason: "create_run_required" });
     expect(url).toBeNull();
-    expect(meteredRows.length).toBe(0);
+    expect(metered().length).toBe(0);
   });
 
   it("still serves plain tiers with no Create run open", async () => {
-    state.runs = [];
+    setRuns([]);
     const { response } = await complete({ messages: [], model: "fast" });
     expect(response.status).toBe(200);
-    expect(meteredRows[0]?.["label"]).toBeUndefined();
+    expect(metered()[0]?.["label"]).toBeUndefined();
   });
 
   describe("per-project attribution", () => {
     beforeEach(() => {
-      state.runs = [
+      setRuns([
         { user_id: "user-1", label: "create:alice-countdown" },
         { user_id: "user-1", label: "create:alice-recipes" },
-      ];
-      state.budgets = { "alice-countdown": 5, "alice-recipes": 5 };
+      ]);
+      setBudgets({ "alice-countdown": 5, "alice-recipes": 5  });
     });
 
     it("meters two concurrent projects under their own labels", async () => {
       await complete({ messages: [], model: COUNTDOWN });
       await complete({ messages: [], model: "create-balanced:alice-recipes" });
       await complete({ messages: [], model: COUNTDOWN });
-      expect(meteredRows.map((row) => row["label"])).toEqual([
+      expect(metered().map((row) => row["label"])).toEqual([
         "create:alice-countdown",
         "create:alice-recipes",
         "create:alice-countdown",
@@ -408,17 +370,17 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
     });
 
     it("an exhausted project is refused while the other keeps serving", async () => {
-      state.spent = { "create:alice-countdown": [{ cost_usd: 5 }] };
+      setSpent("create:alice-countdown", [{ cost_usd: 5 }]);
       const countdown = await complete({ messages: [], model: COUNTDOWN });
       expect(countdown.response.status).toBe(429);
       expect(countdown.url).toBeNull();
       const recipes = await complete({ messages: [], model: "create-balanced:alice-recipes" });
       expect(recipes.response.status).toBe(200);
-      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
+      expect(metered().map((row) => row["label"])).toEqual(["create:alice-recipes"]);
     });
 
     it("refuses a project of the owner's that has no Create run (403)", async () => {
-      state.budgets = { ...state.budgets, "alice-notes": 5 };
+      setBudgets({ "alice-notes": 5 });
       const { response, url } = await complete({ messages: [], model: "create-balanced:alice-notes" });
       expect(response.status).toBe(403);
       expect(await response.json()).toEqual({ error: "forbidden", reason: "create_run_required" });
@@ -426,72 +388,72 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
     });
 
     it("refuses another owner's project even while their run is open (403)", async () => {
-      state.runs = [...state.runs, { user_id: "user-2", label: "create:bob-countdown" }];
-      state.budgets = { ...state.budgets, "bob-countdown": 5 };
+      setRuns([...(db.tables["agent_runs"] ?? []), { user_id: "user-2", label: "create:bob-countdown" }]);
+      setBudgets({ "bob-countdown": 5 }, "user-2");
       const { response, url } = await complete({ messages: [], model: "create-balanced:bob-countdown" });
       expect(response.status).toBe(403);
       expect(url).toBeNull();
-      expect(meteredRows.length).toBe(0);
+      expect(metered().length).toBe(0);
     });
 
     it("a run row opened before its Hermes run is linked already attributes", async () => {
-      state.runs = [
+      setRuns([
         { user_id: "user-1", label: "create:alice-countdown", trigger: "web", hermes_run_id: null },
-      ];
+      ]);
       const { response } = await complete({ messages: [], model: COUNTDOWN });
       expect(response.status).toBe(200);
-      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-countdown"]);
+      expect(metered().map((row) => row["label"])).toEqual(["create:alice-countdown"]);
     });
 
     it("metered completion rows (no trigger) never make a project attributable", async () => {
-      state.runs = [
+      setRuns([
         { user_id: "user-1", label: "create:alice-countdown", trigger: null, hermes_run_id: null },
-      ];
+      ]);
       const { response, url } = await complete({ messages: [], model: COUNTDOWN });
       expect(response.status).toBe(403);
       expect(url).toBeNull();
-      expect(meteredRows.length).toBe(0);
+      expect(metered().length).toBe(0);
     });
 
     it("transitional: a project-less create-<tier> from a run started before the format changed bills the owner's open run", async () => {
-      state.runs = [{ user_id: "user-1", label: "create:alice-recipes" }];
+      setRuns([{ user_id: "user-1", label: "create:alice-recipes" }]);
       const { response, url } = await complete({ messages: [], model: "create-balanced" });
       expect(response.status).toBe(200);
       expect(url).toBe("https://gmi.test/v1/chat/completions");
-      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
-      expect(meteredRows[0]?.["create_stage"]).toBeNull();
+      expect(metered().map((row) => row["label"])).toEqual(["create:alice-recipes"]);
+      expect(metered()[0]?.["create_stage"]).toBeNull();
     });
 
     it("transitional: a project-less create-<tier> with no open run is refused (403), not guessed", async () => {
-      state.runs = [];
+      setRuns([]);
       const { response, url } = await complete({ messages: [], model: "create-balanced" });
       expect(response.status).toBe(403);
       expect(await response.json()).toEqual({ error: "forbidden", reason: "create_run_required" });
       expect(url).toBeNull();
-      expect(meteredRows.length).toBe(0);
+      expect(metered().length).toBe(0);
     });
 
     it("transitional: two candidate projects (two runs, or a trailing run beside a newer one) make a project-less call ambiguous → 403", async () => {
-      state.runs = [
+      setRuns([
         { user_id: "user-1", label: "create:alice-recipes" },
         { user_id: "user-1", label: "create:alice-countdown" },
-      ];
+      ]);
       const { response, url } = await complete({ messages: [], model: "create-balanced" });
       expect(response.status).toBe(403);
       expect(url).toBeNull();
-      expect(meteredRows.length).toBe(0);
+      expect(metered().length).toBe(0);
     });
 
     it("transitional: two runs of the same project are not ambiguous; another owner's run does not count", async () => {
-      state.runs = [
+      setRuns([
         { user_id: "user-1", label: "create:alice-recipes" },
         { user_id: "user-1", label: "create:alice-recipes" },
         { user_id: "user-2", label: "create:bob-app" },
         { user_id: "user-1", label: "create:alice-ended", trigger: null },
-      ];
+      ]);
       const { response } = await complete({ messages: [], model: "create-balanced" });
       expect(response.status).toBe(200);
-      expect(meteredRows.map((row) => row["label"])).toEqual(["create:alice-recipes"]);
+      expect(metered().map((row) => row["label"])).toEqual(["create:alice-recipes"]);
     });
 
     it("refuses malformed create-* rather than serving it unlabelled (400)", async () => {
@@ -504,7 +466,7 @@ describe("gateway Create tier family (MC4 §9.1)", () => {
         });
         expect(url).toBeNull();
       }
-      expect(meteredRows.length).toBe(0);
+      expect(metered().length).toBe(0);
     });
   });
 });

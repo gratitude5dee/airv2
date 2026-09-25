@@ -6,8 +6,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const boxFiles = new Map<string, string>();
@@ -89,46 +89,42 @@ vi.mock("@/lib/providers/keys", async (importOriginal) => ({
 
 import { settings } from "@/lib/miniapps/apps/settings";
 
-function thenable(rows: unknown, single: unknown = null) {
-  const builder: Record<string, unknown> = {};
-  const chain = () => builder;
-  for (const method of [
-    "select",
-    "eq",
-    "is",
-    "order",
-    "limit",
-    "range",
-    "gte",
-    "lt",
-  ]) {
-    builder[method] = vi.fn(chain);
-  }
-  builder["maybeSingle"] = async () => ({ data: single, error: null });
-  builder["then"] = (resolve: (value: { data: unknown }) => unknown) =>
-    Promise.resolve({ data: rows }).then(resolve);
-  return builder;
-}
+const db = new FakeSupabase();
 
 function makeCtx(options: { role?: string } = {}): MiniAppContext {
-  const tables: Record<string, ReturnType<typeof thenable>> = {
-    users: thenable([], { username: "grat" }),
-    entitlements: thenable([], {
+  db.reset();
+  db.tables["users"] = [
+    {
+      id: "user-1",
+      username: "grat",
+      miniapp_theme: null,
+      miniapp_background: null,
+    },
+  ];
+  db.tables["entitlements"] = [
+    {
+      user_id: "user-1",
       plan: "beta",
       speed_tier: "balanced",
       model_family: "openrouter",
       openrouter_model: "anthropic/claude-sonnet-4.5",
       venice_model: null,
-    }),
-    agent_addresses: thenable([], { address: "grat@wzrd.tech" }),
-    plugin_tokens: thenable([]),
-    user_buckets: thenable([], null),
-  };
+      gmi_model: null,
+    },
+  ];
+  db.tables["agent_addresses"] = [
+    {
+      user_id: "user-1",
+      address: "grat@wzrd.tech",
+      is_primary: true,
+      retired_at: null,
+    },
+  ];
+  db.tables["plugin_tokens"] = [];
+  db.tables["user_buckets"] = [];
   return {
     request: new NextRequest("https://mini.example/mini/settings"),
-    supabase: {
-      from: (table: string) => tables[table] ?? thenable([]),
-    } as unknown as SupabaseClient,
+    supabase: db.client(),
     app: makeApp({ slug: "settings", kind: "input" }),
     session: {
       userId: "user-1",

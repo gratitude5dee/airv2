@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
+import type { Row } from "@/lib/testing/fakeSupabase";
 import { makeApp } from "./loader-test-utils";
 
 const boxFiles = new Map<string, string>();
@@ -84,56 +86,29 @@ const HOSTILE = '<script>alert("pwn")</script>';
 
 /** Minimal boxes-row lookup for ensureComputeAwake (state doc lives box-side). */
 function computeSupabase(): SupabaseClient {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: {
-              provider_box_id: "box-1",
-              environment: "ubuntu",
-              control_url: null,
-              control_token: null,
-              state: "ready",
-            },
-            error: null,
-          }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
-}
-
-function thenable(rows: unknown, single: unknown = null) {
-  const builder: Record<string, unknown> = {};
-  const chain = () => builder;
-  for (const method of [
-    "select",
-    "eq",
-    "is",
-    "order",
-    "limit",
-    "range",
-    "gte",
-    "lt",
-  ]) {
-    builder[method] = vi.fn(chain);
-  }
-  builder["maybeSingle"] = async () => ({ data: single, error: null });
-  builder["then"] = (resolve: (value: { data: unknown }) => unknown) =>
-    Promise.resolve({ data: rows }).then(resolve);
-  return builder;
+  const db = new FakeSupabase();
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
+      provider_box_id: "box-1",
+      environment: "ubuntu",
+      control_url: null,
+      control_token: null,
+      state: "ready",
+    },
+  ];
+  return db.client();
 }
 
 function makeCtx(
   slug: string,
-  tables: Record<string, ReturnType<typeof thenable>>
+  tables: Record<string, Row[]>
 ): MiniAppContext {
+  const db = new FakeSupabase();
+  db.tables = { ...tables };
   return {
     request: new NextRequest(`https://mini.example/mini/${slug}`),
-    supabase: {
-      from: (table: string) => tables[table] ?? thenable([]),
-    } as unknown as SupabaseClient,
+    supabase: db.client(),
     app: makeApp({ slug, kind: "input" }),
     session: { userId: "user-1", resourceId: "default", role: "owner" },
     basePath: `/mini/${slug}`,
@@ -174,9 +149,14 @@ describe("onboarding state document (C4)", () => {
 describe("connect mini-app", () => {
   it("renders the toolkit grid with status chips and no credential material", async () => {
     const ctx = makeCtx("connect", {
-      connections: thenable([
-        { toolkit: "gmail", status: "active", connected_at: null },
-      ]),
+      connections: [
+        {
+          user_id: "user-1",
+          toolkit: "gmail",
+          status: "active",
+          connected_at: null,
+        },
+      ],
     });
     const response = await connect.render(ctx);
     expect(response.status).toBe(200);
@@ -190,7 +170,7 @@ describe("connect mini-app", () => {
   });
 
   it("connect action 303-redirects to the hosted Connect Link", async () => {
-    const ctx = makeCtx("connect", { connections: thenable([]) });
+    const ctx = makeCtx("connect", { connections: [] });
     const form = new FormData();
     form.set("action", "connect");
     form.set("toolkit", "notion");
@@ -208,7 +188,7 @@ describe("connect mini-app", () => {
   });
 
   it("rejects a malformed toolkit slug", async () => {
-    const ctx = makeCtx("connect", { connections: thenable([]) });
+    const ctx = makeCtx("connect", { connections: [] });
     const form = new FormData();
     form.set("action", "connect");
     form.set("toolkit", "Not A Slug!");
@@ -220,13 +200,28 @@ describe("connect mini-app", () => {
 describe("settings mini-app", () => {
   function settingsCtx() {
     return makeCtx("settings", {
-      users: thenable([], { username: HOSTILE }),
-      entitlements: thenable([], { plan: "beta", speed_tier: "balanced" }),
-      agent_addresses: thenable([], { address: "user@wzrd.tech" }),
-      plugin_tokens: thenable([
-        { tool: HOSTILE, created_at: "2026-08-01T00:00:00Z", last_used_at: null },
-      ]),
-      user_buckets: thenable([], null),
+      users: [{ id: "user-1", username: HOSTILE }],
+      entitlements: [
+        { user_id: "user-1", plan: "beta", speed_tier: "balanced" },
+      ],
+      agent_addresses: [
+        {
+          user_id: "user-1",
+          address: "user@wzrd.tech",
+          is_primary: true,
+          retired_at: null,
+        },
+      ],
+      plugin_tokens: [
+        {
+          user_id: "user-1",
+          tool: HOSTILE,
+          created_at: "2026-08-01T00:00:00Z",
+          last_used_at: null,
+          revoked_at: null,
+        },
+      ],
+      user_buckets: [],
     });
   }
 

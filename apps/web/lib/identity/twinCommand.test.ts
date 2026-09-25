@@ -5,7 +5,7 @@
  * synthetic-media caption.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import type { SpectrumSender } from "../spectrum/sender";
 
 const twin = vi.hoisted(() => ({
@@ -90,17 +90,14 @@ describe("twinBuilderLink", () => {
   });
 });
 
+const db = new FakeSupabase();
+
 function fakeSupabase(username: string | null) {
-  return {
-    from: () => {
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        maybeSingle: async () => ({ data: username ? { username } : null, error: null }),
-      };
-      return chain;
-    },
-  } as unknown as SupabaseClient;
+  db.reset();
+  db.tables["users"] = username
+    ? [{ id: "u1", username, status: "active" }]
+    : [];
+  return db.client();
 }
 
 function fakeSender() {

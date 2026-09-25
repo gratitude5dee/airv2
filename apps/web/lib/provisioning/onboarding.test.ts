@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { handleOnboarding, signupSender } from "./onboarding";
 
 vi.mock("../thirdweb/client", () => ({
@@ -14,118 +14,38 @@ interface Row {
   state: string;
   bound_phone: string;
   otp_attempts: number;
+  [key: string]: unknown;
 }
 
-interface Call {
-  table: string;
-  op: string;
-  values?: unknown;
-}
+const db = new FakeSupabase();
+const supabase = db.client();
 
-interface FakeOptions {
+/** Seed the account-under-test: its provisioning row plus the box a prior
+ * activation may have already brought up. */
+function seed(opts: {
   provisioning?: Row | null;
   /** Whether the boxes table reports a row for the user. */
   hasBox?: boolean;
-  /** What a handles select resolves to for signupSender. */
-  existingHandleUserId?: string | null;
-  /** Resolve the handle only on the (1-based) Nth handles select. */
-  existingHandleOnSelect?: number;
-  handleInsertError?: { code: string; message?: string } | null;
-  nextUserId?: string;
+}): void {
+  db.tables["provisioning"] = opts.provisioning
+    ? [{ user_id: "u1", ...opts.provisioning }]
+    : [];
+  db.tables["boxes"] = opts.hasBox ? [{ user_id: "u1" }] : [];
 }
 
-function fakeSupabase(opts: Row | null | FakeOptions): SupabaseClient & {
-  calls: Call[];
-  provisioningRow: () => Row | null;
-} {
-  const options: FakeOptions =
-    opts === null || "bound_phone" in opts
-      ? { provisioning: opts as Row | null }
-      : (opts as FakeOptions);
-  let provisioningRow = options.provisioning ?? null;
-  let handlesSelects = 0;
-  const calls: Call[] = [];
-
-  const builder = (table: string, op: string, values?: unknown) => {
-    calls.push({ table, op, values });
-    const chain: Record<string, unknown> = {};
-    const self = () => chain;
-    for (const key of ["select", "eq", "neq", "in", "is"]) {
-      chain[key] = self;
-    }
-    chain["maybeSingle"] = async () => {
-      if (table === "handles") {
-        handlesSelects += 1;
-        const resolves =
-          options.existingHandleUserId &&
-          (options.existingHandleOnSelect === undefined ||
-            handlesSelects >= options.existingHandleOnSelect);
-        return {
-          data: resolves ? { user_id: options.existingHandleUserId } : null,
-          error: null,
-        };
-      }
-      return {
-        data:
-          table === "provisioning"
-            ? provisioningRow
-            : table === "boxes"
-              ? options.hasBox
-                ? { user_id: "u1" }
-                : null
-              : null,
-        error: null,
-      };
-    };
-    chain["single"] = async () => ({
-      data: table === "users" ? { id: options.nextUserId ?? "u-new" } : null,
-      error: null,
-    });
-    chain["then"] = (resolve: (value: unknown) => void) => {
-      if (table === "handles" && op === "insert" && options.handleInsertError) {
-        return resolve({ error: options.handleInsertError });
-      }
-      if (table === "provisioning" && op === "update") {
-        const next = (values as { state?: string }).state;
-        if (next === "active") {
-          // activate()'s atomic transition claim: a row already active wins
-          // nothing — mirrors update ... where state != 'active' returning.
-          if (provisioningRow === null || provisioningRow.state === "active") {
-            return resolve({ data: [], error: null });
-          }
-          provisioningRow = { ...provisioningRow, state: "active" };
-          return resolve({ data: [{ user_id: "u1" }], error: null });
-        }
-        if (next && provisioningRow) {
-          provisioningRow = { ...provisioningRow, state: next };
-        }
-        return resolve({ data: null, error: null });
-      }
-      return resolve({ data: null, error: null });
-    };
-    return chain;
-  };
-
-  const client = {
-    calls,
-    provisioningRow: () => provisioningRow,
-    from: (table: string) => ({
-      select: () => builder(table, "select"),
-      insert: (values: unknown) => builder(table, "insert", values),
-      update: (values: unknown) => builder(table, "update", values),
-      delete: () => builder(table, "delete"),
-    }),
-  };
-  return client as unknown as SupabaseClient & {
-    calls: Call[];
-    provisioningRow: () => Row | null;
-  };
-}
+beforeEach(() => db.reset());
 
 describe("handleOnboarding", () => {
   it("continues for active accounts", async () => {
+    seed({
+      provisioning: {
+        state: "active",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+    });
     const action = await handleOnboarding(
-      fakeSupabase({ state: "active", bound_phone: "+15551234567", otp_attempts: 0 }),
+      supabase,
       "u1",
       "+15551234567",
       "hi"
@@ -134,13 +54,21 @@ describe("handleOnboarding", () => {
   });
 
   it("continues when no provisioning row exists", async () => {
-    const action = await handleOnboarding(fakeSupabase(null), "u1", "+15551234567", "hi");
+    seed({ provisioning: null });
+    const action = await handleOnboarding(supabase, "u1", "+15551234567", "hi");
     expect(action.kind).toBe("continue");
   });
 
   it("ignores pre-active inbound from a different sender (C11)", async () => {
+    seed({
+      provisioning: {
+        state: "invited",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+    });
     const action = await handleOnboarding(
-      fakeSupabase({ state: "invited", bound_phone: "+15551234567", otp_attempts: 0 }),
+      supabase,
       "u1",
       "+19998887777",
       "hi"
@@ -149,8 +77,15 @@ describe("handleOnboarding", () => {
   });
 
   it("claims on first inbound from bound_phone and starts the OTP", async () => {
+    seed({
+      provisioning: {
+        state: "invited",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+    });
     const action = await handleOnboarding(
-      fakeSupabase({ state: "invited", bound_phone: "+15551234567", otp_attempts: 0 }),
+      supabase,
       "u1",
       "+1 (555) 123-4567",
       "Hi! Send this to get started."
@@ -159,18 +94,20 @@ describe("handleOnboarding", () => {
     if (action.kind === "reply") {
       expect(action.text).toContain("6-digit code");
     }
+    expect(db.rows("provisioning")[0]?.["state"]).toBe("claimed");
   });
 
   it("activates on a correct OTP code", async () => {
+    seed({
+      provisioning: {
+        state: "claimed",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+      hasBox: true,
+    });
     const action = await handleOnboarding(
-      fakeSupabase({
-        provisioning: {
-          state: "claimed",
-          bound_phone: "+15551234567",
-          otp_attempts: 0,
-        },
-        hasBox: true,
-      }),
+      supabase,
       "u1",
       "+15551234567",
       "123456"
@@ -180,18 +117,20 @@ describe("handleOnboarding", () => {
       expect(action.text).toContain("Verified");
       expect(action.startCompute).toBeUndefined();
     }
+    expect(db.rows("provisioning")[0]?.["state"]).toBe("active");
   });
 
   it("flags compute provisioning when activation wins and no box exists", async () => {
+    seed({
+      provisioning: {
+        state: "claimed",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+      hasBox: false,
+    });
     const action = await handleOnboarding(
-      fakeSupabase({
-        provisioning: {
-          state: "claimed",
-          bound_phone: "+15551234567",
-          otp_attempts: 0,
-        },
-        hasBox: false,
-      }),
+      supabase,
       "u1",
       "+15551234567",
       "123456"
@@ -204,15 +143,16 @@ describe("handleOnboarding", () => {
   });
 
   it("does not flag compute when the user already has a box", async () => {
+    seed({
+      provisioning: {
+        state: "claimed",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+      hasBox: true,
+    });
     const action = await handleOnboarding(
-      fakeSupabase({
-        provisioning: {
-          state: "claimed",
-          bound_phone: "+15551234567",
-          otp_attempts: 0,
-        },
-        hasBox: true,
-      }),
+      supabase,
       "u1",
       "+15551234567",
       "123456"
@@ -224,15 +164,16 @@ describe("handleOnboarding", () => {
   });
 
   it("does not re-flag compute on a replayed OTP (activation already won)", async () => {
+    seed({
+      provisioning: {
+        state: "active",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+      hasBox: false,
+    });
     const action = await handleOnboarding(
-      fakeSupabase({
-        provisioning: {
-          state: "active",
-          bound_phone: "+15551234567",
-          otp_attempts: 0,
-        },
-        hasBox: false,
-      }),
+      supabase,
       "u1",
       "+15551234567",
       "123456"
@@ -241,8 +182,15 @@ describe("handleOnboarding", () => {
   });
 
   it("re-prompts on a wrong code without activating", async () => {
+    seed({
+      provisioning: {
+        state: "claimed",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+    });
     const action = await handleOnboarding(
-      fakeSupabase({ state: "claimed", bound_phone: "+15551234567", otp_attempts: 0 }),
+      supabase,
       "u1",
       "+15551234567",
       "000000"
@@ -251,11 +199,19 @@ describe("handleOnboarding", () => {
     if (action.kind === "reply") {
       expect(action.text).toContain("didn't match");
     }
+    expect(db.rows("provisioning")[0]?.["state"]).toBe("claimed");
   });
 
   it("re-prompts when the reply has no code", async () => {
+    seed({
+      provisioning: {
+        state: "claimed",
+        bound_phone: "+15551234567",
+        otp_attempts: 0,
+      },
+    });
     const action = await handleOnboarding(
-      fakeSupabase({ state: "claimed", bound_phone: "+15551234567", otp_attempts: 0 }),
+      supabase,
       "u1",
       "+15551234567",
       "what code?"
@@ -269,26 +225,26 @@ describe("handleOnboarding", () => {
 
 describe("signupSender", () => {
   it("creates a pending account bound to the sender's normalized handle", async () => {
-    const client = fakeSupabase({ nextUserId: "u-new" });
-    const userId = await signupSender(client, "+1 (510) 634-1410");
-    expect(userId).toBe("u-new");
-    const inserts = client.calls.filter((c) => c.op === "insert");
-    expect(inserts.map((c) => c.table)).toEqual([
+    const userId = await signupSender(supabase, "+1 (510) 634-1410");
+    const inserts = db.inserts.map((entry) => entry.table);
+    expect(inserts).toEqual([
       "users",
       "entitlements",
       "provisioning",
       "handles",
       "senders",
     ]);
-    const provisioning = inserts.find((c) => c.table === "provisioning");
-    expect(provisioning?.values).toMatchObject({
-      user_id: "u-new",
+    const provisioning = db.inserts.find(
+      (entry) => entry.table === "provisioning"
+    )?.row;
+    expect(provisioning).toMatchObject({
+      user_id: userId,
       state: "created",
       bound_phone: "+15106341410",
     });
-    const sender = inserts.find((c) => c.table === "senders");
-    expect(sender?.values).toMatchObject({
-      user_id: "u-new",
+    const sender = db.inserts.find((entry) => entry.table === "senders")?.row;
+    expect(sender).toMatchObject({
+      user_id: userId,
       platform: "imessage",
       address: "+15106341410",
       trust_tier: 0,
@@ -296,39 +252,43 @@ describe("signupSender", () => {
   });
 
   it("resolves the existing account when the handle already exists", async () => {
-    const client = fakeSupabase({ existingHandleUserId: "u-existing" });
-    const userId = await signupSender(client, "+15106341410");
+    db.tables["handles"] = [
+      {
+        user_id: "u-existing",
+        platform: "imessage",
+        address: "+15106341410",
+      },
+    ];
+    const userId = await signupSender(supabase, "+15106341410");
     expect(userId).toBe("u-existing");
-    expect(client.calls.filter((c) => c.op === "insert")).toHaveLength(0);
+    expect(db.inserts).toHaveLength(0);
   });
 
   it("recovers the winner's account when a concurrent signup took the handle", async () => {
-    const client = fakeSupabase({
-      nextUserId: "u-lost",
-      handleInsertError: { code: "23505" },
-      // First handles select misses; the re-select after the 23505 sees the
-      // concurrent webhook's row.
-      existingHandleUserId: "u-winner",
-      existingHandleOnSelect: 2,
-    });
-    const userId = await signupSender(client, "+15106341410");
+    // The concurrent webhook's insert lands between our handles miss and our
+    // own insert: the insert collides (23505) and the re-select sees its row.
+    db.resolve = (query) => {
+      if (query.table !== "handles" || query.mode !== "insert") {
+        return undefined;
+      }
+      (db.tables["handles"] ??= []).push({
+        user_id: "u-winner",
+        platform: "imessage",
+        address: "+15106341410",
+      });
+      return { error: { code: "23505", message: "duplicate key" } };
+    };
+    const userId = await signupSender(supabase, "+15106341410");
     expect(userId).toBe("u-winner");
     // The losing account's rows cascade away with its user.
-    expect(
-      client.calls.some((c) => c.table === "users" && c.op === "delete")
-    ).toBe(true);
+    expect(db.deletes.some((entry) => entry.table === "users")).toBe(true);
   });
 
   it("rolls back the user row when signup fails partway through", async () => {
-    const client = fakeSupabase({
-      nextUserId: "u-dead",
-      handleInsertError: { code: "42501", message: "rls denied" },
-    });
-    await expect(signupSender(client, "+15106341410")).rejects.toThrow(
+    db.opErrors["handles:insert"] = { code: "42501", message: "rls denied" };
+    await expect(signupSender(supabase, "+15106341410")).rejects.toThrow(
       "handles insert failed"
     );
-    expect(
-      client.calls.some((c) => c.table === "users" && c.op === "delete")
-    ).toBe(true);
+    expect(db.deletes.some((entry) => entry.table === "users")).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 import type { BuildRecord } from "./build";
 import type { VersionRow } from "./versions";
 
@@ -208,19 +208,20 @@ describe("percentFor — the §8.2 table", () => {
   });
 });
 
-function fakeSupabase(builds: { started_at: string; finished_at: string | null }[], intake?: unknown) {
-  const chain = (table: string) => {
-    const builder: Record<string, unknown> = {};
-    for (const f of ["select", "eq", "order", "limit"]) builder[f] = () => builder;
-    builder["maybeSingle"] = async () =>
-      table === "create_intakes" ? { data: intake ?? null, error: null } : { data: null, error: null };
-    builder["then"] = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(table === "create_builds" ? { data: builds, error: null } : { data: [], error: null }).then(
-        resolve
-      );
-    return builder;
-  };
-  return { from: (table: string) => chain(table) } as unknown as SupabaseClient;
+const db = new FakeSupabase();
+const supabase = db.client();
+
+/**
+ * Seed the p50 sample: `create_builds` rows the owner ran to completion.
+ * The read filters on user_id + status, so seeded rows must carry both.
+ */
+function seedBuilds(builds: { started_at: string; finished_at: string | null }[], intake?: Row): void {
+  db.tables["create_builds"] = builds.map((row) => ({
+    ...row,
+    user_id: "user-1",
+    status: "succeeded",
+  }));
+  db.tables["create_intakes"] = intake ? [{ ...intake }] : [];
 }
 
 describe("p50BuildMs", () => {
@@ -232,18 +233,19 @@ describe("p50BuildMs", () => {
       { started_at: iso(0), finished_at: iso(90_000) },
       { started_at: iso(0), finished_at: iso(50_000) },
     ];
-    expect(await p50BuildMs(fakeSupabase(rows), "user-1")).toBe(50_000);
-    expect(
-      await p50BuildMs(fakeSupabase([{ started_at: iso(0), finished_at: iso(3_000) }]), "user-1")
-    ).toBe(P50_BUILD_FLOOR_MS);
-    expect(await p50BuildMs(fakeSupabase(rows.slice(0, 2)), "user-1")).toBe(60_000);
+    seedBuilds(rows);
+    expect(await p50BuildMs(supabase, "user-1")).toBe(50_000);
+    seedBuilds([{ started_at: iso(0), finished_at: iso(3_000) }]);
+    expect(await p50BuildMs(supabase, "user-1")).toBe(P50_BUILD_FLOOR_MS);
+    seedBuilds(rows.slice(0, 2));
+    expect(await p50BuildMs(supabase, "user-1")).toBe(60_000);
   });
 
   it("falls back to a typical build with no history or unusable rows", async () => {
-    expect(await p50BuildMs(fakeSupabase([]), "user-1")).toBe(P50_BUILD_DEFAULT_MS);
-    expect(await p50BuildMs(fakeSupabase([{ started_at: iso(0), finished_at: null }]), "user-1")).toBe(
-      P50_BUILD_DEFAULT_MS
-    );
+    seedBuilds([]);
+    expect(await p50BuildMs(supabase, "user-1")).toBe(P50_BUILD_DEFAULT_MS);
+    seedBuilds([{ started_at: iso(0), finished_at: null }]);
+    expect(await p50BuildMs(supabase, "user-1")).toBe(P50_BUILD_DEFAULT_MS);
   });
 });
 
@@ -252,11 +254,12 @@ describe("readProgress", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    db.reset();
   });
 
   it("treats a missing intake as confirmed and derives from the build alone", async () => {
     ledger.latestBuild.mockResolvedValueOnce(build({ status: "running" }));
-    const snapshot = await readProgress(fakeSupabase([]), "user-1", app, { now: T0 + 30_000, p50BuildMs: P50 });
+    const snapshot = await readProgress(supabase, "user-1", app, { now: T0 + 30_000, p50BuildMs: P50 });
     expect(snapshot.progress).toEqual({ percent: 28, stage: "building", detail: "build running" });
     expect(snapshot.intakeStage).toBe("confirmed");
     expect(snapshot.attemptKey).toBe("build-1");
@@ -267,8 +270,16 @@ describe("readProgress", () => {
     const done = build({ status: "succeeded", version: "v1700000000001", finished_at: new Date(T0).toISOString() });
     ledger.latestBuild.mockResolvedValueOnce(done);
     versions.getVersion.mockResolvedValueOnce(version({ qa_score: 90, tests_total: 3, tests_passed: 3 }));
-    const intake = { stage: "testing", failed_builds: 0, updated_at: new Date(T0 + 1_000).toISOString() };
-    const snapshot = await readProgress(fakeSupabase([], intake), "user-1", app, { now: T0 + 2_000, p50BuildMs: P50 });
+    const intake = {
+      user_id: "user-1",
+      appname: "promo",
+      stage: "testing",
+      failed_builds: 0,
+      opened_at: new Date(T0).toISOString(),
+      updated_at: new Date(T0 + 1_000).toISOString(),
+    };
+    seedBuilds([], intake);
+    const snapshot = await readProgress(supabase, "user-1", app, { now: T0 + 2_000, p50BuildMs: P50 });
     expect(snapshot.progress).toEqual({ percent: 85, stage: "testing", detail: "tests 3/3" });
     expect(snapshot.intakeStage).toBe("testing");
     expect(versions.getVersion).toHaveBeenCalledWith(expect.anything(), app.id, "v1700000000001");
@@ -280,7 +291,7 @@ describe("readProgress", () => {
       build({ status: "succeeded", version: "v1700000000001", finished_at: new Date(T0).toISOString() })
     );
     const snapshot = await readProgress(
-      fakeSupabase([]),
+      supabase,
       "user-1",
       makeApp({ ...app, dev_version: "v1700000000001" }),
       { now: T0, p50BuildMs: P50 }

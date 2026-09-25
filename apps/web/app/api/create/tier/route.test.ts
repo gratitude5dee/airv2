@@ -1,20 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const session = vi.hoisted(() => ({
   storeSessionUserId: vi.fn((): string | null => null),
 }));
 vi.mock("@/lib/miniapps/storeSession", () => session);
-const db = vi.hoisted(() => ({ row: { speed_tier: "balanced", monthly_cap_usd: 40 } as Record<string, unknown> | null }));
+const db = vi.hoisted(() => ({ fake: null as unknown as FakeSupabase }));
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      from: () => ({
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: db.row, error: null }) }),
-        }),
-      }),
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.fake.client(),
 }));
 const account = vi.hoisted(() => ({
   setSpeedTier: vi.fn(async () => true),
@@ -38,7 +31,8 @@ function put(body: unknown): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   session.storeSessionUserId.mockReturnValue("user-alice");
-  db.row = { speed_tier: "balanced", monthly_cap_usd: 40 };
+  db.fake = new FakeSupabase();
+  db.fake.tables["entitlements"] = [{ user_id: "user-alice", speed_tier: "balanced", monthly_cap_usd: 40 }];
   account.setSpeedTier.mockResolvedValue(true);
 });
 
@@ -53,7 +47,7 @@ describe("/api/create/tier", () => {
   it("reads the owner's speed_tier and monthly cap, defaulting to balanced", async () => {
     let body = await (await GET(new NextRequest("https://mini.test/api/create/tier"))).json();
     expect(body).toEqual({ speed_tier: "balanced", monthly_cap_usd: 40 });
-    db.row = null;
+    db.fake.tables["entitlements"] = [];
     body = await (await GET(new NextRequest("https://mini.test/api/create/tier"))).json();
     expect(body).toEqual({ speed_tier: "balanced", monthly_cap_usd: 0 });
   });

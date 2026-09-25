@@ -11,91 +11,86 @@
  */
 import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
+import type { Row } from "@/lib/testing/fakeSupabase";
 import type { RepoLink } from "@/lib/create/import";
 
-const db = vi.hoisted(() => ({
-  /** github_deliveries rows: lease start + whether the attempt finished. */
-  deliveries: new Map<string, { received_at: number; processed_at: number | null }>(),
-  claimError: null as { code: string; message: string } | null,
-  releaseError: null as { code: string; message: string } | null,
-  /** Errors the next N final marks return. */
-  failCompletes: 0,
-  completeAttempts: 0,
-  deleted: [] as { installation: number; repos: number[] }[],
-  released: [] as string[],
-  completed: [] as string[],
-}));
+const db = new FakeSupabase();
+
+// The 0091 RPC is itself a write: it inserts a fresh delivery row, or takes
+// over an unfinished one whose lease has run out; a processed row or a live
+// lease refuses. Mirroring the migration keeps claim/dedupe behaviour real.
+function wireDeliveryClaim(): void {
+  db.rpcResults["github_delivery_claim"] = (rawArgs: unknown) => {
+    const args = rawArgs as {
+      p_delivery_id: string;
+      p_event: string;
+      p_lease_seconds: number;
+    };
+    const now = Date.now();
+    const rows = db.rows("github_deliveries");
+    const row = rows.find((r) => r["delivery_id"] === args.p_delivery_id);
+    if (row) {
+      const processed = row["processed_at"] != null;
+      const expired =
+        Date.parse(String(row["received_at"])) <
+        now - args.p_lease_seconds * 1000;
+      if (processed || !expired) return false;
+      row["received_at"] = new Date(now).toISOString();
+      row["event"] = args.p_event;
+      return true;
+    }
+    rows.push({
+      delivery_id: args.p_delivery_id,
+      event: args.p_event,
+      received_at: new Date(now).toISOString(),
+      processed_at: null,
+    });
+    return true;
+  };
+}
+
+// Counted complete-mark failures: the resolve hook sees every attempted
+// update (recorded in db.queries either way) and fails the next N.
+let failCompletes = 0;
+const markAttempts: string[] = [];
+const markSuccesses: string[] = [];
+
+function wireMarkWatcher(): void {
+  db.resolve = (q) => {
+    if (q.table === "github_deliveries" && q.mode === "update") {
+      const id = String(
+        q.filters.find((f) => f.column === "delivery_id")?.value
+      );
+      markAttempts.push(id);
+      if (failCompletes > 0) {
+        failCompletes -= 1;
+        return { error: { code: "XX000", message: "connection reset" } };
+      }
+      markSuccesses.push(id);
+    }
+    return undefined;
+  };
+}
+
+function deliveryRow(id: string): Row | undefined {
+  return db.rows("github_deliveries").find((r) => r["delivery_id"] === id);
+}
+
+function releasedIds(): string[] {
+  return db.deletes
+    .filter((d) => d.table === "github_deliveries")
+    .flatMap((d) => d.rows.map((r) => String(r["delivery_id"])));
+}
+
+function backdate(id: string, msAgo: number): void {
+  const row = deliveryRow(id);
+  if (!row) throw new Error(`no delivery row ${id}`);
+  row["received_at"] = new Date(Date.now() - msAgo).toISOString();
+}
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () =>
-    ({
-      // The 0091 RPC: insert, or take over an unfinished row whose lease
-      // has run out; a processed row or a live lease refuses.
-      rpc: async (
-        fn: string,
-        args: { p_delivery_id: string; p_event: string; p_lease_seconds: number }
-      ) => {
-        if (fn !== "github_delivery_claim") throw new Error(`unexpected rpc ${fn}`);
-        if (db.claimError) return { data: null, error: db.claimError };
-        const now = Date.now();
-        const row = db.deliveries.get(args.p_delivery_id);
-        if (row) {
-          const expired = row.received_at < now - args.p_lease_seconds * 1000;
-          if (row.processed_at !== null || !expired) return { data: false, error: null };
-        }
-        db.deliveries.set(args.p_delivery_id, { received_at: now, processed_at: null });
-        return { data: true, error: null };
-      },
-      from(table: string) {
-        if (table === "github_deliveries") {
-          return {
-            update(patch: { processed_at: string }) {
-              return {
-                eq: async (_col: string, value: string) => {
-                  db.completeAttempts += 1;
-                  if (db.failCompletes > 0) {
-                    db.failCompletes -= 1;
-                    return { error: { code: "XX000", message: "connection reset" } };
-                  }
-                  const row = db.deliveries.get(value);
-                  if (row) row.processed_at = Date.parse(patch.processed_at);
-                  db.completed.push(value);
-                  return { error: null };
-                },
-              };
-            },
-            delete() {
-              return {
-                eq: async (_col: string, value: string) => {
-                  if (db.releaseError) return { error: db.releaseError };
-                  db.released.push(value);
-                  db.deliveries.delete(value);
-                  return { error: null };
-                },
-              };
-            },
-          };
-        }
-        if (table === "github_repo_links") {
-          let installation = 0;
-          return {
-            delete() {
-              return this;
-            },
-            eq(_col: string, value: number) {
-              installation = value;
-              return this;
-            },
-            in: async (_col: string, repos: number[]) => {
-              db.deleted.push({ installation, repos });
-              return { error: null };
-            },
-          };
-        }
-        throw new Error(`unexpected table ${table}`);
-      },
-    }) as unknown as SupabaseClient,
+  serviceClient: () => db.client(),
 }));
 
 const imports = vi.hoisted(() => ({
@@ -163,14 +158,18 @@ const push = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.deliveries.clear();
-  db.claimError = null;
-  db.releaseError = null;
-  db.failCompletes = 0;
-  db.completeAttempts = 0;
-  db.deleted.length = 0;
-  db.released.length = 0;
-  db.completed.length = 0;
+  db.reset();
+  failCompletes = 0;
+  markAttempts.length = 0;
+  markSuccesses.length = 0;
+  wireDeliveryClaim();
+  wireMarkWatcher();
+  db.tables["github_repo_links"] = [
+    { id: "l-123", installation_id: 10, repo_id: 123 },
+    { id: "l-124", installation_id: 10, repo_id: 124 },
+    { id: "l-other-repo", installation_id: 10, repo_id: 999 },
+    { id: "l-other-inst", installation_id: 11, repo_id: 123 },
+  ];
   process.env["GITHUB_APP_ID"] = "4242";
   process.env["GITHUB_APP_SLUG"] = "wzrd-create";
   process.env["GITHUB_APP_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----\\nx\\n-----END RSA PRIVATE KEY-----";
@@ -183,7 +182,7 @@ describe("POST /api/inbound/github — gate", () => {
     delete process.env["GITHUB_APP_WEBHOOK_SECRET"];
     const response = await POST(deliver("push", push));
     expect(response.status).toBe(503);
-    expect(db.deliveries.size).toBe(0);
+    expect(db.rows("github_deliveries")).toHaveLength(0);
   });
 
   it.each([
@@ -193,7 +192,7 @@ describe("POST /api/inbound/github — gate", () => {
   ])("401 on a %s signature and writes nothing", async (_label, options) => {
     const response = await POST(deliver("push", push, options));
     expect(response.status).toBe(401);
-    expect(db.deliveries.size).toBe(0);
+    expect(db.rows("github_deliveries")).toHaveLength(0);
     expect(imports.linksForRepo).not.toHaveBeenCalled();
   });
 
@@ -215,7 +214,7 @@ describe("POST /api/inbound/github — gate", () => {
   ])("400 with %s", async (_label, options) => {
     const response = await POST(deliver("push", push, options));
     expect(response.status).toBe(400);
-    expect(db.deliveries.size).toBe(0);
+    expect(db.rows("github_deliveries")).toHaveLength(0);
   });
 
   it("400 without an event name", async () => {
@@ -227,7 +226,7 @@ describe("POST /api/inbound/github — gate", () => {
   it("400 on invalid JSON that was nonetheless signed", async () => {
     const response = await POST(deliver("push", null, { raw: "{not json" }));
     expect(response.status).toBe(400);
-    expect(db.deliveries.size).toBe(0);
+    expect(db.rows("github_deliveries")).toHaveLength(0);
   });
 
   it("acknowledges a redelivered id without reprocessing", async () => {
@@ -242,7 +241,10 @@ describe("POST /api/inbound/github — gate", () => {
   });
 
   it("fails loudly when the delivery table is unavailable", async () => {
-    db.claimError = { code: "42P01", message: "relation missing" };
+    db.rpcErrors["github_delivery_claim"] = {
+      code: "42P01",
+      message: "relation missing",
+    };
     await expect(POST(deliver("push", push))).rejects.toThrow(/delivery claim failed/);
   });
 });
@@ -320,7 +322,15 @@ describe("POST /api/inbound/github — installation lifecycle", () => {
       })
     );
     expect(response.status).toBe(200);
-    expect(db.deleted).toEqual([{ installation: 10, repos: [123, 124] }]);
+    const deleted = db.deletes
+      .filter((d) => d.table === "github_repo_links")
+      .flatMap((d) => d.rows);
+    expect(deleted.map((r) => r["repo_id"])).toEqual([123, 124]);
+    expect(deleted.every((r) => r["installation_id"] === 10)).toBe(true);
+    expect(db.rows("github_repo_links")).toEqual([
+      expect.objectContaining({ installation_id: 10, repo_id: 999 }),
+      expect.objectContaining({ installation_id: 11, repo_id: 123 }),
+    ]);
   });
 
   it("acknowledges and ignores unrelated events", async () => {
@@ -334,8 +344,8 @@ describe("POST /api/inbound/github — failed handlers", () => {
     imports.markInstallation.mockRejectedValueOnce(new Error("db down"));
     const body = { action: "deleted", installation: { id: 10 } };
     await expect(POST(deliver("installation", body, { delivery: "d-retry" }))).rejects.toThrow("db down");
-    expect(db.released).toEqual(["d-retry"]);
-    expect(db.deliveries.has("d-retry")).toBe(false);
+    expect(releasedIds()).toEqual(["d-retry"]);
+    expect(deliveryRow("d-retry")).toBeUndefined();
 
     const retry = await POST(deliver("installation", body, { delivery: "d-retry" }));
     expect(await retry.json()).toEqual({ ok: true });
@@ -345,16 +355,16 @@ describe("POST /api/inbound/github — failed handlers", () => {
   it("releases the delivery when the push lookup throws", async () => {
     imports.linksForRepo.mockRejectedValueOnce(new Error("lookup failed"));
     await expect(POST(deliver("push", push, { delivery: "d-push" }))).rejects.toThrow("lookup failed");
-    expect(db.released).toEqual(["d-push"]);
+    expect(releasedIds()).toEqual(["d-push"]);
   });
 
   it("marks a fully processed delivery final: a redelivery is a duplicate even after the lease", async () => {
     await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-done" }));
-    expect(db.released).toEqual([]);
-    expect(db.completed).toEqual(["d-done"]);
-    expect(db.deliveries.get("d-done")?.processed_at).not.toBeNull();
+    expect(releasedIds()).toEqual([]);
+    expect(markSuccesses).toEqual(["d-done"]);
+    expect(deliveryRow("d-done")?.["processed_at"]).not.toBeNull();
 
-    db.deliveries.get("d-done")!.received_at -= 3600_000;
+    backdate("d-done", 3600_000);
     const again = await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-done" }));
     expect(await again.json()).toEqual({ ok: true, duplicate: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(1);
@@ -363,11 +373,14 @@ describe("POST /api/inbound/github — failed handlers", () => {
   it("a failed release cannot acknowledge the redelivery forever: the lease expires and it runs", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     imports.markInstallation.mockRejectedValueOnce(new Error("db down"));
-    db.releaseError = { code: "XX000", message: "connection reset" };
+    db.opErrors["github_deliveries:delete"] = {
+      code: "XX000",
+      message: "connection reset",
+    };
     const body = { action: "deleted", installation: { id: 10 } };
     await expect(POST(deliver("installation", body, { delivery: "d-stuck" }))).rejects.toThrow("db down");
-    expect(db.released).toEqual([]);
-    expect(db.deliveries.get("d-stuck")).toMatchObject({ processed_at: null });
+    expect(releasedIds()).toEqual([]);
+    expect(deliveryRow("d-stuck")).toMatchObject({ processed_at: null });
     spy.mockRestore();
 
     // While the lease is live the redelivery waits (the attempt may still be running)…
@@ -376,12 +389,12 @@ describe("POST /api/inbound/github — failed handlers", () => {
     expect(imports.markInstallation).toHaveBeenCalledTimes(1);
 
     // …and once it has run out, the unfinished row is taken over and processed.
-    db.releaseError = null;
-    db.deliveries.get("d-stuck")!.received_at -= 16 * 60_000;
+    delete db.opErrors["github_deliveries:delete"];
+    backdate("d-stuck", 16 * 60_000);
     const retry = await POST(deliver("installation", body, { delivery: "d-stuck" }));
     expect(await retry.json()).toEqual({ ok: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(2);
-    expect(db.completed).toEqual(["d-stuck"]);
+    expect(markSuccesses).toEqual(["d-stuck"]);
 
     const done = await POST(deliver("installation", body, { delivery: "d-stuck" }));
     expect(await done.json()).toEqual({ ok: true, duplicate: true });
@@ -391,8 +404,13 @@ describe("POST /api/inbound/github — failed handlers", () => {
   it("a row from before 0091 stays the permanent acknowledgement it was: stamped final by the migration, never replayed", async () => {
     // The pre-lease route recorded no outcome, so 0091 stamps every existing row
     // processed; a stale suspend redelivered past the lease must not land.
-    const migrated = Date.now() - 3 * 86_400_000;
-    db.deliveries.set("d-old", { received_at: migrated, processed_at: migrated });
+    const migrated = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    db.rows("github_deliveries").push({
+      delivery_id: "d-old",
+      event: "installation",
+      received_at: migrated,
+      processed_at: migrated,
+    });
     const again = await POST(
       deliver("installation", { action: "suspend", installation: { id: 10 } }, { delivery: "d-old" })
     );
@@ -400,22 +418,24 @@ describe("POST /api/inbound/github — failed handlers", () => {
     expect(imports.markInstallation).not.toHaveBeenCalled();
 
     // A lost old event is replayed by deleting its row: the redelivery is a fresh claim.
-    db.deliveries.delete("d-old");
+    db.tables["github_deliveries"] = db
+      .rows("github_deliveries")
+      .filter((r) => r["delivery_id"] !== "d-old");
     const replay = await POST(
       deliver("installation", { action: "suspend", installation: { id: 10 } }, { delivery: "d-old" })
     );
     expect(await replay.json()).toEqual({ ok: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(1);
-    expect(db.completed).toEqual(["d-old"]);
+    expect(markSuccesses).toEqual(["d-old"]);
   });
 
   it("retries the final mark, so a transient failure still makes the redelivery a duplicate", async () => {
-    db.failCompletes = 2;
+    failCompletes = 2;
     await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-flaky" }));
-    expect(db.completeAttempts).toBe(3);
-    expect(db.completed).toEqual(["d-flaky"]);
+    expect(markAttempts).toHaveLength(3);
+    expect(markSuccesses).toEqual(["d-flaky"]);
 
-    db.deliveries.get("d-flaky")!.received_at -= 3600_000;
+    backdate("d-flaky", 3600_000);
     const again = await POST(deliver("installation", { action: "deleted", installation: { id: 10 } }, { delivery: "d-flaky" }));
     expect(await again.json()).toEqual({ ok: true, duplicate: true });
     expect(imports.markInstallation).toHaveBeenCalledTimes(1);
@@ -432,19 +452,19 @@ describe("POST /api/inbound/github — failed handlers", () => {
       stamped.last_sha = push.after;
       return { slug: "alice-site", version: "v1", sha: push.after, findings: [] };
     });
-    db.failCompletes = 3;
+    failCompletes = 3;
     const first = await POST(deliver("push", push, { delivery: "d-lost" }));
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({ ok: true, synced: ["alice-site"], failed: [] });
-    expect(db.completeAttempts).toBe(3);
-    expect(db.deliveries.get("d-lost")).toMatchObject({ processed_at: null });
+    expect(markAttempts).toHaveLength(3);
+    expect(deliveryRow("d-lost")).toMatchObject({ processed_at: null });
     spy.mockRestore();
 
-    db.deliveries.get("d-lost")!.received_at -= 16 * 60_000;
+    backdate("d-lost", 16 * 60_000);
     const again = await POST(deliver("push", push, { delivery: "d-lost" }));
     expect(await again.json()).toEqual({ ok: true, synced: [], failed: [] });
     expect(imports.syncStaticLink).toHaveBeenCalledTimes(1);
-    expect(db.completed).toEqual(["d-lost"]);
+    expect(markSuccesses).toEqual(["d-lost"]);
   });
 
   it("a link already at the pushed head is not staged again", async () => {
@@ -464,7 +484,7 @@ describe("POST /api/inbound/github — failed handlers", () => {
     imports.syncStaticLink.mockRejectedValueOnce(new Error("zipball too large"));
     const response = await POST(deliver("push", push, { delivery: "d-sync" }));
     expect(response.status).toBe(200);
-    expect(db.released).toEqual([]);
-    expect(db.completed).toEqual(["d-sync"]);
+    expect(releasedIds()).toEqual([]);
+    expect(markSuccesses).toEqual(["d-sync"]);
   });
 });

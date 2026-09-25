@@ -5,7 +5,7 @@
  * must still consume the burst, but the failure has to be observable.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { maybeRunCreativeLane } from "./imessage";
 import { createCreativeJob } from "./jobs";
 import { executeCreativeJob } from "./run";
@@ -19,18 +19,13 @@ vi.mock("./store", () => ({
 
 const job = { spaceId: "sp", userId: "u1", phone: "+1555" };
 
-const supabaseWithAsset = () =>
-  ({
-    storage: {
-      from: () => ({
-        download: () =>
-          Promise.resolve({
-            error: null,
-            data: new Blob([new Uint8Array([1, 2, 3])]),
-          }),
-      }),
-    },
-  }) as unknown as SupabaseClient;
+const db = new FakeSupabase();
+const supabase = db.client();
+
+/** The delivered asset bytes, staged where `creative_assets` stores jobs. */
+function seedAsset(): void {
+  db.storageObjects["creative-assets/assets/u1/a.mp4"] = new Uint8Array([1, 2, 3]);
+}
 
 const deadSender = () => {
   const boom = () => Promise.reject(new Error("spectrum stream closed"));
@@ -44,6 +39,8 @@ const deadSender = () => {
 
 describe("creative delivery observability", () => {
   beforeEach(() => {
+    db.reset();
+    seedAsset();
     vi.mocked(createCreativeJob).mockResolvedValue({
       id: "job-1",
     } as Awaited<ReturnType<typeof createCreativeJob>>);
@@ -70,7 +67,7 @@ describe("creative delivery observability", () => {
     const sender = deadSender();
 
     const handled = await maybeRunCreativeLane(
-      supabaseWithAsset(),
+      supabase,
       sender,
       job,
       "/zap intro animation"
@@ -109,7 +106,7 @@ describe("creative delivery observability", () => {
     } as unknown as Parameters<typeof maybeRunCreativeLane>[1];
 
     await maybeRunCreativeLane(
-      supabaseWithAsset(),
+      supabase,
       sender,
       job,
       "/zap intro animation"

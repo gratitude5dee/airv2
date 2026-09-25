@@ -196,47 +196,37 @@ function install(
   return client;
 }
 
-const labels = vi.hoisted(() => ({ name: null as string | null, error: null as { message: string; code?: string } | null }));
+import { FakeSupabase } from "../testing/fakeSupabase";
+
+const db = new FakeSupabase();
+
 vi.mock("../supabase", () => ({
-  serviceClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: { provider_name: labels.name }, error: labels.error }),
-        }),
-      }),
-      update: (values: { provider_name: string }) => ({
-        eq: () => ({
-          select: () => ({
-            single: async () => {
-              if (!labels.error) labels.name = values.provider_name;
-              return { error: labels.error };
-            },
-          }),
-        }),
-      }),
-    }),
-  }),
+  serviceClient: () => db.client(),
 }));
 
 beforeEach(() => {
-  labels.name = null;
-  labels.error = null;
+  db.reset();
 });
+
+/** The durable label lives in boxes.provider_name — seeded once per test. */
+function labelRow(name: string | null = null): void {
+  db.tables["boxes"] = [{ provider_box_id: BOX, provider_name: name }];
+}
 
 describe("durable display names", () => {
   it("can stop and resume before the label migration is applied", async () => {
     install([fakeSession("RUNNING")]);
-    labels.error = { code: "42703", message: "column provider_name does not exist" };
+    db.errors["boxes"] = { code: "42703", message: "column provider_name does not exist" };
     expect((await stop(BOX)).state).toBe("stopped");
     expect((await resume(BOX)).id).toBe(BOX);
     await expect(renameBox(BOX, "air-renamed")).rejects.toThrow("column provider_name");
   });
 
   it("renames a stopped snapshot without waking and restores its saved name", async () => {
+    labelRow();
     const client = install([], [fakeSnapshot("snap-1", "READY")]);
     expect((await renameBox(BOX, "air-gratitude")).state).toBe("stopped");
-    expect(labels.name).toBe("air-gratitude");
+    expect(db.rows("boxes")[0]?.["provider_name"]).toBe("air-gratitude");
     expect(client.snapshots[0]?.name).toBe("air-gratitude");
     expect(client.create).not.toHaveBeenCalled();
     await resume(BOX);
@@ -244,6 +234,7 @@ describe("durable display names", () => {
   });
 
   it("keeps the desired name when a stop creates its snapshot after relabel", async () => {
+    labelRow();
     const client = install([fakeSession()]);
     await renameBox(BOX, "air-gratitude");
     await stop(BOX);
@@ -253,11 +244,12 @@ describe("durable display names", () => {
   });
 
   it("reads the durable label again after a concurrent resume creates a session", async () => {
+    labelRow();
     const client = install([], [fakeSnapshot("snap-1", "READY")]);
     const create = client.create;
     client.create = vi.fn(async (options) => {
       const result = await create(options);
-      labels.name = "air-renamed";
+      db.rows("boxes")[0]!["provider_name"] = "air-renamed";
       return result;
     });
     await resume(BOX);
@@ -266,12 +258,13 @@ describe("durable display names", () => {
 
   it("does not claim a successful rename when persistence fails", async () => {
     const client = install([fakeSession()]);
-    labels.error = { message: "database unavailable" };
+    db.opErrors["boxes:update"] = { message: "database unavailable" };
     await expect(renameBox(BOX, "air-gratitude")).rejects.toThrow("database unavailable");
     expect(client.updateSession).not.toHaveBeenCalled();
   });
 
   it("keeps routing tags and box IDs unchanged while naming every provider resource", async () => {
+    labelRow();
     const client = install(
       [fakeSession(), fakeSession("RUNNING", { id: "sess-duplicate" })],
       [fakeSnapshot("snap-1", "READY"), fakeSnapshot("snap-2", "READY")],
@@ -285,11 +278,12 @@ describe("durable display names", () => {
   });
 
   it("propagates a rename that overlaps untagged snapshot creation", async () => {
+    labelRow();
     const client = install([fakeSession()]);
     const create = client.createSnapshotAsync;
     client.createSnapshotAsync = vi.fn(async (...args) => {
       const snapshot = await create(...args);
-      labels.name = "air-gratitude";
+      db.rows("boxes")[0]!["provider_name"] = "air-gratitude";
       return snapshot;
     });
     await stop(BOX);

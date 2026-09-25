@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { makeApp } from "@/app/mini/loader-test-utils";
 
 const r2 = vi.hoisted(() => ({ putObject: vi.fn<(key: string, body: Buffer, type: string) => Promise<void>>() }));
@@ -56,36 +56,24 @@ const WEBP = Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("W
 
 const app = makeApp({ slug: "alice-promo", appname: "promo", owner_user_id: "user-alice", name: "Promo", description: "A tour page." });
 
-function fakeSupabase(opts: { updates?: Record<string, unknown>[]; count?: number; downloaded?: Buffer } = {}): SupabaseClient {
-  return {
-    from: (table: string) => ({
-      update: (values: Record<string, unknown>) => ({
-        eq: async () => {
-          opts.updates?.push({ table, ...values });
-          return { error: null };
-        },
-      }),
-      select: () => {
-        const filters: Record<string, unknown> = {};
-        const builder = {
-          eq: (column: string, value: unknown) => ((filters[column] = value), builder),
-          then: (resolve: (value: unknown) => unknown) =>
-            Promise.resolve({ count: opts.count ?? 0, error: null, filters }).then(resolve),
-        };
-        return builder;
-      },
-    }),
-    storage: {
-      from: () => ({
-        download: async () =>
-          opts.downloaded ? { data: new Blob([new Uint8Array(opts.downloaded)]), error: null } : { data: null, error: { message: "x" } },
-      }),
-    },
-  } as unknown as SupabaseClient;
+const db = new FakeSupabase();
+const supabase = db.client();
+
+/** Seed `ops_events` rows the way `recordOpsEvent` writes them: the icon
+ * generation counter reads the ledger by kind + user_id + ref. */
+function seedIconEvents(userId: string, slug: string, n: number): void {
+  db.tables["ops_events"] = Array.from({ length: n }, (_, i) => ({
+    id: `evt-${i}`,
+    kind: "upload",
+    user_id: userId,
+    ref: `icon_generate:${slug}`,
+    created_at: new Date().toISOString(),
+  }));
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  db.reset();
   delete process.env["CREATE_ICON_MODEL"];
 });
 
@@ -167,30 +155,34 @@ describe("resizeIcon", () => {
 
 describe("storeIcon", () => {
   it("guards, resizes, puts both keys and writes icon_key = the 512 key", async () => {
-    const updates: Record<string, unknown>[] = [];
+    db.tables["mini_apps"] = [{ ...app }];
     const resize = async () => ({ icon: Buffer.from("big"), small: Buffer.from("small"), resized: true });
-    const stored = await storeIcon(fakeSupabase({ updates }), app, PNG, "image/png", { resize });
+    const stored = await storeIcon(supabase, app, PNG, "image/png", { resize });
     const sha = sha256Hex(Buffer.from("big"));
     expect(stored).toEqual({ icon_key: `apps/alice-promo/icon/${sha}.png`, resized: true });
     expect(r2.putObject.mock.calls.map((call) => call[0])).toEqual([
       `apps/alice-promo/icon/${sha}.png`,
       `apps/alice-promo/icon/${sha}-180.png`,
     ]);
-    expect(updates[0]).toMatchObject({ table: "mini_apps", icon_key: stored.icon_key });
+    expect(db.updates[0]).toMatchObject({
+      table: "mini_apps",
+      patch: expect.objectContaining({ icon_key: stored.icon_key }),
+    });
+    expect(db.rows("mini_apps")[0]?.["icon_key"]).toBe(stored.icon_key);
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(expect.anything(), "upload", "user-alice", "icon:alice-promo", 3);
   });
 
   it("stores the original once (no -180) when resizing is unavailable", async () => {
     const resize = async () => ({ icon: PNG, small: null, resized: false });
-    const stored = await storeIcon(fakeSupabase({ updates: [] }), app, PNG, "image/png", { resize });
+    const stored = await storeIcon(supabase, app, PNG, "image/png", { resize });
     expect(stored.resized).toBe(false);
     expect(r2.putObject).toHaveBeenCalledTimes(1);
     expect(r2.putObject.mock.calls[0]?.[0]).toBe(`apps/alice-promo/icon/${sha256Hex(PNG)}.png`);
   });
 
   it("refuses non-image types and oversize uploads before touching R2", async () => {
-    await expect(storeIcon(fakeSupabase(), app, PNG, "image/svg+xml")).rejects.toBeInstanceOf(IconError);
-    await expect(storeIcon(fakeSupabase(), app, Buffer.alloc(8 * 1024 * 1024 + 1), "image/png")).rejects.toMatchObject({
+    await expect(storeIcon(supabase, app, PNG, "image/svg+xml")).rejects.toBeInstanceOf(IconError);
+    await expect(storeIcon(supabase, app, Buffer.alloc(8 * 1024 * 1024 + 1), "image/png")).rejects.toMatchObject({
       status: 413,
     });
     expect(r2.putObject).not.toHaveBeenCalled();
@@ -200,7 +192,7 @@ describe("storeIcon", () => {
 describe("readBoxIcon", () => {
   it("reads the file base64 through the command lane and sniffs the type", async () => {
     compute.runCommand.mockResolvedValue({ exitCode: 0, stdout: `${JPEG.toString("base64")}\n`, stderr: "" });
-    const read = await readBoxIcon(fakeSupabase(), "user-alice", "promo", "public/icon.jpg");
+    const read = await readBoxIcon(supabase, "user-alice", "promo", "public/icon.jpg");
     expect(read.contentType).toBe("image/jpeg");
     expect(read.bytes.equals(JPEG)).toBe(true);
     expect(String(compute.runCommand.mock.calls[0]?.[1])).toContain('"$HOME/.hermes/create/promo/public/icon.jpg"');
@@ -209,9 +201,9 @@ describe("readBoxIcon", () => {
 
   it("404 on a missing file, 415 on a non-image", async () => {
     compute.runCommand.mockResolvedValueOnce({ exitCode: 3, stdout: "", stderr: "" });
-    await expect(readBoxIcon(fakeSupabase(), "user-alice", "promo", "icon.png")).rejects.toMatchObject({ status: 404 });
+    await expect(readBoxIcon(supabase, "user-alice", "promo", "icon.png")).rejects.toMatchObject({ status: 404 });
     compute.runCommand.mockResolvedValueOnce({ exitCode: 0, stdout: Buffer.from("<svg/>").toString("base64"), stderr: "" });
-    await expect(readBoxIcon(fakeSupabase(), "user-alice", "promo", "icon.png")).rejects.toMatchObject({ status: 415 });
+    await expect(readBoxIcon(supabase, "user-alice", "promo", "icon.png")).rejects.toMatchObject({ status: 415 });
   });
 });
 
@@ -223,7 +215,8 @@ describe("generateIcon", () => {
       line: "",
       asset: { id: "asset-1", storage_key: "u/alice/x.png", ext: "png" },
     });
-    const out = await generateIcon(fakeSupabase({ downloaded: PNG }), "user-alice", app, { theme: "atmosphere" });
+    db.storageObjects["creative-assets/u/alice/x.png"] = PNG;
+    const out = await generateIcon(supabase, "user-alice", app, { theme: "atmosphere" });
     expect(out.contentType).toBe("image/png");
     expect(out.bytes.equals(PNG)).toBe(true);
     expect(limits.recordOpsEvent).toHaveBeenCalledWith(expect.anything(), "upload", "user-alice", "icon_generate:alice-promo");
@@ -244,13 +237,14 @@ describe("generateIcon", () => {
 
   it("a refused or failed render is an IconError with the lane's line", async () => {
     creative.executeCreativeJob.mockResolvedValueOnce({ status: "refused", line: "can't draw that" });
-    await expect(generateIcon(fakeSupabase(), "user-alice", app)).rejects.toMatchObject({ status: 422, message: "can't draw that" });
+    await expect(generateIcon(supabase, "user-alice", app)).rejects.toMatchObject({ status: 422, message: "can't draw that" });
     creative.executeCreativeJob.mockResolvedValueOnce({ status: "failed", line: "busy" });
-    await expect(generateIcon(fakeSupabase(), "user-alice", app)).rejects.toMatchObject({ status: 502 });
+    await expect(generateIcon(supabase, "user-alice", app)).rejects.toMatchObject({ status: 502 });
   });
 
   it("countIconGenerations reads the ops ledger by kind + ref", async () => {
-    expect(await countIconGenerations(fakeSupabase({ count: 2 }), "user-alice", "alice-promo")).toBe(2);
+    seedIconEvents("user-alice", "alice-promo", 2);
+    expect(await countIconGenerations(supabase, "user-alice", "alice-promo")).toBe(2);
   });
 });
 
@@ -259,7 +253,7 @@ describe("sendIconPreview", () => {
     plan.ownerThread.mockResolvedValue({ spaceId: "space-1", phone: "+15551234567" });
     const sender = { sendAttachment: vi.fn(async () => undefined), sendText: vi.fn(async () => undefined) };
     const sent = await sendIconPreview(
-      fakeSupabase(),
+      supabase,
       sender as unknown as Parameters<typeof sendIconPreview>[1],
       "user-alice",
       "promo",
@@ -269,6 +263,6 @@ describe("sendIconPreview", () => {
     expect(sender.sendAttachment).toHaveBeenCalledWith("space-1", "+15551234567", PNG, { name: "promo-icon.png", mimeType: "image/png" });
     expect(sender.sendText).toHaveBeenCalledWith("space-1", "+15551234567", ICON_PREVIEW_LINE);
     plan.ownerThread.mockResolvedValue(null);
-    expect(await sendIconPreview(fakeSupabase(), sender as unknown as Parameters<typeof sendIconPreview>[1], "u", "promo", PNG)).toBe(false);
+    expect(await sendIconPreview(supabase, sender as unknown as Parameters<typeof sendIconPreview>[1], "u", "promo", PNG)).toBe(false);
   });
 });

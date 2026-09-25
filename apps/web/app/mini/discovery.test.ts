@@ -8,44 +8,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { makeApp } from "./loader-test-utils";
 import type { RegistryApp } from "@/lib/miniapps/registry";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
-const db: { apps: RegistryApp[]; gatewayToken: string } = {
-  apps: [],
-  gatewayToken: "gw-token-1",
-};
+const db = new FakeSupabase();
+const GATEWAY_TOKEN = "gw-token-1";
+
+const state: { apps: RegistryApp[] } = { apps: [] };
 
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from(table: string) {
-      if (table !== "boxes") throw new Error(`unexpected table ${table}`);
-      return {
-        select() {
-          return {
-            eq(_col: string, value: string) {
-              return {
-                async maybeSingle() {
-                  return {
-                    data:
-                      value === db.gatewayToken ? { user_id: "user-1" } : null,
-                    error: null,
-                  };
-                },
-              };
-            },
-          };
-        },
-      };
-    },
-  }),
+  serviceClient: () => db.client(),
 }));
 
 vi.mock("@/lib/miniapps/registry", () => ({
   listPublicApps: async () =>
-    db.apps.filter(
+    state.apps.filter(
       (app) => app.status === "published" && app.visibility === "public"
     ),
   getRegistryApp: async (_supabase: unknown, slug: string) =>
-    db.apps.find((app) => app.slug === slug) ?? null,
+    state.apps.find((app) => app.slug === slug) ?? null,
 }));
 
 vi.mock("@/lib/miniapps/appsApi", () => ({
@@ -87,7 +67,11 @@ const seed = () => [
 ];
 
 beforeEach(() => {
-  db.apps = seed();
+  db.reset();
+  db.tables["boxes"] = [
+    { user_id: "user-1", gateway_token: GATEWAY_TOKEN },
+  ];
+  state.apps = seed();
 });
 
 const HIDDEN = ["bob-draft", "vault", "carol-secret", "bob-gone"];
@@ -190,7 +174,7 @@ describe("GET /api/store/search", () => {
   });
 
   it("searches public apps only and returns open-ready links", async () => {
-    const res = await searchGet(req("notes", "gw-token-1"));
+    const res = await searchGet(req("notes", GATEWAY_TOKEN));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       results: { slug: string; detail_url: string; agent_md: string }[];
@@ -206,7 +190,7 @@ describe("GET /api/store/search", () => {
 
   it("never surfaces draft/private/unlisted/suspended apps", async () => {
     for (const q of ["draft", "vault", "secret", "gone"]) {
-      const res = await searchGet(req(q, "gw-token-1"));
+      const res = await searchGet(req(q, GATEWAY_TOKEN));
       const body = (await res.json()) as { results: { slug: string }[] };
       expect(body.results, q).toEqual([]);
     }

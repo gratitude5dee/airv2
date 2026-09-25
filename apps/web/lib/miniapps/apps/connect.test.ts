@@ -6,9 +6,9 @@
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const { FakeComposioApiError } = vi.hoisted(() => {
   class FakeComposioApiError extends Error {
@@ -55,20 +55,11 @@ beforeAll(() => {
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
-function thenable(rows: unknown) {
-  return {
-    select: () => ({
-      eq: () => Promise.resolve({ data: rows, error: null }),
-    }),
-  };
-}
-
 function makeCtx(via?: "card"): MiniAppContext {
+  const db = new FakeSupabase();
   return {
     request: new NextRequest("https://app.wzrd.tech/mini/connect"),
-    supabase: {
-      from: () => thenable([]),
-    } as unknown as SupabaseClient,
+    supabase: db.client(),
     app: makeApp({ slug: "connect", kind: "input" }),
     session: {
       userId: "user-1",

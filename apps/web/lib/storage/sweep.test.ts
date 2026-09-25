@@ -6,7 +6,7 @@
  * public object.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const r2 = vi.hoisted(() => ({
   objects: new Set<string>(),
@@ -26,72 +26,12 @@ vi.mock("./r2", () => ({
 
 import { SWEEP_AFTER_SECONDS, sweepAbandonedUploads } from "./confirm";
 
-interface PendingRow {
-  key: string;
-  user_id: string;
-  charged_bytes: number;
-  created_at: string;
-}
+const db = new FakeSupabase();
+const supabase = db.client();
 
-const db: {
-  pending: PendingRow[];
-  usage: Record<string, number>;
-  releases: { userId: string; bytes: number }[];
-} = { pending: [], usage: {}, releases: [] };
-
-function fakeSupabase(): SupabaseClient {
-  return {
-    from(table: string) {
-      if (table !== "pending_uploads") throw new Error(`unexpected table ${table}`);
-      return {
-        select() {
-          return {
-            lt(_column: string, cutoff: string) {
-              return {
-                async limit(n: number) {
-                  const stale = db.pending
-                    .filter((row) => row.created_at < cutoff)
-                    .slice(0, n)
-                    .map(({ key, user_id }) => ({ key, user_id }));
-                  return { data: stale, error: null };
-                },
-              };
-            },
-          };
-        },
-        delete() {
-          const filters: Record<string, unknown> = {};
-          const chain = {
-            eq(column: string, value: unknown) {
-              filters[column] = value;
-              return chain;
-            },
-            async select(_columns: string) {
-              const taken = db.pending.filter(
-                (row) => row.key === filters["key"] && row.user_id === filters["user_id"]
-              );
-              db.pending = db.pending.filter((row) => !taken.includes(row));
-              return {
-                data: taken.map((row) => ({ charged_bytes: row.charged_bytes })),
-                error: null,
-              };
-            },
-          };
-          return chain;
-        },
-      };
-    },
-    async rpc(name: string, args: Record<string, unknown>) {
-      if (name !== "user_bucket_release") throw new Error(`unexpected rpc ${name}`);
-      const userId = String(args["p_user_id"]);
-      const bytes = Number(args["p_bytes"]);
-      db.releases.push({ userId, bytes });
-      r2.order.push(`release ${userId} ${bytes}`);
-      db.usage[userId] = Math.max((db.usage[userId] ?? 0) - bytes, 0);
-      return { data: db.usage[userId], error: null };
-    },
-  } as unknown as SupabaseClient;
-}
+/** Local bucket bookkeeping the user_bucket_release RPC maintains in prod. */
+const usage: Record<string, number> = {};
+const releases: { userId: string; bytes: number }[] = [];
 
 function ago(seconds: number): string {
   return new Date(Date.now() - seconds * 1000).toISOString();
@@ -99,9 +39,17 @@ function ago(seconds: number): string {
 
 describe("sweepAbandonedUploads", () => {
   beforeEach(() => {
-    db.pending = [];
-    db.usage = {};
-    db.releases = [];
+    db.reset();
+    for (const key of Object.keys(usage)) delete usage[key];
+    releases.length = 0;
+    db.rpcResults["user_bucket_release"] = (args: unknown) => {
+      const userId = String((args as Record<string, unknown>)?.["p_user_id"]);
+      const bytes = Number((args as Record<string, unknown>)?.["p_bytes"]);
+      releases.push({ userId, bytes });
+      r2.order.push(`release ${userId} ${bytes}`);
+      usage[userId] = Math.max((usage[userId] ?? 0) - bytes, 0);
+      return usage[userId];
+    };
     r2.objects.clear();
     r2.order = [];
     r2.deleteObject.mockClear();
@@ -109,8 +57,8 @@ describe("sweepAbandonedUploads", () => {
   });
 
   it("refunds the stored charge for each stale reservation", async () => {
-    db.usage = { "user-1": 1000, "user-2": 700 };
-    db.pending = [
+    Object.assign(usage, { "user-1": 1000, "user-2": 700 });
+    db.tables["pending_uploads"] = [
       {
         key: "u/a/media/stale1",
         user_id: "user-1",
@@ -124,16 +72,16 @@ describe("sweepAbandonedUploads", () => {
         created_at: ago(SWEEP_AFTER_SECONDS + 120),
       },
     ];
-    const released = await sweepAbandonedUploads(fakeSupabase());
+    const released = await sweepAbandonedUploads(supabase);
     expect(released).toBe(2);
-    expect(db.pending).toHaveLength(0);
-    expect(db.usage["user-1"]).toBe(700);
-    expect(db.usage["user-2"]).toBe(0);
+    expect(db.rows("pending_uploads")).toHaveLength(0);
+    expect(usage["user-1"]).toBe(700);
+    expect(usage["user-2"]).toBe(0);
   });
 
   it("leaves fresh reservations (and their charge) untouched", async () => {
-    db.usage = { "user-1": 500 };
-    db.pending = [
+    Object.assign(usage, { "user-1": 500 });
+    db.tables["pending_uploads"] = [
       {
         key: "u/a/media/fresh",
         user_id: "user-1",
@@ -141,16 +89,16 @@ describe("sweepAbandonedUploads", () => {
         created_at: ago(30),
       },
     ];
-    const released = await sweepAbandonedUploads(fakeSupabase());
+    const released = await sweepAbandonedUploads(supabase);
     expect(released).toBe(0);
-    expect(db.pending).toHaveLength(1);
-    expect(db.usage["user-1"]).toBe(500);
+    expect(db.rows("pending_uploads")).toHaveLength(1);
+    expect(usage["user-1"]).toBe(500);
     expect(r2.deleteObject).not.toHaveBeenCalled();
   });
 
   it("never drives usage below zero on refund", async () => {
-    db.usage = { "user-1": 100 };
-    db.pending = [
+    Object.assign(usage, { "user-1": 100 });
+    db.tables["pending_uploads"] = [
       {
         key: "u/a/media/stale",
         user_id: "user-1",
@@ -158,14 +106,14 @@ describe("sweepAbandonedUploads", () => {
         created_at: ago(SWEEP_AFTER_SECONDS + 60),
       },
     ];
-    await sweepAbandonedUploads(fakeSupabase());
-    expect(db.usage["user-1"]).toBe(0);
+    await sweepAbandonedUploads(supabase);
+    expect(usage["user-1"]).toBe(0);
   });
 
   it("an uploaded-but-unconfirmed object is deleted before its charge is released", async () => {
-    db.usage = { "user-1": 300 };
+    Object.assign(usage, { "user-1": 300 });
     r2.objects.add("u/a/media/uploaded");
-    db.pending = [
+    db.tables["pending_uploads"] = [
       {
         key: "u/a/media/uploaded",
         user_id: "user-1",
@@ -173,20 +121,20 @@ describe("sweepAbandonedUploads", () => {
         created_at: ago(SWEEP_AFTER_SECONDS + 60),
       },
     ];
-    const released = await sweepAbandonedUploads(fakeSupabase());
+    const released = await sweepAbandonedUploads(supabase);
     expect(released).toBe(1);
     expect(r2.objects.has("u/a/media/uploaded")).toBe(false);
     expect(r2.order).toEqual(["delete u/a/media/uploaded", "release user-1 300"]);
-    expect(db.usage["user-1"]).toBe(0);
+    expect(usage["user-1"]).toBe(0);
   });
 
   it("an R2 failure keeps the row and the charge for the next sweep; other rows proceed", async () => {
-    db.usage = { "user-1": 300, "user-2": 200 };
+    Object.assign(usage, { "user-1": 300, "user-2": 200 });
     r2.objects.add("u/a/media/stuck");
     r2.deleteObject.mockImplementationOnce(async () => {
       throw new Error("r2 delete failed: 503");
     });
-    db.pending = [
+    db.tables["pending_uploads"] = [
       {
         key: "u/a/media/stuck",
         user_id: "user-1",
@@ -200,23 +148,23 @@ describe("sweepAbandonedUploads", () => {
         created_at: ago(SWEEP_AFTER_SECONDS + 60),
       },
     ];
-    const released = await sweepAbandonedUploads(fakeSupabase());
+    const released = await sweepAbandonedUploads(supabase);
     expect(released).toBe(1);
-    expect(db.pending.map((row) => row.key)).toEqual(["u/a/media/stuck"]);
-    expect(db.usage["user-1"]).toBe(300);
-    expect(db.usage["user-2"]).toBe(0);
+    expect(db.rows("pending_uploads").map((row) => row["key"])).toEqual(["u/a/media/stuck"]);
+    expect(usage["user-1"]).toBe(300);
+    expect(usage["user-2"]).toBe(0);
     expect(r2.objects.has("u/a/media/stuck")).toBe(true);
 
-    const again = await sweepAbandonedUploads(fakeSupabase());
+    const again = await sweepAbandonedUploads(supabase);
     expect(again).toBe(1);
-    expect(db.pending).toHaveLength(0);
-    expect(db.usage["user-1"]).toBe(0);
+    expect(db.rows("pending_uploads")).toHaveLength(0);
+    expect(usage["user-1"]).toBe(0);
     expect(r2.objects.has("u/a/media/stuck")).toBe(false);
   });
 
   it("two sweeps racing on the same row release its charge once", async () => {
-    db.usage = { "user-1": 300 };
-    db.pending = [
+    Object.assign(usage, { "user-1": 300 });
+    db.tables["pending_uploads"] = [
       {
         key: "u/a/media/stale",
         user_id: "user-1",
@@ -232,13 +180,13 @@ describe("sweepAbandonedUploads", () => {
       r2.order.push(`delete ${key}`);
       r2.objects.delete(key);
     });
-    const a = sweepAbandonedUploads(fakeSupabase());
-    const b = sweepAbandonedUploads(fakeSupabase());
+    const a = sweepAbandonedUploads(supabase);
+    const b = sweepAbandonedUploads(supabase);
     await Promise.resolve();
     unblock();
     const [ra, rb] = await Promise.all([a, b]);
     expect(ra + rb).toBe(1);
-    expect(db.releases).toEqual([{ userId: "user-1", bytes: 300 }]);
-    expect(db.usage["user-1"]).toBe(0);
+    expect(releases).toEqual([{ userId: "user-1", bytes: 300 }]);
+    expect(usage["user-1"]).toBe(0);
   });
 });
