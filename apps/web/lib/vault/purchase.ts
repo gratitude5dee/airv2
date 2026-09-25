@@ -15,7 +15,11 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { command, writeFile } from "../box/client";
-import { approveRun, type HermesBoxTarget } from "../hermes/client";
+import {
+  approveRun,
+  HermesApiError,
+  type HermesBoxTarget,
+} from "../hermes/client";
 import { hostSupportsLink } from "../payments/link";
 import { appendVaultEvent, VaultCliError } from "./client";
 import {
@@ -286,6 +290,154 @@ export function dryRunHosts(): string[] {
 }
 
 /**
+ * R-SEC-05 — an approve/dismiss that fails to reach the paused run must
+ * not be swallowed: mark the decision relay_failed (the sweeper retries
+ * via retryFailedApprovalRelays) and log it with user_id + box_id. The
+ * local receipts (fill_denied / fill_approved + the ticket ledger) are
+ * already durable at this point, so the retry only resumes the run.
+ * Status flips only from "pending" — a resolver that lost its race never
+ * clobbers the receipt another path already wrote (CA-23).
+ */
+async function relayApproval(
+  supabase: SupabaseClient,
+  userId: string,
+  box: { boxId: string; target: HermesBoxTarget },
+  decision: { id: string; ref: string | null; payload: unknown },
+  approved: boolean
+): Promise<void> {
+  if (!decision.ref) return;
+  try {
+    await approveRun(box.target, decision.ref, approved);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "purchase_review approval relay failed",
+        user_id: userId,
+        box_id: box.boxId,
+        decision_id: decision.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    const { error: updateError } = await supabase
+      .from("decisions")
+      .update({
+        status: "relay_failed",
+        payload: {
+          ...((decision.payload ?? {}) as Record<string, unknown>),
+          relay_approved: approved,
+        },
+      })
+      .eq("id", decision.id)
+      .eq("user_id", userId)
+      .eq("status", "pending");
+    if (updateError) {
+      console.error(
+        JSON.stringify({
+          msg: "purchase_review relay_failed mark failed",
+          user_id: userId,
+          decision_id: decision.id,
+          error: updateError.message,
+        })
+      );
+    }
+  }
+}
+
+/**
+ * The cron half of R-SEC-05: resume the run every relay_failed decision is
+ * still holding. The run the relay lost may be gone entirely (404/410) —
+ * the local receipts already landed, so close the decision rather than
+ * retry forever. Returns the count of decisions closed this tick.
+ */
+export async function retryFailedApprovalRelays(
+  supabase: SupabaseClient,
+  wake: (userId: string) => Promise<{
+    boxId: string;
+    target: HermesBoxTarget;
+  } | null>,
+  rearm: (userId: string) => Promise<void>
+): Promise<{ retried: number; closed: number }> {
+  const { data: stuck, error } = await supabase
+    .from("decisions")
+    .select("id, user_id, ref, payload")
+    .eq("kind", "purchase_review")
+    .eq("status", "relay_failed");
+  if (error || !stuck) return { retried: 0, closed: 0 };
+
+  let retried = 0;
+  let closed = 0;
+  for (const row of stuck as {
+    id: string;
+    user_id: string;
+    ref: string | null;
+    payload: unknown;
+  }[]) {
+    try {
+      if (!row.ref) {
+        // Nothing to resume — close the decision.
+        await supabase
+          .from("decisions")
+          .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+          .eq("id", row.id)
+          .eq("status", "relay_failed");
+        closed += 1;
+        continue;
+      }
+      const approved =
+        (row.payload as { relay_approved?: unknown } | null)?.relay_approved ===
+        true;
+      const box = await wake(row.user_id).catch(() => null);
+      if (!box) continue;
+      try {
+        await approveRun(box.target, row.ref, approved);
+      } catch (relayError) {
+        // A paused run that no longer exists cannot be resumed — the
+        // receipts already landed, so close the decision out.
+        if (
+          relayError instanceof HermesApiError &&
+          [404, 409, 410].includes(relayError.status)
+        ) {
+          await supabase
+            .from("decisions")
+            .update({
+              status: approved ? "approved" : "dismissed",
+              resolved_at: new Date().toISOString(),
+            })
+            .eq("id", row.id)
+            .eq("status", "relay_failed");
+          closed += 1;
+        } else {
+          throw relayError;
+        }
+        continue;
+      } finally {
+        await rearm(row.user_id).catch(() => undefined);
+      }
+      await supabase
+        .from("decisions")
+        .update({
+          status: approved ? "approved" : "dismissed",
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", row.id)
+        .eq("status", "relay_failed");
+      retried += 1;
+      closed += 1;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "sweeper approval relay retry failed",
+          user_id: row.user_id,
+          decision_id: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+  return { retried, closed };
+}
+
+/**
  * Resolve an owner decision on a purchase_review. Approve mints the fill
  * ticket, redeems its jti in the ledger (single use), delivers it to the
  * box, and resumes the paused run; deny writes the fill_denied receipt and
@@ -324,8 +476,8 @@ export async function resolvePurchaseReview(
       itemId || null,
       host ? `${host}:link_selected` : "link_selected"
     );
-    if (decision.ref && box) {
-      await approveRun(box.target, decision.ref, false).catch(() => undefined);
+    if (box) {
+      await relayApproval(supabase, userId, box, decision, false);
     }
     return;
   }
@@ -338,8 +490,8 @@ export async function resolvePurchaseReview(
       itemId || null,
       host ? `${host}:owner_denied` : "owner_denied"
     );
-    if (decision.ref && box) {
-      await approveRun(box.target, decision.ref, false).catch(() => undefined);
+    if (box) {
+      await relayApproval(supabase, userId, box, decision, false);
     }
     return;
   }
@@ -391,9 +543,7 @@ export async function resolvePurchaseReview(
     itemId,
     `${claims.host}:${band}`
   );
-  if (decision.ref) {
-    await approveRun(box.target, decision.ref, true).catch(() => undefined);
-  }
+  await relayApproval(supabase, userId, box, decision, true);
 }
 
 /**
