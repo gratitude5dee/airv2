@@ -1,4 +1,6 @@
-{"comment": "K196 \u2014 vault_fill decision kind has no box-side filer today; honest replay records no call"}
-{"sse": {"event": "tool.started", "tool": "skill_view", "preview": "vault-use \u2192 SKILL.md"}}
-{"sse": {"event": "message.delta", "delta": "That's a sensitive ID \u2014 I won't keep it in memory or notes. There's no pending vault filing I can open from the box right now; tell me to route it through the vault when the approval path lands."}}
+{"comment": "K196 — vault_fill files through POST /api/vault/fill; the secret stays box-side in the staged inbox file"}
+{"sse": {"event": "tool.started", "tool": "skill_view", "preview": "vault-use → SKILL.md"}}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "mkdir -p ~/.hermes/vault/.inbox && install -m 600 /dev/null ~/.hermes/vault/.inbox/agent-3f9a1c2e-8b7d-4e5f-9a6b-0c1d2e3f4a5b.json"}}
+{"call": {"method": "POST", "path": "/api/vault/fill", "body": {"name": "passport number", "kind": "identity", "staging_ref": ".hermes/vault/.inbox/agent-3f9a1c2e-8b7d-4e5f-9a6b-0c1d2e3f4a5b.json"}}}
+{"sse": {"event": "message.delta", "delta": "That's a sensitive ID — I've staged it into the vault's encrypted inbox and filed the approval for you. It shows up in Needs-you; approve it there and it's vaulted, dismiss it and the file is shredded. The number never went into memory or notes."}}
 {"sse": {"event": "run.completed"}}

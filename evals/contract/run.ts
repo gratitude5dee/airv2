@@ -403,22 +403,11 @@ interface LaneResult {
  * failing, or a listed gap unexpectedly passing (XPASS — the bug got fixed
  * and the baseline needs updating), fails CI.
  *
- * - A106: `POST /api/calendar/remind` is session-cookie-only, so the box has
- *   no credential path to file an event-tied one-shot reminder — it 401s and
- *   no agent_schedules row lands. The route needs a box-token path.
- * - K196: `vault_fill` is a legal decision kind but the kernel_actions filer
- *   is disabled by default — a vault-fill turn files nothing.
+ * (Empty today — A106's remind route takes box credentials and K196's
+ * vault_fill files via POST /api/vault/fill as of this fix; both gaps were
+ * retired by the same commit.)
  */
-const KNOWN_GAPS: Record<string, string> = {
-  "A106:web":
-    "POST /api/calendar/remind rejects box credentials (session-cookie-only) — no filer for one-shot reminders",
-  "A106:imessage":
-    "POST /api/calendar/remind rejects box credentials (session-cookie-only) — no filer for one-shot reminders",
-  "K196:web":
-    "decision kind 'vault_fill' has no control-plane filer (kernel_actions path is off by default)",
-  "K196:imessage":
-    "decision kind 'vault_fill' has no control-plane filer (kernel_actions path is off by default)",
-};
+const KNOWN_GAPS: Record<string, string> = {};
 
 async function assertDrive(
   laneCase: EvalCase,

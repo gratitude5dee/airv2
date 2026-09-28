@@ -59,6 +59,8 @@ import {
   MuseCapabilityError,
   resolveMuseActionDecision,
 } from "../muse/capabilities";
+import { applyStagedFile } from "../vault/client";
+import { command } from "../box/client";
 
 /** The decision row as the route fetches it for resolution. */
 export interface PendingDecisionRow {
@@ -576,6 +578,34 @@ export async function resolveDecision(
         .eq("status", "parked"),
       { what: "requeue content slot", user_id: userId }
     );
+  }
+
+  if (decision.kind === "vault_fill" && decision.ref) {
+    // K196: the agent staged a create-op inbox file itself; the ref is that
+    // box-relative path. Approve applies it into the encrypted box store
+    // (air-vault apply shreds it on every path); dismiss shreds it where it
+    // sits. Nothing secret ever touches this route's argv or Postgres (C18).
+    const staging = asRecord(decision.payload);
+    const payloadBoxId =
+      typeof staging?.["box_id"] === "string" ? staging["box_id"] : null;
+    const box = payloadBoxId
+      ? ({ boxId: payloadBoxId } as const)
+      : await ensureBoxAwake(supabase, userId);
+    try {
+      if (action === "approve") {
+        await applyStagedFile(box.boxId, userId, decision.ref);
+      } else {
+        const stagingAbsolute = `/home/user/${decision.ref}`;
+        await command(
+          box.boxId,
+          `shred -u ${JSON.stringify(stagingAbsolute)} 2>/dev/null || rm -f ${JSON.stringify(stagingAbsolute)}`
+        );
+      }
+    } finally {
+      if (!payloadBoxId) {
+        await armStopAfter(supabase, userId).catch(() => undefined);
+      }
+    }
   }
 
   // Only a still-pending row takes this resolution. A concurrent request

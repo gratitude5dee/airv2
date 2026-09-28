@@ -361,6 +361,69 @@ export async function reveal(
   return result.stdout;
 }
 
+/**
+ * Apply an inbox file the agent staged itself (R-EV-07 gap K196): unlike
+ * applyBatch the payload was written by the box agent — values never pass
+ * through the control plane at all. `stagingRef` is the box-relative path
+ * under .hermes/vault/.inbox the agent named when it filed the vault_fill
+ * decision; the CLI applies it into the encrypted store and shreds it.
+ * Returned metadata mirrors and audits exactly like applyBatch.
+ */
+export async function applyStagedFile(
+  boxId: string,
+  userId: string,
+  stagingRef: string
+): Promise<ApplyResult[]> {
+  const staged = stagingRef.replace(/^\//, "");
+  // Filenames are argv — the route validates the directory shape, and here
+  // each path segment must also be shell-inert.
+  for (const segment of staged.split("/")) {
+    safeArg(segment, "staging path");
+  }
+  const supabase = serviceClient();
+  const absolute = `/home/user/${staged}`;
+  const result = await command(
+    boxId,
+    `chmod 600 ${JSON.stringify(absolute)} && air-vault apply ${JSON.stringify(absolute)}`
+  );
+  if (result.exitCode !== 0) {
+    throwCliError(result.stderr, "air-vault apply failed");
+  }
+  const { results } = JSON.parse(result.stdout) as {
+    results: ApplyResult[];
+  };
+  for (const applied of results) {
+    if (applied.op === "delete") {
+      const { error } = await supabase
+        .from("vault_items")
+        .update({
+          deleted_at: new Date().toISOString(),
+          env_var: null,
+        })
+        .eq("id", applied.id)
+        .eq("user_id", userId);
+      if (error) {
+        vaultLogError({
+          msg: "vault_items delete mirror failed",
+          user_id: userId,
+          item_id: applied.id,
+          error: error.message,
+        });
+      }
+    } else if (applied.item) {
+      await mirrorItem(supabase, userId, applied.item);
+    }
+    await appendVaultEvent(supabase, userId, applied.op, applied.id);
+    vaultLog({
+      msg: "vault apply",
+      user_id: userId,
+      item_id: applied.id,
+      op: applied.op,
+    });
+  }
+  return results;
+}
+
 /** Current six-digit TOTP code for an item with a stored seed. */
 export async function totp(
   boxId: string,
