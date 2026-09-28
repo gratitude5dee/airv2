@@ -1377,6 +1377,7 @@ async function runFlushInner(
         user_id: job.userId,
         hermes_run_id: run.run_id,
         trigger: "imessage",
+        sender_tier: job.senderTier ?? null,
         started_at: startedAt,
       });
     if (openReceiptError) {
