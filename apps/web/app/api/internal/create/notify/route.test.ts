@@ -101,10 +101,6 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
 describe("POST /api/internal/create/notify bridge auth", () => {
   it("rejects unsigned requests", async () => {
     const response = await POST(
