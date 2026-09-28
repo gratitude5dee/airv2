@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { db } from "../db";
 import type { HermesBoxTarget } from "../hermes/client";
 import type { HostedRoute } from "./types";
+import { toAgentHarness, type AgentHarness } from "../agent/harness";
 
 export interface BoxCredentialRow {
   provider_box_id: string;
@@ -21,11 +22,12 @@ export interface BoxCredentialRow {
   dashboard_url: string | null;
   dashboard_token: string | null;
   dashboard_auth: string | null;
+  harness: string | null;
 }
 
 /** The credential columns plus `state`, the mirrored liveness callers gate on. */
 export const BOX_CREDENTIAL_COLUMNS =
-  "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth, state";
+  "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth, state, harness";
 
 export interface BoxCredentials {
   boxId: string;
@@ -35,6 +37,8 @@ export interface BoxCredentials {
   dashboard?: HostedRoute | undefined;
   /** Sealed dashboard basic-auth password (CM1/CC10). Server-side only. */
   dashboardAuthSealed?: string | undefined;
+  /** Agent harness on this box; rows predating the column read as 'hermes'. */
+  harness: AgentHarness;
 }
 
 export function toBoxCredentials(
@@ -55,6 +59,7 @@ export function toBoxCredentials(
         ? { url: row.dashboard_url, token: row.dashboard_token }
         : undefined,
     dashboardAuthSealed: row.dashboard_auth ?? undefined,
+    harness: toAgentHarness(row.harness),
   };
 }
 

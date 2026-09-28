@@ -13,6 +13,7 @@ import { installComposioMcp, installMasterkeyMcp } from "../provisioning/connect
 import { ensureMailboxOnBox } from "../provisioning/email";
 import { provisionDaytona } from "../provisioning/daytona";
 import { providerOf, resume } from "../box/client";
+import { toAgentHarness } from "../agent/harness";
 import { env } from "../env";
 import { sealSecret } from "../crypto/secretbox";
 import {
@@ -203,7 +204,10 @@ export async function stepPreparing(ctx: StepCtx): Promise<StepOutcome> {
     const built = await buildCompute(
       supabase,
       migration.user_id,
-      environment as never,
+      {
+        environment: environment as never,
+        harness: toAgentHarness(box["harness"]),
+      },
       channel as never,
       migration.target_provider as never
     );
@@ -219,8 +223,8 @@ export async function stepPreparing(ctx: StepCtx): Promise<StepOutcome> {
       environment,
       hosted_url: built.routes.hermes.url,
       hosted_token: built.routes.hermes.token,
-      dashboard_url: built.routes.dashboard.url,
-      dashboard_token: built.routes.dashboard.token,
+      dashboard_url: built.routes.dashboard?.url ?? null,
+      dashboard_token: built.routes.dashboard?.token ?? null,
       dashboard_auth: dashKey ? sealSecret(built.dashPassword, dashKey) : null,
       api_server_key: built.apiServerKey,
       gateway_token: built.gatewayToken,

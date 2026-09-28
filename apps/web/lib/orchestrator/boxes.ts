@@ -17,6 +17,7 @@ import {
 } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
 import { log } from "../log";
+import { HARNESS_PROFILES } from "../agent/harness";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import {
   loadBoxCredentials,
@@ -47,6 +48,7 @@ export interface UserBox {
   /** Sealed dashboard basic-auth password (CM1/CC10). Server-side only. */
   dashboardAuthSealed?: string | undefined;
 }
+
 
 export const API_SERVER_PORT = 8642;
 /** How long after the VM reports ready the wake loop lets the Hermes gateway
@@ -327,6 +329,7 @@ async function wakeBox(
     void afterResume(boxId);
   }
 
+  const profile = HARNESS_PROFILES[creds.harness];
   let target: HermesBoxTarget = { ...creds.target };
   const dashboard: HostedRoute | undefined = creds.dashboard;
 
@@ -339,7 +342,7 @@ async function wakeBox(
   let probe = 0;
   while (!(await health(target))) {
     if (Date.now() > deadline) {
-      throw new Error(`hermes on ${boxId} not healthy after resume`);
+      throw new Error(`${profile.harness} on ${boxId} not healthy after resume`);
     }
     if (
       refreshed &&
@@ -352,7 +355,7 @@ async function wakeBox(
       restarted = true;
       await command(
         boxId,
-        "sudo systemctl restart hermes-gateway hermes-dashboard hermes-host",
+        `sudo systemctl restart ${profile.services.box.join(" ")}`,
         60
       ).catch(() => undefined);
     }
@@ -379,7 +382,7 @@ async function wakeBox(
   // The dashboard token rotated too; refresh it in the background so the
   // wake deadline is never spent on it. Dashboard-upstream proxy requests
   // that lose this race retry once with a synchronous refresh.
-  if (refreshed) {
+  if (refreshed && profile.ports.dashboard !== null) {
     void refreshDashboardRoute(supabase, boxId);
   }
 
