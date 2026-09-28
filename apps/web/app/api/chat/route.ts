@@ -60,7 +60,7 @@ const Body = z.object({
 const MIME_RE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

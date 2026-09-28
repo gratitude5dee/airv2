@@ -6,34 +6,23 @@
  * lib/publish/sources/, never this handler (CM7 task 3).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import {
   candidateUsers,
   proposeForUser,
   type ProposeResult,
 } from "@/lib/publish/propose";
-import { env } from "@/lib/env";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-function authorized(request: NextRequest): boolean {
-  const secret = env.cronSecret() ?? "";
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const tokenBytes = Buffer.from(token);
-  const secretBytes = Buffer.from(secret);
-  if (tokenBytes.length !== secretBytes.length) return false;
-  return timingSafeEqual(tokenBytes, secretBytes);
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!authorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const userIds = await candidateUsers(supabase);
 
@@ -49,13 +38,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       result.momentsProposed += swept.momentsProposed;
       result.slotsProposed += swept.slotsProposed;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "source sweep failed for user",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("source sweep failed for user", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   return NextResponse.json({ ok: true, ...result });

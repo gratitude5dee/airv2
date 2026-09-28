@@ -56,7 +56,7 @@ function intField(form: FormData, name: string, fallback: number): number {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

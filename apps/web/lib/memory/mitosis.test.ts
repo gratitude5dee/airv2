@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MitosisInputError, setMitosisCredentials } from "./mitosis";
 
-// Only the validation layer is testable here — anything past it talks to a
-// box. Rejections must throw before any box call happens.
+// Validation rejections must throw before any box call happens. The box
+// command path itself is covered in cortex.test.ts through the injected
+// runner (R-TQ-10).
 describe("setMitosisCredentials validation", () => {
   it("rejects a non-UUID office id", async () => {
     await expect(

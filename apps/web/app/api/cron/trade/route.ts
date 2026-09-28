@@ -10,30 +10,16 @@ import {
   reconcileTradeOrders,
 } from "@/lib/trade/service";
 import { tickWatchlists } from "@/lib/trade/watch";
-import { env } from "@/lib/env";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorized(request: NextRequest): boolean {
-  const secret = env.cronSecret() ?? "";
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const tokenBytes = Buffer.from(token);
-  const secretBytes = Buffer.from(secret);
-  if (tokenBytes.length !== secretBytes.length) return false;
-  let same = 0;
-  for (let i = 0; i < tokenBytes.length; i++) {
-    same |= tokenBytes[i]! ^ secretBytes[i]!;
-  }
-  return same === 0;
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!authorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const startedAtMs = Date.now();
   const supabase = serviceClient();
   const expired = await expireTradeApprovals(supabase).catch(() => -1);
 
@@ -50,5 +36,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const fired = await tickWatchlists(supabase).catch(() => -1);
+  // R-PERF-06: duration + rows-touched per run; a week of these feeds the
+  // 95%-idle decision on this every-minute cron's schedule.
+  console.info(
+    JSON.stringify({
+      msg: "cron trade",
+      duration_ms: Date.now() - startedAtMs,
+      expired,
+      synced,
+      fired,
+      owners: owners.length,
+    })
+  );
   return NextResponse.json({ ok: true, expired, synced, fired });
 }

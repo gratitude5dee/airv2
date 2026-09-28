@@ -19,6 +19,7 @@ import {
   resolveHostedDecision,
   type HostedDecision,
 } from "@/lib/approvals/hosted";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,18 +32,18 @@ interface Authed {
   tokenExp: number | null;
 }
 
-function authenticate(
+async function authenticate(
   request: NextRequest,
   decisionId: string,
   bodyToken?: string
-): Authed | null {
+): Promise<Authed | null> {
   const token =
     bodyToken ?? request.nextUrl.searchParams.get("k") ?? undefined;
   if (token) {
     const claims = verifyApprovalToken(token, decisionId);
     if (claims) return { userId: claims.userId, tokenExp: claims.exp };
   }
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   return userId ? { userId, tokenExp: null } : null;
 }
 
@@ -51,7 +52,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const { id } = await params;
-  const auth = authenticate(request, id);
+  const auth = await authenticate(request, id);
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -80,7 +81,7 @@ export async function POST(
   const parsed = await parseBody(request, Body);
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
-  const auth = authenticate(request, id, body.k);
+  const auth = await authenticate(request, id, body.k);
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -119,14 +120,9 @@ export async function POST(
   } catch (error) {
     const mapped = hostedErrorResponse(error);
     if (mapped) return mapped;
-    console.error(
-      JSON.stringify({
-        msg: "hosted approval resolution failed",
-        user_id: auth.userId,
+    log.error("hosted approval resolution failed", {user_id: auth.userId,
         decision_id: id,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json(
       { error: "could not resolve this approval — try again" },
       { status: 502 }
