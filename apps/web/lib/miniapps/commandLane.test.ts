@@ -20,8 +20,9 @@ import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
 import { createHash, createHmac } from "node:crypto";
 
 beforeAll(() => {
-  process.env["SESSION_SECRET"] = "test-session-secret";
-  delete process.env["COMMAND_LANE_KEY"];
+  // R-SEC-09: the seal key is its own secret — required, never derived.
+  process.env["COMMAND_LANE_KEY"] =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 });
 
 const USER = "11111111-1111-1111-1111-111111111111";

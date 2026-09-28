@@ -17,7 +17,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ runId: string }> }
 ): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

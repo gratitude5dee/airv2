@@ -60,7 +60,7 @@ async function activeTurnTier(
     .maybeSingle();
   const { data: openRun } = await supabase
     .from("agent_runs")
-    .select("started_at")
+    .select("started_at, sender_tier")
     .eq("user_id", userId)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
@@ -75,7 +75,10 @@ async function activeTurnTier(
   if (flushJob && flushStarted >= runStarted) {
     return typeof flushJob.sender_tier === "number" ? flushJob.sender_tier : 2;
   }
-  return openRun ? 0 : 2;
+  if (!openRun) return 2;
+  // Unknown tier on the run row (legacy, bots, schedules) fails closed —
+  // it is not the owner's composer just because it is open.
+  return typeof openRun.sender_tier === "number" ? openRun.sender_tier : 2;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

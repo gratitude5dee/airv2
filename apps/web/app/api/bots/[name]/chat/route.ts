@@ -20,7 +20,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ name: string }> }
 ): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -61,7 +61,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ name: string }> }
 ): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
