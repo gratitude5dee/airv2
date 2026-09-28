@@ -27,7 +27,7 @@ const USER = "user-1";
 
 const BODY = {
   title: "vet appointment",
-  starts_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+  starts_at: "2030-01-01T09:00:00Z",
   minutes_before: 30,
   timezone: "UTC",
   deliver: "imessage",
