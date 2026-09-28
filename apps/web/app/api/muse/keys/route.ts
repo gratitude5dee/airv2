@@ -12,14 +12,14 @@ const Body = z.object({ scopes: z.array(z.string()).min(1).max(12) });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!museEnabled()) return new NextResponse(null, { status: 404 });
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   return NextResponse.json({ keys: await listMuseKeys(serviceClient(), userId) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!museEnabled()) return new NextResponse(null, { status: 404 });
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });

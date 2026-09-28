@@ -46,7 +46,6 @@ import {
   isTimeoutError,
 } from "@/lib/gateway/routing";
 import {
-  carriesAssistantWork,
   meter,
   meteringTee,
   type RouteTrace,
@@ -79,6 +78,8 @@ import {
   toResponsesRequest,
 } from "@/lib/gateway/responses";
 import { fetchWithHeaderTimeout } from "@/lib/http/timeout";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,16 +113,9 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   const { path } = await params;
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return unauthorized();
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return unauthorized();
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   if (path.join("/") !== "models") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
@@ -153,13 +147,9 @@ export async function POST(
     if (!app) return unauthorized();
     userId = app.userId;
   } else {
-    const { data: box } = await supabase
-      .from("boxes")
-      .select("user_id")
-      .eq("gateway_token", token)
-      .maybeSingle();
-    if (!box) return unauthorized();
-    userId = box.user_id as string;
+    const box = await requireBox(supabase, request).catch(guardResponse);
+    if (box instanceof NextResponse) return box;
+    userId = box.userId;
   }
 
   // Only the metered completion endpoint is proxied (review 2026-08 P1-1);
@@ -598,14 +588,9 @@ export async function POST(
       !upstream.ok &&
       [400, 404, 405, 422].includes(upstream.status)
     ) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway responses unsupported, using chat/completions",
-          user_id: userId,
+      log.warn("gateway responses unsupported, using chat/completions", {user_id: userId,
           model: servedModel,
-          status: upstream.status,
-        })
-      );
+          status: upstream.status,});
       await upstream.body?.cancel().catch(() => undefined);
       return dispatchOnce(toFamily, false);
     }
@@ -619,6 +604,23 @@ export async function POST(
     // A Create turn runs on its slug's provider (§7.1): the owner's chat
     // family never applies.
     let servedFamily: ModelFamily = createTier !== null ? createFamily : family;
+    /**
+     * Which model actually served — emitted on every post-dispatch response
+     * so evals and the admin trace see silent provider fallbacks that
+     * previously existed only in server logs. `X-Air-Fallback: 1` marks a
+     * family swap; an in-stream empty-response splice happens after headers
+     * flush, so its swap is recorded on the metered row's fallback_from.
+     */
+    const servedHeaders = (): Record<string, string> => {
+      const headers: Record<string, string> = {
+        "X-Air-Served-Model": servedModel,
+        "X-Air-Served-Family": servedFamily,
+      };
+      if (servedFamily !== (createTier !== null ? createFamily : family)) {
+        headers["X-Air-Fallback"] = "1";
+      }
+      return headers;
+    };
     const recoverTimedOutAstra = async (error: unknown): Promise<Response> => {
       if (
         providerForFamily(servedFamily) === "gmi" &&
@@ -626,15 +628,10 @@ export async function POST(
         isTimeoutError(error) &&
         Date.now() < gmiDeadlineMs
       ) {
-        console.warn(
-          JSON.stringify({
-            msg: "gateway gmi astra latency fallback",
-            user_id: userId,
+        log.warn("gateway gmi astra latency fallback", {user_id: userId,
             from_model: GMI_ASTRA_MODEL,
             to_model: GMI_RECOVERY_MODEL,
-            elapsed_ms: Date.now() - requestStartedMs,
-          })
-        );
+            elapsed_ms: Date.now() - requestStartedMs,});
         gmiRecoveryModel = GMI_RECOVERY_MODEL;
         return dispatch(servedFamily);
       }
@@ -648,16 +645,11 @@ export async function POST(
         [400, 422].includes(response.status) &&
         Date.now() < gmiDeadlineMs
       ) {
-        console.warn(
-          JSON.stringify({
-            msg: "gateway gmi astra compatibility fallback",
-            user_id: userId,
+        log.warn("gateway gmi astra compatibility fallback", {user_id: userId,
             from_model: GMI_ASTRA_MODEL,
             to_model: GMI_RECOVERY_MODEL,
             status: response.status,
-            elapsed_ms: Date.now() - requestStartedMs,
-          })
-        );
+            elapsed_ms: Date.now() - requestStartedMs,});
         await response.body?.cancel().catch(() => undefined);
         gmiRecoveryModel = GMI_RECOVERY_MODEL;
         return dispatch(servedFamily);
@@ -687,7 +679,7 @@ export async function POST(
     if (upstream.headers.get("X-Provider-Unconfigured") === "1") {
       return new NextResponse(await upstream.text(), {
         status: upstream.status,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...servedHeaders() },
       });
     }
     const nonOpenAiProvider = providerForFamily(servedFamily) !== "openai";
@@ -701,15 +693,10 @@ export async function POST(
       nonOpenAiProvider &&
       [429, 500, 502, 503, 504].includes(upstream.status)
     ) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway upstream retry",
-          user_id: userId,
+      log.warn("gateway upstream retry", {user_id: userId,
           family,
           model: servedModel,
-          status: upstream.status,
-        })
-      );
+          status: upstream.status,});
       await upstream.body?.cancel().catch(() => undefined);
       if (RETRY_DELAY_MS > 0) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
@@ -717,16 +704,11 @@ export async function POST(
       upstream = await dispatch(servedFamily);
     }
     if (canFallBack && (!upstream.ok || !upstream.body)) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway upstream rejected",
-          user_id: userId,
+      log.warn("gateway upstream rejected", {user_id: userId,
           family,
           model: servedModel,
           status: upstream.status,
-          detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),
-        })
-      );
+          detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),});
       servedFamily = "openai";
       upstream = await dispatch(servedFamily);
     } else if (nonOpenAiProvider && upstream.ok && !streaming) {
@@ -759,7 +741,7 @@ export async function POST(
                 type: "upstream_empty_response",
               },
             },
-            { status: 502 }
+            { status: 502, headers: servedHeaders() }
           );
         }
       }
@@ -769,72 +751,15 @@ export async function POST(
       const errorBody = await upstream.text();
       return new NextResponse(errorBody, {
         status: upstream.status,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...servedHeaders() },
       });
     }
 
-    // Streamed non-OpenAI answers get the same empty check: the whole SSE body
-    // is buffered (these families answer in one burst) and replayed, or
-    // replaced by an OpenAI stream when no delta carried user-visible content
-    // or a tool call. Reasoning alone is not an answer: accepting it leaves
-    // Hermes with an empty final_response and the iMessage turn retries forever.
-    if (streaming && servedFamily !== "openai" && nonOpenAiProvider) {
-      let hasAssistantWork: boolean;
-      try {
-        hasAssistantWork = await carriesAssistantWork(upstream);
-      } catch (error) {
-        await upstream.body?.cancel().catch(() => undefined);
-        upstream = await recoverTimedOutAstra(error);
-        hasAssistantWork = await carriesAssistantWork(upstream);
-      }
-      if (!hasAssistantWork) {
-        console.warn(
-          JSON.stringify({
-            msg: "gateway response missing user-visible work",
-            user_id: userId,
-            family: servedFamily,
-            model: servedModel,
-            streaming: true,
-          })
-        );
-        await upstream.body?.cancel().catch(() => undefined);
-        if (canFallBack) {
-          servedFamily = "openai";
-          upstream = await dispatch(servedFamily);
-          if (!upstream.ok || !upstream.body) {
-            const errorBody = await upstream.text();
-            return new NextResponse(errorBody, {
-              status: upstream.status,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-        } else {
-          // The fleet GMI override cannot spill to OpenAI, but a reasoning-only
-          // completion is often a transient output-limit/provider edge. Retry
-          // once on GMI before surfacing a controlled error to the box.
-          upstream = await dispatch(servedFamily);
-          if (!upstream.ok || !upstream.body) {
-            const errorBody = await upstream.text();
-            return new NextResponse(errorBody, {
-              status: upstream.status,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (!(await carriesAssistantWork(upstream))) {
-            await upstream.body.cancel().catch(() => undefined);
-            return NextResponse.json(
-              {
-                error: {
-                  message: `${servedFamily} returned no user-visible response`,
-                  type: "upstream_empty_response",
-                },
-              },
-              { status: 502 }
-            );
-          }
-        }
-      }
-    }
+    // Streamed non-OpenAI answers used to get the same empty check here,
+    // buffered whole — watchStream below now does it incrementally: every
+    // chunk forwards as it arrives while the leading deltas are scanned,
+    // and a stream that closes without work splices one retry into the
+    // still-open response.
 
     // A latency recovery dispatch can itself return an upstream error. The
     // earlier status check ran before stream validation, so repeat the guard
@@ -843,15 +768,14 @@ export async function POST(
       const errorBody = await upstream.text();
       return new NextResponse(errorBody, {
         status: upstream.status,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...servedHeaders() },
       });
     }
 
     if (streaming) {
-      const meteredFamily = servedFamily;
-      const meteredModel = servedModel;
-      const meteredPersonal = servedOnPersonalKey;
-      const meteredViaResponses = servedViaResponses;
+      let meteredFamily = servedFamily;
+      let meteredModel = servedModel;
+      let meteredPersonal = servedOnPersonalKey;
       const streamHold = takeHold();
       const meteredTrace: RouteTrace = {
         requestedModel,
@@ -862,10 +786,244 @@ export async function POST(
         createStage,
         app: appTrace(streamHold),
       };
-      const clientBody = meteredViaResponses
+
+      // Streamed non-OpenAI answers used to be buffered whole just to check
+      // they carried content — first-token latency became full-completion
+      // latency. Every chunk now forwards as it arrives while the leading
+      // SSE events are scanned for user-visible work (a content delta or a
+      // tool call; reasoning alone is not an answer — accepting it leaves
+      // Hermes with an empty final_response and the iMessage turn retries
+      // forever). A stream that closes without any work splices one retry
+      // into the still-open stream: the OpenAI lane when the family may
+      // fall back, the same family once more otherwise. `data: [DONE]`
+      // lines are withheld while pumping and a single one is emitted at the
+      // real close, so a client that stops reading on the sentinel still
+      // consumes the spliced answer.
+      const watchStream = (
+        initial: ReadableStream<Uint8Array>
+      ): ReadableStream<Uint8Array> => {
+        let cancelled = false;
+        let activeReader: ReadableStreamDefaultReader<Uint8Array> | null =
+          null;
+        return new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const decoder = new TextDecoder();
+            const encoder = new TextEncoder();
+            let sawByte = false;
+            let sawWork = false;
+            let spliced = false;
+            let ttfbMs: number | null = null;
+            let firstDeltaMs: number | null = null;
+            let lineBuffer = "";
+
+            const isDoneLine = (line: string): boolean =>
+              line.startsWith("data:") && line.slice(5).trim() === "[DONE]";
+
+            const scanLine = (line: string): void => {
+              if (sawWork || !line.startsWith("data:")) return;
+              const data = line.slice(5).trim();
+              if (!data || data === "[DONE]") return;
+              try {
+                const parsed = JSON.parse(data) as {
+                  choices?: {
+                    delta?: {
+                      content?: string | null;
+                      tool_calls?: unknown[];
+                    };
+                  }[];
+                };
+                const delta = parsed.choices?.[0]?.delta;
+                if (
+                  delta &&
+                  (delta.content ||
+                    (Array.isArray(delta.tool_calls) &&
+                      delta.tool_calls.length > 0))
+                ) {
+                  sawWork = true;
+                  firstDeltaMs = Date.now() - requestStartedMs;
+                }
+              } catch {
+                // non-JSON keepalive; ignore
+              }
+            };
+
+            // Forward complete lines as they arrive, holding back the
+            // upstream's own [DONE] sentinel; a line split across chunks
+            // completes in `lineBuffer` before it is seen.
+            const forward = (text: string): void => {
+              if (cancelled) return;
+              lineBuffer += text;
+              const lines = lineBuffer.split("\n");
+              lineBuffer = lines.pop() ?? "";
+              let kept = "";
+              for (const line of lines) {
+                if (isDoneLine(line)) continue;
+                kept += `${line}\n`;
+                if (!sawWork) scanLine(line);
+              }
+              if (kept) {
+                try {
+                  controller.enqueue(encoder.encode(kept));
+                } catch {
+                  cancelled = true;
+                }
+              }
+            };
+
+            const pump = async (
+              body: ReadableStream<Uint8Array>
+            ): Promise<"done" | "cancelled" | { error: unknown }> => {
+              const reader = body.getReader();
+              activeReader = reader;
+              try {
+                for (;;) {
+                  const { done, value } = await reader.read();
+                  if (done) {
+                    // An unterminated tail is still a complete line at EOF.
+                    lineBuffer += decoder.decode();
+                    const tail = lineBuffer;
+                    lineBuffer = "";
+                    if (tail) {
+                      if (!isDoneLine(tail)) {
+                        try {
+                          controller.enqueue(encoder.encode(`${tail}\n`));
+                        } catch {
+                          return "cancelled";
+                        }
+                      }
+                      if (!sawWork) scanLine(tail);
+                    }
+                    return "done";
+                  }
+                  if (!sawByte) {
+                    sawByte = true;
+                    ttfbMs = Date.now() - requestStartedMs;
+                  }
+                  forward(decoder.decode(value, { stream: true }));
+                  if (cancelled) return "cancelled";
+                }
+              } catch (error) {
+                return { error };
+              } finally {
+                activeReader = null;
+                reader.releaseLock();
+              }
+            };
+
+            let outcome = await pump(initial);
+            if (typeof outcome === "object") {
+              if (sawWork) {
+                // Partial answer already sent — surface the transport error.
+                controller.error(outcome.error);
+                return;
+              }
+              // A transport error before any user-visible work is still
+              // recoverable on the Astra lane, bounded by its deadline.
+              try {
+                const recovered = await recoverTimedOutAstra(outcome.error);
+                if (!recovered.ok || !recovered.body) {
+                  controller.error(
+                    new Error(
+                      `gateway astra recovery failed: ${recovered.status}`
+                    )
+                  );
+                  return;
+                }
+                outcome = await pump(
+                  servedViaResponses
+                    ? responsesStreamToChat(recovered.body)
+                    : recovered.body
+                );
+                if (typeof outcome === "object") {
+                  controller.error(outcome.error);
+                  return;
+                }
+              } catch (error) {
+                controller.error(error);
+                return;
+              }
+            }
+            if (cancelled || outcome === "cancelled") return;
+
+            if (!sawWork && !spliced) {
+              spliced = true;
+              console.warn(
+                JSON.stringify({
+                  msg: "gateway response missing user-visible work",
+                  user_id: userId,
+                  family: servedFamily,
+                  model: servedModel,
+                  streaming: true,
+                })
+              );
+              if (canFallBack) servedFamily = "openai";
+              try {
+                const retry = await dispatch(servedFamily);
+                if (!retry.ok || !retry.body) {
+                  // The 200 and headers already went out — a retry that
+                  // answers with an HTTP error surfaces as a stream error
+                  // rather than a clean empty end.
+                  controller.error(
+                    new Error(
+                      `gateway empty-response retry failed: ${retry.status}`
+                    )
+                  );
+                  return;
+                }
+                meteredFamily = servedFamily;
+                meteredModel = servedModel;
+                meteredPersonal = servedOnPersonalKey;
+                meteredTrace.reasoningEffort = servedReasoning;
+                const retryOutcome = await pump(
+                  servedViaResponses
+                    ? responsesStreamToChat(retry.body)
+                    : retry.body
+                );
+                if (typeof retryOutcome === "object") {
+                  controller.error(retryOutcome.error);
+                  return;
+                }
+              } catch (error) {
+                controller.error(error);
+                return;
+              }
+            }
+            if (cancelled) return;
+
+            try {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            } catch {
+              return;
+            }
+            // The timings the evals mine for per-family TTFT.
+            console.info(
+              JSON.stringify({
+                msg: "gateway stream timings",
+                user_id: userId,
+                family: meteredFamily,
+                model: meteredModel,
+                ttfb_ms: ttfbMs,
+                ttft_ms: firstDeltaMs,
+                spliced,
+              })
+            );
+          },
+          cancel() {
+            cancelled = true;
+            void activeReader?.cancel().catch(() => undefined);
+          },
+        });
+      };
+
+      const clientBody = servedViaResponses
         ? responsesStreamToChat(upstream.body)
         : upstream.body;
-      const stream = meteringTee(clientBody, (usage, errored) => {
+      const watchedBody =
+        nonOpenAiProvider && servedFamily !== "openai"
+          ? watchStream(clientBody)
+          : clientBody;
+      const stream = meteringTee(watchedBody, (usage, errored) => {
         if (usage) {
           after(
             meter(
@@ -892,8 +1050,10 @@ export async function POST(
       return new Response(stream, {
         status: 200,
         headers: {
-          "Content-Type": upstream.headers.get("content-type") ?? "text/event-stream",
+          "Content-Type":
+            upstream.headers.get("content-type") ?? "text/event-stream",
           "Cache-Control": "no-cache",
+          ...servedHeaders(),
         },
       });
     }
@@ -916,21 +1076,16 @@ export async function POST(
         })
       );
     }
-    return NextResponse.json(json, { status: 200 });
+    return NextResponse.json(json, { status: 200, headers: servedHeaders() });
   };
   try {
     return await proxy();
   } catch (error) {
     if (isTimeoutError(error)) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway provider deadline exceeded",
-          user_id: userId,
+      log.warn("gateway provider deadline exceeded", {user_id: userId,
           family,
           model: servedModel || null,
-          elapsed_ms: Date.now() - requestStartedMs,
-        })
-      );
+          elapsed_ms: Date.now() - requestStartedMs,});
       return NextResponse.json(
         {
           error: {

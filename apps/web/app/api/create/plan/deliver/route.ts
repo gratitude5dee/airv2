@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await recordOpsEvent(supabase, "rate_limited", userId, "plan");
       return NextResponse.json({ error: "too many plan deliveries" }, { status: 429 });
     }
-    const sender = await createSpectrumSender();
+    const sender = await createSpectrumSender("create-plan-deliver");
     let receipt;
     try {
       receipt = await deliverPlan(supabase, sender, userId, { appname, path: body.path });

@@ -8,8 +8,8 @@
  *
  * Two custody rules shape the storage:
  * - Envelope args can carry content (a system prompt, a message body), which
- *   does not belong in Postgres (C4). Args are sealed at rest with a key
- *   derived from SESSION_SECRET and nulled the moment the device claims the
+ *   does not belong in Postgres (C4). Args are sealed at rest under
+ *   COMMAND_LANE_KEY and nulled the moment the device claims the
  *   envelope; the ledger keeps only group/verb names, states, and times.
  * - The device must be able to tell a real envelope from a forged one. At
  *   pairing time each link gets a random envelope key: the device holds the
@@ -52,14 +52,13 @@ export const BUZZ_LANE: LaneConfig = {
   verbColumn: "verb",
 };
 
-/** AES key for sealing args + envelope keys at rest, derived so no new
- * deploy config is needed; set COMMAND_LANE_KEY (64 hex chars) to rotate
- * it independently of web sessions. */
+/** AES key for sealing args + envelope keys at rest (R-SEC-09).
+ * COMMAND_LANE_KEY is required — 64 hex chars, rotated independently of
+ * SESSION_SECRET so a session rotation can never strand sealed rows. It
+ * fails at boot (instrumentation.ts) rather than silently deriving from
+ * the session secret again. */
 function laneSealKey(): string {
-  return (
-    process.env["COMMAND_LANE_KEY"] ??
-    createHash("sha256").update(env.sessionSecret()).digest("hex")
-  );
+  return env.commandLaneKey();
 }
 
 function sha256(value: string): string {

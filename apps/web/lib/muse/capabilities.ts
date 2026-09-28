@@ -22,9 +22,10 @@ import { createTerminalScanner, type TerminalOutcome } from "../hermes/terminal"
 import { createDraft, listThreads } from "../mail/client";
 import { env } from "../env";
 import { readWalletSummary } from "../wallet/read";
-import { executeDirectTransfer, WalletSendError } from "../wallet/send";
+import { createTransferRequest, WalletSendError } from "../wallet/send";
 import { recordMuseEvent } from "./events";
 import { checkMuseRunSpend } from "./spend";
+import type { MuseScope } from "./contracts";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_B64_CHARS = Math.ceil(MAX_FILE_BYTES / 3) * 4 + 4;
@@ -47,6 +48,23 @@ export const MUSE_CAPABILITIES = [
 ] as const;
 
 export type MuseCapability = (typeof MUSE_CAPABILITIES)[number];
+
+/** The grant scope each capability requires, mirroring the Worker's own
+ * /v1/* and MCP scope checks — the control plane verifies them again so a
+ * shared bearer cannot act outside what the owner granted. */
+const CAPABILITY_SCOPES: Record<MuseCapability, MuseScope> = {
+  run: "agent:run",
+  "run-status": "agent:run",
+  "mail-list": "mail:read",
+  "mail-draft": "mail:draft",
+  "files-put": "files:write",
+  "files-list": "files:read",
+  "calendar-add": "calendar:write",
+  "schedule-create": "schedule:write",
+  "wallet-balance": "wallet:read",
+  "wallet-request": "wallet:request",
+  "decisions-status": "profile",
+};
 
 export class MuseCapabilityError extends Error {
   constructor(readonly status: number, message: string) {
@@ -234,6 +252,21 @@ export async function runMuseCapability(
   capability: MuseCapability,
   input: unknown,
 ): Promise<Record<string, unknown>> {
+  // The endpoint authenticates the Worker, not the owner: a capability may
+  // only run when the owner holds an active grant covering its scope.
+  const { data: grants, error: grantsError } = await supabase
+    .from("muse_grants")
+    .select("scopes")
+    .eq("user_id", userId)
+    .is("revoked_at", null);
+  if (grantsError) throw new MuseCapabilityError(503, "grant_check_failed");
+  if (!grants || grants.length === 0) throw new MuseCapabilityError(403, "muse_not_connected");
+  const grantedScopes = new Set(
+    grants.flatMap((grant) => (Array.isArray(grant.scopes) ? grant.scopes : []) as MuseScope[]),
+  );
+  if (!grantedScopes.has(CAPABILITY_SCOPES[capability])) {
+    throw new MuseCapabilityError(403, "scope_not_granted");
+  }
   switch (capability) {
     case "run": {
       const value = capabilityInput(z.object({ prompt: z.string().trim().min(1).max(4000), agent: AGENT, wait_seconds: z.number().int().min(0).max(8).default(0) }), input);
@@ -385,9 +418,9 @@ export async function runMuseCapability(
       const asset = value.token_address && value.token_address.toLowerCase() === env.walletUsdcAddress().toLowerCase() ? "usdc" : value.token_address ? null : "native";
       if (!asset) throw new MuseCapabilityError(400, "unsupported_token");
       try {
-        const transfer = await executeDirectTransfer(supabase, userId, value.to, value.amount_display, asset);
-        await recordMuseEvent(supabase, { userId, kind: "wallet_request", status: "submitted" });
-        return { transfer_id: transfer.transferId, transaction_id: transfer.transactionId };
+        const request = await createTransferRequest(supabase, userId, value.to, value.amount_display, asset);
+        await recordMuseEvent(supabase, { userId, kind: "decision", status: "wallet_request" });
+        return { decision_id: request.decisionId };
       } catch (error) {
         if (error instanceof WalletSendError) throw new MuseCapabilityError(error.status, error.message);
         throw error;
