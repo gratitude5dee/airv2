@@ -97,6 +97,8 @@ describe("serializers", () => {
 
   it("nulls serialize as empty CSV cells", () => {
     const row = mapVaultEvent({ id: "v1" });
-    expect(toCsvRow(row)).toBe(`,vault_event,v1,,,,,,,,,,,,,,,`);
+    expect(toCsvRow(row)).toBe(
+      `,vault_event,v1${",".repeat(RECEIPT_COLUMNS.length - 3)}`
+    );
   });
 });
