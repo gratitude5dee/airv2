@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { FakeDb } from "../miniapps/testing/fakeSupabase";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   GuardError,
   guardResponse,
@@ -17,7 +17,7 @@ import {
 import { createSessionToken } from "./session";
 import { mintToken } from "../miniapps/tokens";
 
-const db = vi.hoisted(() => new FakeDb());
+const db = vi.hoisted(() => new FakeSupabase());
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 
 function ownerSession(userId: string, sessionId: string): string {

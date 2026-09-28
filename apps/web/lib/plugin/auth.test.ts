@@ -4,123 +4,9 @@
  * revocation with immediate effect, and hashed-at-rest storage.
  */
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
-interface DeviceRow {
-  id: string;
-  device_code_hash: string;
-  user_code: string;
-  tool: string;
-  status: string;
-  user_id: string | null;
-  expires_at: string;
-  approved_at: string | null;
-}
-
-interface TokenRow {
-  id: string;
-  user_id: string;
-  tool: string;
-  token_hash: string;
-  created_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-}
-
-const db = { codes: [] as DeviceRow[], tokens: [] as TokenRow[] };
-let nextId = 1;
-
-type Row = Record<string, unknown>;
-
-function matches(row: Row, filters: [string, string, unknown][]): boolean {
-  return filters.every(([op, col, value]) => {
-    const actual = row[col];
-    if (op === "eq") return actual === value;
-    if (op === "is") return actual === value;
-    if (op === "gt") return typeof actual === "string" && actual > String(value);
-    return false;
-  });
-}
-
-function table(rows: Row[]) {
-  return {
-    async insert(row: Row) {
-      rows.push({
-        id: `row-${nextId++}`,
-        created_at: new Date().toISOString(),
-        user_id: null,
-        last_used_at: null,
-        revoked_at: null,
-        approved_at: null,
-        status: "pending",
-        ...row,
-      });
-      return { error: null };
-    },
-    select() {
-      const filters: [string, string, unknown][] = [];
-      const chain = {
-        eq(col: string, value: unknown) {
-          filters.push(["eq", col, value]);
-          return chain;
-        },
-        order() {
-          return Promise.resolve({
-            data: rows.filter((r) => matches(r, filters)),
-            error: null,
-          });
-        },
-        async maybeSingle() {
-          return {
-            data: rows.find((r) => matches(r, filters)) ?? null,
-            error: null,
-          };
-        },
-      };
-      return chain;
-    },
-    update(patch: Row) {
-      const filters: [string, string, unknown][] = [];
-      const apply = () => {
-        const hit = rows.filter((r) => matches(r, filters));
-        for (const row of hit) Object.assign(row, patch);
-        return hit;
-      };
-      const chain = {
-        eq(col: string, value: unknown) {
-          filters.push(["eq", col, value]);
-          return chain;
-        },
-        is(col: string, value: unknown) {
-          filters.push(["is", col, value]);
-          return chain;
-        },
-        gt(col: string, value: unknown) {
-          filters.push(["gt", col, value]);
-          return chain;
-        },
-        async select() {
-          return { data: apply(), error: null };
-        },
-        then(resolve: (v: { error: null }) => void) {
-          apply();
-          resolve({ error: null });
-        },
-      };
-      return chain;
-    },
-  };
-}
-
-function fakeSupabase(): SupabaseClient {
-  return {
-    from(name: string) {
-      if (name === "plugin_device_codes") return table(db.codes as unknown as Row[]);
-      if (name === "plugin_tokens") return table(db.tokens as unknown as Row[]);
-      throw new Error(`unexpected table ${name}`);
-    },
-  } as unknown as SupabaseClient;
-}
+const db = new FakeSupabase();
 
 import {
   approveDeviceCode,
@@ -134,15 +20,25 @@ import {
 } from "./auth";
 
 const OWNER = "owner-user-1";
-const supabase = fakeSupabase();
+const supabase = db.client();
 
 beforeAll(() => {
   process.env["SESSION_SECRET"] = "test-session-secret";
 });
 
 beforeEach(() => {
-  db.codes = [];
-  db.tokens = [];
+  db.reset();
+  // Postgres column defaults the inserts rely on.
+  db.defaults["plugin_device_codes"] = {
+    status: "pending",
+    user_id: null,
+    approved_at: null,
+  };
+  db.defaults["plugin_tokens"] = () => ({
+    created_at: new Date().toISOString(),
+    last_used_at: null,
+    revoked_at: null,
+  });
 });
 
 describe("device-code sign-in", () => {
@@ -151,7 +47,9 @@ describe("device-code sign-in", () => {
     expect(started.user_code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     expect(started.verification_uri).toBe("https://app/home");
     // The raw device code is never stored.
-    expect(db.codes[0]?.device_code_hash).not.toBe(started.device_code);
+    expect(db.rows("plugin_device_codes")[0]?.["device_code_hash"]).not.toBe(
+      started.device_code
+    );
 
     const pending = await pollDeviceToken(supabase, started.device_code);
     expect(pending.status).toBe("authorization_pending");
@@ -164,13 +62,15 @@ describe("device-code sign-in", () => {
     if (minted.status !== "ok") return;
     expect(minted.token.startsWith("wzrd_plugin_")).toBe(true);
     // Hashed at rest.
-    expect(db.tokens[0]?.token_hash).toBe(hashPluginToken(minted.token));
-    expect(db.tokens[0]?.token_hash).not.toContain(minted.token);
+    expect(db.rows("plugin_tokens")[0]?.["token_hash"]).toBe(
+      hashPluginToken(minted.token)
+    );
+    expect(db.rows("plugin_tokens")[0]?.["token_hash"]).not.toContain(minted.token);
 
     // Single use: a second poll cannot mint again.
     const again = await pollDeviceToken(supabase, started.device_code);
     expect(again.status).toBe("expired_token");
-    expect(db.tokens).toHaveLength(1);
+    expect(db.rows("plugin_tokens")).toHaveLength(1);
   });
 
   it("denied codes never mint", async () => {
@@ -178,14 +78,14 @@ describe("device-code sign-in", () => {
     await approveDeviceCode(supabase, started.user_code, OWNER, "denied");
     const result = await pollDeviceToken(supabase, started.device_code);
     expect(result.status).toBe("access_denied");
-    expect(db.tokens).toHaveLength(0);
+    expect(db.rows("plugin_tokens")).toHaveLength(0);
   });
 
   it("expired codes cannot be approved or redeemed", async () => {
     const started = await startDeviceAuth(supabase, "codex", "https://app/home");
-    const row = db.codes[0];
+    const row = db.rows("plugin_device_codes")[0];
     if (!row) throw new Error("missing device code row");
-    row.expires_at = new Date(Date.now() - 1000).toISOString();
+    row["expires_at"] = new Date(Date.now() - 1000).toISOString();
     const tool = await approveDeviceCode(supabase, started.user_code, OWNER, "approved");
     expect(tool).toBeNull();
     const result = await pollDeviceToken(supabase, started.device_code);

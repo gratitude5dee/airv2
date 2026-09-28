@@ -16,25 +16,18 @@ import {
   progressUpdateReply,
   sharedBridgeReply,
 } from "./sharedBridge";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../env", () => ({
   env: { appOrigin: () => "https://app.example.test" },
 }));
 
 function fakeSupabase(token: string | null): SupabaseClient {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () =>
-            Promise.resolve({
-              data: token ? { gateway_token: token } : null,
-              error: null,
-            }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  db.tables["boxes"] = token
+    ? [{ user_id: "user-1", gateway_token: token }]
+    : [];
+  return db.client();
 }
 
 afterEach(() => {

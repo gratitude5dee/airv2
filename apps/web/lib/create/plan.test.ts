@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SpectrumSender } from "../spectrum/sender";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const boxes = vi.hoisted(() => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1" })),
@@ -24,12 +24,9 @@ import {
   planSummary,
 } from "./plan";
 
-const destination = { data: { space_id: "space-1", phone: "+15550001" } as unknown, error: null as unknown };
-const supabase = {
-  from: () => ({
-    select: () => ({ eq: () => ({ maybeSingle: async () => destination }) }),
-  }),
-} as unknown as SupabaseClient;
+const db = new FakeSupabase();
+const supabase = db.client();
+const destinationRow = { user_id: "user-alice", space_id: "space-1", phone: "+15550001" };
 
 const sender = {
   sendAttachment: vi.fn(async () => undefined),
@@ -42,8 +39,8 @@ const sender = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  destination.data = { space_id: "space-1", phone: "+15550001" };
-  destination.error = null;
+  db.reset();
+  db.tables["imessage_destinations"] = [{ ...destinationRow }];
   compute.readComputeFile.mockResolvedValue("# Plan\n\nline");
 });
 
@@ -96,9 +93,10 @@ describe("planSummary", () => {
 describe("ownerThread", () => {
   it("returns the tier-0 destination or null; a read error is a 503", async () => {
     expect(await ownerThread(supabase, "user-alice")).toEqual({ spaceId: "space-1", phone: "+15550001" });
-    destination.data = null;
+    db.expectQuery({ table: "imessage_destinations", filters: { user_id: "user-alice" } });
+    db.tables["imessage_destinations"] = [];
     expect(await ownerThread(supabase, "user-alice")).toBeNull();
-    destination.error = { message: "down" };
+    db.errors["imessage_destinations"] = { message: "down" };
     await expect(ownerThread(supabase, "user-alice")).rejects.toMatchObject({ status: 503 });
   });
 });
@@ -130,12 +128,12 @@ describe("deliverPlan (CR21)", () => {
   });
 
   it("checks the thread before waking the Box, and caps the size", async () => {
-    destination.data = null;
+    db.tables["imessage_destinations"] = [];
     await expect(
       deliverPlan(supabase, sender, "user-alice", { appname: "promo", path: "plan.md" })
     ).rejects.toMatchObject({ status: 409 });
     expect(boxes.ensureBoxAwake).not.toHaveBeenCalled();
-    destination.data = { space_id: "space-1", phone: "+15550001" };
+    db.tables["imessage_destinations"] = [{ ...destinationRow }];
     compute.readComputeFile.mockResolvedValueOnce("y".repeat(PLAN_MAX_BYTES + 1));
     await expect(
       deliverPlan(supabase, sender, "user-alice", { appname: "promo", path: "plan.md" })

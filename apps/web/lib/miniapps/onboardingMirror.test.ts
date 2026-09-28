@@ -3,7 +3,7 @@
  * pairing phrase and verification URL must never reach Postgres (C4).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../orchestrator/boxes", () => ({
   ensureBoxAwake: vi.fn(async () => ({ boxId: "box-1", target: "target-1" })),
@@ -36,19 +36,12 @@ vi.mock("../compute/awake", () => ({
   ensureComputeAwake: vi.fn(async () => ({ kind: "box", boxId: "box-1" })),
 }));
 
-function fakeSupabase(row: unknown) {
-  const upserts: Record<string, unknown>[] = [];
-  const builder = {
-    select: vi.fn(() => builder),
-    eq: vi.fn(() => builder),
-    maybeSingle: vi.fn(async () => ({ data: row, error: null })),
-    upsert: vi.fn(async (value: Record<string, unknown>) => {
-      upserts.push(value);
-      return { error: null };
-    }),
-  };
-  const supabase = { from: vi.fn(() => builder) } as unknown as SupabaseClient;
-  return { supabase, upserts };
+function fakeSupabase(row: Record<string, unknown> | null) {
+  const db = new FakeSupabase();
+  if (row !== null) {
+    db.tables["onboarding_status_mirror"] = [{ user_id: "user-1", ...row }];
+  }
+  return { supabase: db.client(), db };
 }
 
 describe("toLinkMeta", () => {
@@ -89,7 +82,7 @@ describe("toLinkMeta", () => {
 
 describe("writeStatusMirror", () => {
   it("persists only the safe link meta, never the phrase", async () => {
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     await writeStatusMirror(supabase, "user-1", {
       link: {
         installed: true,
@@ -101,9 +94,9 @@ describe("writeStatusMirror", () => {
         updated_at: null,
       },
     });
-    expect(upserts).toHaveLength(1);
-    expect(JSON.stringify(upserts[0])).not.toContain("q-r-s");
-    expect(upserts[0]?.["link"]).toMatchObject({
+    expect(db.upserts).toHaveLength(1);
+    expect(JSON.stringify(db.upserts[0]?.row)).not.toContain("q-r-s");
+    expect(db.upserts[0]?.row["link"]).toMatchObject({
       installed: true,
       authenticated: false,
       pairing: true,
@@ -111,11 +104,8 @@ describe("writeStatusMirror", () => {
   });
 
   it("swallows write failures", async () => {
-    const supabase = {
-      from: () => {
-        throw new Error("boom");
-      },
-    } as unknown as SupabaseClient;
+    const { supabase, db } = fakeSupabase(null);
+    db.errors["onboarding_status_mirror"] = { message: "boom" };
     await expect(
       writeStatusMirror(supabase, "user-1", { ingest: null })
     ).resolves.toBeUndefined();
@@ -167,7 +157,7 @@ describe("mirror-aware status reads (MEM-15)", () => {
 
   it("serves a sleeping box from the mirror without waking it", async () => {
     vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: false });
-    const { supabase, upserts } = fakeSupabase(ingestRow);
+    const { supabase, db } = fakeSupabase(ingestRow);
     const read = await readIngestStatusOrMirror(supabase, "user-1");
     expect(read.source).toBe("mirror");
     expect(read.status?.chunks).toBe(3);
@@ -175,7 +165,7 @@ describe("mirror-aware status reads (MEM-15)", () => {
     expect(read.refreshedAt).toBe("2026-01-02T00:00:00Z");
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(readFile).not.toHaveBeenCalled();
-    expect(upserts).toHaveLength(0);
+    expect(db.upserts).toHaveLength(0);
   });
 
   it("reports a null status when the box sleeps and no mirror row exists", async () => {
@@ -191,13 +181,13 @@ describe("mirror-aware status reads (MEM-15)", () => {
     vi.mocked(readFile).mockResolvedValueOnce(
       JSON.stringify({ chunks: 9, messages: 100, cursor: null })
     );
-    const { supabase, upserts } = fakeSupabase(ingestRow);
+    const { supabase, db } = fakeSupabase(ingestRow);
     const read = await readIngestStatusOrMirror(supabase, "user-1");
     expect(read.source).toBe("live");
     expect(read.status?.chunks).toBe(9);
     expect(ensureBoxAwake).toHaveBeenCalledTimes(1);
-    expect(upserts).toHaveLength(1);
-    expect(upserts[0]?.["ingest"]).toMatchObject({ chunks: 9 });
+    expect(db.upserts).toHaveLength(1);
+    expect(db.upserts[0]?.row["ingest"]).toMatchObject({ chunks: 9 });
   });
 
   it("live import reads refresh the imports column", async () => {
@@ -205,11 +195,11 @@ describe("mirror-aware status reads (MEM-15)", () => {
     vi.mocked(readFile).mockResolvedValueOnce(
       JSON.stringify({ last_upload_at: "2026-03-01T00:00:00Z" })
     );
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     const read = await readImportStatusOrMirror(supabase, "user-1");
     expect(read.source).toBe("live");
     expect(read.status?.last_upload_at).toBe("2026-03-01T00:00:00Z");
-    expect(upserts[0]?.["imports"]).toMatchObject({
+    expect(db.upserts[0]?.row["imports"]).toMatchObject({
       last_upload_at: "2026-03-01T00:00:00Z",
     });
   });
@@ -217,22 +207,22 @@ describe("mirror-aware status reads (MEM-15)", () => {
 
 describe("refreshStatusMirror", () => {
   it("reads live docs and backfills the row", async () => {
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     const live = await refreshStatusMirror(supabase, "user-1");
     expect(live.boxBusy).toBe(false);
     expect(live.state.steps.username).toBe("todo");
-    expect(upserts).toHaveLength(1);
-    expect(Object.keys(upserts[0] ?? {})).toEqual(
+    expect(db.upserts).toHaveLength(1);
+    expect(Object.keys(db.upserts[0]?.row ?? {})).toEqual(
       expect.arrayContaining(["state", "ingest", "imports", "browser_profile", "link"])
     );
   });
 
   it("skips the row write while the box is starting", async () => {
     vi.mocked(ensureComputeAwake).mockRejectedValueOnce(new StartLimitError());
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     const live = await refreshStatusMirror(supabase, "user-1");
     expect(live.boxBusy).toBe(true);
-    expect(upserts).toHaveLength(0);
+    expect(db.upserts).toHaveLength(0);
   });
 });
 
@@ -241,28 +231,28 @@ describe("refreshStatusMirrorIfAwake", () => {
 
   it("leaves a sleeping box asleep and reads nothing", async () => {
     vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: false });
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     const live = await refreshStatusMirrorIfAwake(supabase, "user-1");
     expect(live).toBeNull();
     expect(ensureBoxAwake).not.toHaveBeenCalled();
     expect(ensureComputeAwake).not.toHaveBeenCalled();
     expect(readFile).not.toHaveBeenCalled();
-    expect(upserts).toHaveLength(0);
+    expect(db.upserts).toHaveLength(0);
   });
 
   it("skips users without a box", async () => {
     vi.mocked(peekBoxState).mockResolvedValueOnce(null);
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     expect(await refreshStatusMirrorIfAwake(supabase, "user-1")).toBeNull();
     expect(ensureComputeAwake).not.toHaveBeenCalled();
-    expect(upserts).toHaveLength(0);
+    expect(db.upserts).toHaveLength(0);
   });
 
   it("refreshes the row from a box that is already awake", async () => {
     vi.mocked(peekBoxState).mockResolvedValueOnce({ boxId: "box-1", awake: true });
-    const { supabase, upserts } = fakeSupabase(null);
+    const { supabase, db } = fakeSupabase(null);
     const live = await refreshStatusMirrorIfAwake(supabase, "user-1");
     expect(live?.boxBusy).toBe(false);
-    expect(upserts).toHaveLength(1);
+    expect(db.upserts).toHaveLength(1);
   });
 });

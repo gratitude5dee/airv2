@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 
 const deploy = vi.hoisted(() => ({
   AppOriginRefusedError: class AppOriginRefusedError extends Error {
@@ -47,57 +48,16 @@ describe("createDraft refresh keeps existing metadata", () => {
     existing: Record<string, unknown> | null,
     opts: { refreshFails?: boolean } = {}
   ) {
-    const updates: Record<string, unknown>[] = [];
-    const inserted: Record<string, unknown>[] = [];
-    const supabase = {
-      from(table: string) {
-        if (table === "users") {
-          return {
-            select: () => ({
-              eq: () => ({
-                maybeSingle: async () => ({
-                  data: { username: "alice", wallet_address: null },
-                  error: null,
-                }),
-              }),
-            }),
-          };
-        }
-        if (table !== "mini_apps") throw new Error(`unexpected table ${table}`);
-        return {
-          update(values: Record<string, unknown>) {
-            updates.push(values);
-            return {
-              eq: () => ({
-                eq: () => ({
-                  select: () => ({
-                    maybeSingle: async () =>
-                      opts.refreshFails
-                        ? { data: null, error: { message: "connection reset" } }
-                        : {
-                            data: existing ? { ...existing, ...values } : null,
-                            error: null,
-                          },
-                  }),
-                }),
-              }),
-            };
-          },
-          insert(row: Record<string, unknown>) {
-            inserted.push(row);
-            return {
-              select: () => ({
-                single: async () =>
-                  existing
-                    ? { data: null, error: { code: "23505", message: "dup" } }
-                    : { data: { ...row, id: "app-1" }, error: null },
-              }),
-            };
-          },
-        };
-      },
-    } as unknown as SupabaseClient;
-    return { supabase, updates, inserted };
+    const db = new FakeSupabase();
+    db.tables["users"] = [{ id: "user-1", username: "alice", wallet_address: null }];
+    db.uniques["mini_apps"] = ["slug"];
+    if (existing) {
+      db.tables["mini_apps"] = [{ ...existing, owner_user_id: "user-1" }];
+    }
+    if (opts.refreshFails) {
+      db.opErrors["mini_apps:update"] = { message: "connection reset" };
+    }
+    return { db, supabase: db.client(), updates: db.updates, inserted: db.inserts };
   }
 
   const existing = {
@@ -117,9 +77,9 @@ describe("createDraft refresh keeps existing metadata", () => {
     expect(result).toEqual({ id: "app-1", slug: "alice-promo", name: "Spring Promo", created: false });
     expect(inserted).toHaveLength(0);
     expect(updates).toHaveLength(1);
-    expect(updates[0]).not.toHaveProperty("name");
-    expect(updates[0]).not.toHaveProperty("description");
-    expect(updates[0]).not.toHaveProperty("agent_identity");
+    expect(updates[0]!.patch).not.toHaveProperty("name");
+    expect(updates[0]!.patch).not.toHaveProperty("description");
+    expect(updates[0]!.patch).not.toHaveProperty("agent_identity");
   });
 
   it("a supplied title replaces only the title on refresh", async () => {
@@ -130,8 +90,8 @@ describe("createDraft refresh keeps existing metadata", () => {
       description: "",
     });
     expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({ name: "Summer Promo" });
-    expect(updates[0]).not.toHaveProperty("description");
+    expect(updates[0]!.patch).toMatchObject({ name: "Summer Promo" });
+    expect(updates[0]!.patch).not.toHaveProperty("description");
   });
 
   it("a new app still needs a name", async () => {
@@ -161,7 +121,11 @@ describe("createDraft refresh keeps existing metadata", () => {
       description: "",
     });
     expect(loser).toMatchObject({ id: "app-1", created: false });
-    expect(raced.inserted).toHaveLength(1);
+    // The insert was attempted and rejected by the unique slug — the fake
+    // records the write attempt in `queries`, not in `inserts`.
+    expect(
+      raced.db.queries.filter((q) => q.mode === "insert" && q.table === "mini_apps")
+    ).toHaveLength(1);
   });
 
   it("a failed refresh surfaces as a failure, not as 'name required' or 'taken'", async () => {
@@ -177,7 +141,9 @@ describe("createDraft refresh keeps existing metadata", () => {
         description: "",
       })
     ).rejects.toThrow(/draft refresh failed: connection reset/);
-    expect(duplicate.inserted).toHaveLength(1);
+    expect(
+      duplicate.db.queries.filter((q) => q.mode === "insert" && q.table === "mini_apps")
+    ).toHaveLength(1);
   });
 });
 
@@ -350,31 +316,39 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
     status: "published",
     bundle_version: "v1700000000001",
   });
-  let statusFlipFails = false;
+  let db: FakeSupabase;
 
   function fakeSupabase(app: ReturnType<typeof makeApp>): SupabaseClient {
-    const builder = {
-      select: () => builder,
-      update: () => builder,
-      eq: () => builder,
-      maybeSingle: async () => ({ data: app, error: null }),
-      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve(
-          statusFlipFails
-            ? { data: null, error: { message: "connection reset" } }
-            : { data: [{ id: app.id }], error: null }
-        ).then(resolve),
-    };
-    return { from: () => builder } as unknown as SupabaseClient;
+    db = new FakeSupabase();
+    db.tables["mini_apps"] = [{ ...(app as unknown as Row) }];
+    return db.client();
+  }
+
+  function failStatusFlip() {
+    db.opErrors["mini_apps:update"] = { message: "connection reset" };
   }
 
   beforeEach(() => {
-    statusFlipFails = false;
     deploy.promoteVersion.mockClear();
     deploy.syncManifest.mockClear();
     versions.getVersion.mockReset();
     versions.getVersion.mockResolvedValue({ version: "v1700000000001" });
-    versions.pointLiveAt.mockClear();
+    versions.pointLiveAt.mockReset();
+    // The fenced RPC commits its generation by writing the row's updated_at —
+    // the fake replays that so the status flip's CAS really filters.
+    versions.pointLiveAt.mockImplementation(
+      async (...rawArgs: unknown[]) => {
+        const [supabase, app] = rawArgs as [
+          ReturnType<FakeSupabase["client"]>,
+          { id: string },
+        ];
+        await supabase
+          .from("mini_apps")
+          .update({ updated_at: COMMITTED_AT })
+          .eq("id", app.id);
+        return COMMITTED_AT;
+      }
+    );
     versions.authoritativeApp.mockClear();
   });
 
@@ -389,9 +363,10 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
   });
 
   it("a delist whose row flip fails restores the published manifest so the app stays up", async () => {
-    statusFlipFails = true;
+    const supabase = fakeSupabase(live);
+    failStatusFlip();
     await expect(
-      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "draft")
+      setPublishStatus(supabase, "user-alice", "alice-notes", "draft")
     ).rejects.toThrow(/status flip failed/);
     expect(deploy.syncManifest).toHaveBeenCalledTimes(2);
     expect(deploy.syncManifest).toHaveBeenLastCalledWith(
@@ -406,8 +381,8 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
 
   it("a publish whose row flip fails leaves the manifest on draft, not serving", async () => {
     const draft = makeApp({ ...live, status: "draft" });
-    statusFlipFails = true;
     const supabase = fakeSupabase(draft);
+    failStatusFlip();
     await expect(
       setPublishStatus(supabase, "user-alice", "alice-notes", "published")
     ).rejects.toThrow(/status flip failed/);
@@ -422,36 +397,18 @@ describe("setPublishStatus (V11 §13.2 manifest ordering)", () => {
 
   it("the row flip is fenced on the generation the pointer move committed", async () => {
     const draft = makeApp({ ...live, status: "draft" });
-    const eqs: [string, unknown][] = [];
-    const builder = {
-      select: () => builder,
-      update: () => builder,
-      eq: (col: string, value: unknown) => {
-        eqs.push([col, value]);
-        return builder;
-      },
-      maybeSingle: async () => ({ data: draft, error: null }),
-      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve({ data: [{ id: draft.id }], error: null }).then(resolve),
-    };
-    const supabase = { from: () => builder } as unknown as SupabaseClient;
+    const supabase = fakeSupabase(draft);
     await setPublishStatus(supabase, "user-alice", "alice-notes", "published");
-    expect(eqs).toContainEqual(["updated_at", COMMITTED_AT]);
+    db.expectQuery({ table: "mini_apps", filters: { updated_at: COMMITTED_AT } });
   });
 
   it("a flip that finds the row moved on since the commit restores from that row and reports 409", async () => {
     const draft = makeApp({ ...live, status: "draft" });
     // Between our pointer commit and our flip the owner delisted (or an edit /
-    // repair touched the row): the CAS matches nothing.
-    const builder = {
-      select: () => builder,
-      update: () => builder,
-      eq: () => builder,
-      maybeSingle: async () => ({ data: draft, error: null }),
-      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve({ data: [], error: null }).then(resolve),
-    };
-    const supabase = { from: () => builder } as unknown as SupabaseClient;
+    // repair touched the row): the row's updated_at no longer carries the
+    // committed generation, so the CAS matches nothing.
+    const supabase = fakeSupabase(draft);
+    versions.pointLiveAt.mockResolvedValueOnce(COMMITTED_AT);
     versions.authoritativeApp.mockResolvedValueOnce(
       makeApp({ ...draft, visibility: "private", updated_at: "2026-03-03T00:00:00.000+00:00" })
     );
@@ -489,22 +446,16 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
     draft_version: "v1700000000002",
   });
 
-  let statusFlipFails = false;
+  let db: FakeSupabase;
 
   function fakeSupabase(app: ReturnType<typeof makeApp>): SupabaseClient {
-    const builder = {
-      select: () => builder,
-      update: () => builder,
-      eq: () => builder,
-      maybeSingle: async () => ({ data: app, error: null }),
-      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve(
-          statusFlipFails
-            ? { data: null, error: { message: "connection reset" } }
-            : { data: [{ id: app.id }], error: null }
-        ).then(resolve),
-    };
-    return { from: () => builder } as unknown as SupabaseClient;
+    db = new FakeSupabase();
+    db.tables["mini_apps"] = [{ ...(app as unknown as Row) }];
+    return db.client();
+  }
+
+  function failStatusFlip() {
+    db.opErrors["mini_apps:update"] = { message: "connection reset" };
   }
 
   /** The row as the forward swap left it: pointer on the draft, our generation. */
@@ -515,12 +466,25 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
   });
 
   beforeEach(() => {
-    statusFlipFails = false;
     deploy.promoteVersion.mockClear();
     deploy.syncManifest.mockClear();
     versions.getVersion.mockReset();
     versions.pointLiveAt.mockReset();
-    versions.pointLiveAt.mockResolvedValue(COMMITTED_AT);
+    // The fenced RPC commits its generation by writing the row's updated_at —
+    // the fake replays that so the status flip's CAS really filters.
+    versions.pointLiveAt.mockImplementation(
+      async (...rawArgs: unknown[]) => {
+        const [supabase, app] = rawArgs as [
+          ReturnType<FakeSupabase["client"]>,
+          { id: string },
+        ];
+        await supabase
+          .from("mini_apps")
+          .update({ updated_at: COMMITTED_AT })
+          .eq("id", app.id);
+        return COMMITTED_AT;
+      }
+    );
     versions.authoritativeApp.mockClear();
   });
 
@@ -569,10 +533,11 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
 
   it("a metadata write that fails after the swap restores the previous release, Worker first", async () => {
     versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
-    statusFlipFails = true;
+    const supabase = fakeSupabase(live);
+    failStatusFlip();
     versions.authoritativeApp.mockResolvedValueOnce(committed);
     await expect(
-      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+      setPublishStatus(supabase, "user-alice", "alice-notes", "published")
     ).rejects.toThrow(/status flip failed/);
     expect(deploy.promoteVersion).toHaveBeenCalledTimes(2);
     expect(deploy.promoteVersion).toHaveBeenLastCalledWith(
@@ -600,7 +565,8 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
 
   it("when the restore itself loses the swap, the origin follows the row as re-read, not the release this call moved", async () => {
     versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
-    statusFlipFails = true;
+    const supabase = fakeSupabase(live);
+    failStatusFlip();
     // A concurrent rollback moved the pointer to a third release between our
     // re-read and our reverse swap.
     const moved = makeApp({
@@ -615,7 +581,7 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
       .mockResolvedValueOnce(committed)
       .mockResolvedValueOnce(moved);
     await expect(
-      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+      setPublishStatus(supabase, "user-alice", "alice-notes", "published")
     ).rejects.toThrow(/status flip failed/);
     // Worker: draft (publish) -> previous (restore) -> the registry's release.
     expect(deploy.promoteVersion.mock.calls.map((c) => c[2])).toEqual([
@@ -637,15 +603,10 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
       bundle_version: "v1700000000002",
       updated_at: "2026-03-03T00:00:00.000+00:00",
     });
-    const builder = {
-      select: () => builder,
-      update: () => builder,
-      eq: () => builder,
-      maybeSingle: async () => ({ data: live, error: null }),
-      then: (resolve: (value: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve({ data: [], error: null }).then(resolve),
-    };
-    const supabase = { from: () => builder } as unknown as SupabaseClient;
+    const supabase = fakeSupabase(live);
+    // The commit returns a generation the row no longer carries — a writer
+    // moved it on — so the flip's CAS loses for real.
+    versions.pointLiveAt.mockResolvedValueOnce(COMMITTED_AT);
     versions.authoritativeApp.mockResolvedValueOnce(delisted);
     await expect(
       setPublishStatus(supabase, "user-alice", "alice-notes", "published")
@@ -658,11 +619,12 @@ describe("setPublishStatus promotes a staged draft (V11 §8 Drop onto a live app
 
   it("an unreadable registry after a failed flip leaves the origin alone for the reconciler", async () => {
     versions.getVersion.mockResolvedValue({ version: "v1700000000002" });
-    statusFlipFails = true;
+    const supabase = fakeSupabase(live);
+    failStatusFlip();
     versions.authoritativeApp.mockResolvedValueOnce(null);
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(
-      setPublishStatus(fakeSupabase(live), "user-alice", "alice-notes", "published")
+      setPublishStatus(supabase, "user-alice", "alice-notes", "published")
     ).rejects.toThrow(/status flip failed/);
     const logged = errors.mock.calls.map((c) => String(c[0]));
     errors.mockRestore();

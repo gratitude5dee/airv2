@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { normalizeBerdDoc } from "@/lib/miniapps/berd/state";
-import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   beginBerdPairing,
   berdHeartbeat,
@@ -45,7 +45,7 @@ import { berd } from "@/lib/miniapps/apps/berd";
 
 const DOC_PATH = ".hermes/miniapps/berd/default.json";
 
-let db = new FakeDb();
+let db = new FakeSupabase();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
@@ -70,7 +70,7 @@ beforeAll(() => {
 
 afterEach(() => {
   boxFiles.clear();
-  db = new FakeDb();
+  db = new FakeSupabase();
 });
 
 describe("berd mini-app", () => {

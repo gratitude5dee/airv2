@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   costUsd,
   DEFAULT_VENICE_MODEL,
@@ -34,6 +33,7 @@ import {
   listProviderKeyStatuses,
   setProviderKey,
 } from "./keys";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const VAULT_KEY = "a".repeat(64);
 
@@ -166,18 +166,15 @@ describe("creative model prefs", () => {
   });
 
   it("loadCreativePrefs falls back to defaults on stale or missing rows", async () => {
-    const supabase = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({
-              data: { imagine_model: "Flux2-Dev", edit_model: "bogus" },
-            }),
-          }),
-        }),
-      }),
-    } as unknown as SupabaseClient;
-    const prefs = await loadCreativePrefs(supabase, "u1");
+    const db = new FakeSupabase();
+    db.tables["creative_prefs"] = [
+      {
+        user_id: "u1",
+        imagine_model: "Flux2-Dev",
+        edit_model: "bogus",
+      },
+    ];
+    const prefs = await loadCreativePrefs(db.client(), "u1");
     expect(prefs.imagine).toBe("Flux2-Dev");
     expect(prefs.edit).toBe(DEFAULT_LANE_MODELS.edit);
     expect(prefs.animate).toBe(DEFAULT_LANE_MODELS.animate);
@@ -185,10 +182,8 @@ describe("creative model prefs", () => {
   });
 
   it("setCreativeModel rejects slugs outside the lane catalog", async () => {
-    const upsert = vi.fn(async () => ({ error: null }));
-    const supabase = {
-      from: () => ({ upsert }),
-    } as unknown as SupabaseClient;
+    const db = new FakeSupabase();
+    const supabase = db.client();
     expect(
       await setCreativeModel(
         supabase,
@@ -197,11 +192,12 @@ describe("creative model prefs", () => {
         "gemini-3.1-flash-image",
       ),
     ).toBe(false);
-    expect(upsert).not.toHaveBeenCalled();
+    expect(db.upserts).toHaveLength(0);
     expect(await setCreativeModel(supabase, "u1", "imagine", "Flux2-Dev")).toBe(
       true,
     );
-    expect(upsert).toHaveBeenCalledOnce();
+    expect(db.upserts).toHaveLength(1);
+    expect(db.upserts[0]?.table).toBe("creative_prefs");
   });
 });
 
@@ -308,65 +304,12 @@ describe("router metaprompt", () => {
 });
 
 describe("provider keys", () => {
-  interface Row {
-    user_id: string;
-    provider: string;
-    api_key_sealed: string;
-    key_hint: string | null;
-    updated_at: string | null;
-  }
-
-  const makeSupabase = (rows: Row[]): SupabaseClient => {
-    const filtered = (filters: Record<string, string>): Row[] =>
-      rows.filter((row) =>
-        Object.entries(filters).every(
-          ([key, value]) => row[key as keyof Row] === value,
-        ),
-      );
-    return {
-      from: () => ({
-        upsert: async (row: Row) => {
-          rows.push(row);
-          return { error: null };
-        },
-        delete: () => {
-          const filters: Record<string, string> = {};
-          const chain = {
-            eq: (key: string, value: string) => {
-              filters[key] = value;
-              return chain;
-            },
-            then: (resolve: (value: { error: null }) => void) => {
-              for (const row of filtered(filters)) {
-                rows.splice(rows.indexOf(row), 1);
-              }
-              resolve({ error: null });
-            },
-          };
-          return chain;
-        },
-        select: () => {
-          const filters: Record<string, string> = {};
-          const chain = {
-            eq: (key: string, value: string) => {
-              filters[key] = value;
-              return chain;
-            },
-            maybeSingle: async () => ({ data: filtered(filters)[0] ?? null }),
-            then: (resolve: (value: { data: Row[] }) => void) => {
-              resolve({ data: filtered(filters) });
-            },
-          };
-          return chain;
-        },
-      }),
-    } as unknown as SupabaseClient;
-  };
+  const makeDb = () => new FakeSupabase();
 
   it("seals at rest (no plaintext in the row) and round-trips server-side", async () => {
     vi.stubEnv("PROVIDER_VAULT_KEY", VAULT_KEY);
-    const rows: Row[] = [];
-    const supabase = makeSupabase(rows);
+    const db = makeDb();
+    const supabase = db.client();
     const result = await setProviderKey(
       supabase,
       "u1",
@@ -374,9 +317,10 @@ describe("provider keys", () => {
       "sk-or-v1-secret-key-value",
     );
     expect(result.ok).toBe(true);
-    expect(rows[0]!.api_key_sealed).not.toContain("secret-key-value");
-    expect(rows[0]!.api_key_sealed.startsWith("v1:")).toBe(true);
-    expect(rows[0]!.key_hint).toBe("alue");
+    const row = db.rows("provider_keys")[0]!;
+    expect(row["api_key_sealed"]).not.toContain("secret-key-value");
+    expect((row["api_key_sealed"] as string).startsWith("v1:")).toBe(true);
+    expect(row["key_hint"]).toBe("alue");
     expect(await getProviderKey(supabase, "u1", "openrouter")).toBe(
       "sk-or-v1-secret-key-value",
     );
@@ -385,8 +329,8 @@ describe("provider keys", () => {
 
   it("statuses expose only hint metadata, never the sealed value", async () => {
     vi.stubEnv("PROVIDER_VAULT_KEY", VAULT_KEY);
-    const rows: Row[] = [];
-    const supabase = makeSupabase(rows);
+    const db = makeDb();
+    const supabase = db.client();
     await setProviderKey(supabase, "u1", "gmi", "gmi-personal-key-9876");
     const statuses = await listProviderKeyStatuses(supabase, "u1");
     expect(statuses).toHaveLength(3);
@@ -399,7 +343,7 @@ describe("provider keys", () => {
 
   it("rejects garbage keys and disabled vaults", async () => {
     vi.stubEnv("PROVIDER_VAULT_KEY", VAULT_KEY);
-    const supabase = makeSupabase([]);
+    const supabase = makeDb().client();
     expect((await setProviderKey(supabase, "u1", "venice", "short")).ok).toBe(
       false,
     );

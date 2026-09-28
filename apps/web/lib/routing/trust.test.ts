@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { normalizeAddress, resolveTrustTier } from "./trust";
 
 describe("normalizeAddress", () => {
@@ -22,7 +22,7 @@ describe("resolveTrustTier", () => {
   const user = "user-1";
 
   it("returns 0 when the address is one of the user's own handles", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.rows("handles").push({
       user_id: user,
       platform: "imessage",
@@ -38,7 +38,7 @@ describe("resolveTrustTier", () => {
   });
 
   it("returns the sender row's tier for a known sender", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.rows("senders").push({
       user_id: user,
       platform: "imessage",
@@ -55,7 +55,7 @@ describe("resolveTrustTier", () => {
   });
 
   it("inserts an unknown sender at tier 2 and returns 2", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     const tier = await resolveTrustTier(
       db.client(),
       user,
@@ -74,7 +74,7 @@ describe("resolveTrustTier", () => {
   });
 
   it("fails closed when the senders insert errors — never tier 0", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.errors["senders"] = { message: "relation does not exist" };
     await expect(
       resolveTrustTier(db.client(), user, "imessage", "+14155550123")
@@ -82,7 +82,7 @@ describe("resolveTrustTier", () => {
   });
 
   it("treats a unique-violation race (23505) as tier 2", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.errors["senders"] = {
       message: "duplicate key value violates unique constraint",
       code: "23505",

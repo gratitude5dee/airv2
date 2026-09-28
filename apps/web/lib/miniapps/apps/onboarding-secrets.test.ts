@@ -6,9 +6,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const boxFiles = new Map<string, string>();
 
@@ -80,44 +80,37 @@ vi.mock("@/lib/miniapps/cardSends", () => ({
 
 import { onboarding } from "@/lib/miniapps/apps/onboarding";
 
-function thenable(rows: unknown, single: unknown = null) {
-  const builder: Record<string, unknown> = {};
-  const chain = () => builder;
-  for (const method of ["select", "eq", "is", "order", "limit", "gte", "lt"]) {
-    builder[method] = vi.fn(chain);
-  }
-  builder["maybeSingle"] = async () => ({ data: single, error: null });
-  builder["then"] = (
-    resolve: (value: { data: unknown; count: number }) => unknown
-  ) => Promise.resolve({ data: rows, count: 0 }).then(resolve);
-  return builder;
-}
+const db = new FakeSupabase();
 
 function makeCtx() {
-  const tables: Record<string, ReturnType<typeof thenable>> = {
-    users: thenable([], { username: "grat" }),
-    agent_addresses: thenable([], { address: "grat@wzrd.tech" }),
-    connections: thenable([]),
-    vault_items: thenable([]),
-    entitlements: thenable([], { speed_tier: "balanced" }),
-    plugin_tokens: thenable([]),
-    boxes: thenable([], {
+  db.tables["users"] = [{ id: "user-1", username: "grat" }];
+  db.tables["agent_addresses"] = [
+    {
+      user_id: "user-1",
+      address: "grat@wzrd.tech",
+      is_primary: true,
+      retired_at: null,
+    },
+  ];
+  db.tables["entitlements"] = [
+    { user_id: "user-1", speed_tier: "balanced" },
+  ];
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
       provider_box_id: "box-1",
       environment: "ubuntu",
       control_url: null,
       control_token: null,
       state: "ready",
-    }),
-    imessage_destinations: thenable([], {
-      space_id: "space-1",
-      phone: "+15551234567",
-    }),
-  };
+    },
+  ];
+  db.tables["imessage_destinations"] = [
+    { user_id: "user-1", space_id: "space-1", phone: "+15551234567" },
+  ];
   return {
     request: new NextRequest("https://mini.example/mini/setup?step=secrets"),
-    supabase: {
-      from: (table: string) => tables[table] ?? thenable([]),
-    } as unknown as SupabaseClient,
+    supabase: db.client(),
     app: makeApp({ slug: "setup", kind: "input" }),
     session: { userId: "user-1", resourceId: "default", role: "owner" },
     basePath: "/mini/setup",
@@ -125,6 +118,7 @@ function makeCtx() {
 }
 
 afterEach(() => {
+  db.reset();
   enableManager.mockClear();
   boxFiles.clear();
 });

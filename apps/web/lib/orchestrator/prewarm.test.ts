@@ -4,9 +4,9 @@
  * provider error (ensureBoxAwake owns the real wake).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { prewarmBox } from "./boxes";
 import { getBox, resume } from "../box/client";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 vi.mock("../box/client", () => ({
   command: vi.fn(),
@@ -19,30 +19,17 @@ vi.mock("../hermes/client", () => ({ health: vi.fn() }));
 vi.mock("../brand/mirror", () => ({ mirrorBrandIfStale: vi.fn() }));
 vi.mock("../box/events", () => ({ recordBoxStateEvent: vi.fn() }));
 
+const db = new FakeSupabase();
+
 function fakeSupabase(boxId: string | null) {
-  const updates: unknown[] = [];
-  const supabase = {
-    updates,
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () =>
-            Promise.resolve({
-              data: boxId ? { provider_box_id: boxId } : null,
-              error: null,
-            }),
-        }),
-      }),
-      update: (values: unknown) => {
-        updates.push(values);
-        return { eq: () => Promise.resolve({ error: null }) };
-      },
-    }),
-  };
-  return supabase as unknown as SupabaseClient & { updates: unknown[] };
+  db.tables["boxes"] = boxId
+    ? [{ user_id: "user-1", provider_box_id: boxId }]
+    : [];
+  return db.client();
 }
 
 beforeEach(() => {
+  db.reset();
   vi.mocked(getBox).mockReset();
   vi.mocked(resume).mockReset();
 });
@@ -54,8 +41,11 @@ describe("prewarmBox", () => {
     const supabase = fakeSupabase("bx_1");
     await prewarmBox(supabase, "user-1");
     expect(resume).toHaveBeenCalledWith("bx_1");
-    expect(supabase.updates).toEqual([
-      { state: "starting", last_active_at: expect.any(String) },
+    expect(db.updates).toEqual([
+      {
+        table: "boxes",
+        patch: { state: "starting", last_active_at: expect.any(String) },
+      },
     ]);
   });
 

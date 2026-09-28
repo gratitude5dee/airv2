@@ -5,7 +5,7 @@
  * object past the quota; a smaller object refunds the difference.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const r2 = vi.hoisted(() => ({
   objects: new Map<string, { body: Buffer; contentType: string }>(),
@@ -42,63 +42,24 @@ import { confirmUpload } from "./confirm";
 
 const KEY = "u/a/media/abc-photo.png";
 
-const db: {
-  pending: { key: string; user_id: string; charged_bytes: number }[];
-  used: number;
-  quota: number;
-  rpcs: string[];
-} = { pending: [], used: 0, quota: 0, rpcs: [] };
+const db = new FakeSupabase();
+const supabase = db.client();
 
-function fakeSupabase(): SupabaseClient {
-  return {
-    from(table: string) {
-      if (table !== "pending_uploads") throw new Error(`unexpected table ${table}`);
-      return {
-        delete() {
-          const filters: Record<string, unknown> = {};
-          const chain = {
-            eq(column: string, value: unknown) {
-              filters[column] = value;
-              return chain;
-            },
-            async select(_columns: string) {
-              const taken = db.pending.filter(
-                (row) => row.key === filters["key"] && row.user_id === filters["user_id"]
-              );
-              db.pending = db.pending.filter((row) => !taken.includes(row));
-              return {
-                data: taken.map((row) => ({ charged_bytes: row.charged_bytes })),
-                error: null,
-              };
-            },
-          };
-          return chain;
-        },
-      };
-    },
-    async rpc(name: string, args: Record<string, unknown>) {
-      const bytes = Number(args["p_bytes"]);
-      db.rpcs.push(`${name} ${bytes}`);
-      if (name === "user_bucket_reserve") {
-        if (bytes >= 0 && db.used + bytes <= db.quota) {
-          db.used += bytes;
-          return { data: true, error: null };
-        }
-        return { data: false, error: null };
-      }
-      if (name === "user_bucket_release") {
-        db.used = Math.max(db.used - bytes, 0);
-        return { data: db.used, error: null };
-      }
-      throw new Error(`unexpected rpc ${name}`);
-    },
-  } as unknown as SupabaseClient;
+/** Local bucket bookkeeping the user_bucket_* RPCs maintain in prod. */
+const bucket = { used: 0, cap: 0 };
+
+function rpcs(): string[] {
+  return db.rpcCalls.map(
+    (call) => `${call.fn} ${String((call.args as Record<string, unknown>)?.["p_bytes"])}`
+  );
 }
 
 function presigned(charged: number, used: number, quota: number): void {
-  db.pending = [{ key: KEY, user_id: "user-1", charged_bytes: charged }];
-  db.used = used;
-  db.quota = quota;
+  db.tables["pending_uploads"] = [
+    { key: KEY, user_id: "user-1", charged_bytes: charged },
+  ];
+  bucket.used = used;
+  bucket.cap = quota;
 }
 
 function uploaded(size: number): void {
@@ -107,8 +68,22 @@ function uploaded(size: number): void {
 
 describe("confirmUpload size reconciliation", () => {
   beforeEach(() => {
-    db.pending = [];
-    db.rpcs = [];
+    db.reset();
+    bucket.used = 0;
+    bucket.cap = 0;
+    db.rpcResults["user_bucket_reserve"] = (args: unknown) => {
+      const bytes = Number((args as Record<string, unknown>)?.["p_bytes"]);
+      if (bytes >= 0 && bucket.used + bytes <= bucket.cap) {
+        bucket.used += bytes;
+        return true;
+      }
+      return false;
+    };
+    db.rpcResults["user_bucket_release"] = (args: unknown) => {
+      const bytes = Number((args as Record<string, unknown>)?.["p_bytes"]);
+      bucket.used = Math.max(bucket.used - bytes, 0);
+      return bucket.used;
+    };
     r2.objects.clear();
     r2.log = [];
   });
@@ -116,19 +91,19 @@ describe("confirmUpload size reconciliation", () => {
   it("an object matching its declaration leaves the charge as reserved", async () => {
     presigned(100, 100, 1000);
     uploaded(100);
-    const result = await confirmUpload(fakeSupabase(), "user-1", KEY);
+    const result = await confirmUpload(supabase, "user-1", KEY);
     expect(result).toEqual({ ok: true, publicUrl: `https://cdn.test/${KEY}` });
-    expect(db.used).toBe(100);
-    expect(db.rpcs).toEqual([]);
+    expect(bucket.used).toBe(100);
+    expect(rpcs()).toEqual([]);
   });
 
   it("an understated declaration is charged for the excess through the atomic reserve", async () => {
     presigned(100, 100, 1000);
     uploaded(400);
-    const result = await confirmUpload(fakeSupabase(), "user-1", KEY);
+    const result = await confirmUpload(supabase, "user-1", KEY);
     expect(result.ok).toBe(true);
-    expect(db.rpcs).toEqual(["user_bucket_reserve 300"]);
-    expect(db.used).toBe(400);
+    expect(rpcs()).toEqual(["user_bucket_reserve 300"]);
+    expect(bucket.used).toBe(400);
     expect(r2.objects.has(KEY)).toBe(true);
   });
 
@@ -136,59 +111,59 @@ describe("confirmUpload size reconciliation", () => {
     // 100 declared and reserved; 950 of 1000 used; the object is 400 bytes.
     presigned(100, 950, 1000);
     uploaded(400);
-    const result = await confirmUpload(fakeSupabase(), "user-1", KEY);
+    const result = await confirmUpload(supabase, "user-1", KEY);
     expect(result).toMatchObject({ ok: false, status: 413 });
-    expect(db.rpcs).toEqual(["user_bucket_reserve 300", "user_bucket_release 100"]);
-    expect(db.used).toBe(850);
+    expect(rpcs()).toEqual(["user_bucket_reserve 300", "user_bucket_release 100"]);
+    expect(bucket.used).toBe(850);
     expect(r2.log).toEqual([`delete ${KEY}`]);
     expect(r2.objects.has(KEY)).toBe(false);
-    expect(db.pending).toHaveLength(0);
+    expect(db.rows("pending_uploads")).toHaveLength(0);
   });
 
   it("racing understated confirms cannot both land past the quota", async () => {
     // Two 100-byte reservations already hold 200 of 900; both objects are 500,
     // so only one excess of 400 fits.
     const other = "u/a/media/def-other.png";
-    db.pending = [
+    db.tables["pending_uploads"] = [
       { key: KEY, user_id: "user-1", charged_bytes: 100 },
       { key: other, user_id: "user-1", charged_bytes: 100 },
     ];
-    db.used = 200;
-    db.quota = 900;
+    bucket.used = 200;
+    bucket.cap = 900;
     uploaded(500);
     r2.objects.set(other, { body: Buffer.alloc(500, 2), contentType: "image/png" });
     const [a, b] = await Promise.all([
-      confirmUpload(fakeSupabase(), "user-1", KEY),
-      confirmUpload(fakeSupabase(), "user-1", other),
+      confirmUpload(supabase, "user-1", KEY),
+      confirmUpload(supabase, "user-1", other),
     ]);
     expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
-    expect(db.used).toBe(500);
+    expect(bucket.used).toBe(500);
     expect(r2.objects.size).toBe(1);
   });
 
   it("a smaller object refunds the difference", async () => {
     presigned(400, 400, 1000);
     uploaded(150);
-    const result = await confirmUpload(fakeSupabase(), "user-1", KEY);
+    const result = await confirmUpload(supabase, "user-1", KEY);
     expect(result.ok).toBe(true);
-    expect(db.rpcs).toEqual(["user_bucket_release 250"]);
-    expect(db.used).toBe(150);
+    expect(rpcs()).toEqual(["user_bucket_release 250"]);
+    expect(bucket.used).toBe(150);
   });
 
   it("a missing object releases the whole charge", async () => {
     presigned(100, 100, 1000);
-    const result = await confirmUpload(fakeSupabase(), "user-1", KEY);
+    const result = await confirmUpload(supabase, "user-1", KEY);
     expect(result).toMatchObject({ ok: false, status: 404 });
-    expect(db.rpcs).toEqual(["user_bucket_release 100"]);
-    expect(db.used).toBe(0);
+    expect(rpcs()).toEqual(["user_bucket_release 100"]);
+    expect(bucket.used).toBe(0);
   });
 
   it("confirming twice consumes the reservation once", async () => {
     presigned(100, 100, 1000);
     uploaded(100);
-    await confirmUpload(fakeSupabase(), "user-1", KEY);
-    const again = await confirmUpload(fakeSupabase(), "user-1", KEY);
+    await confirmUpload(supabase, "user-1", KEY);
+    const again = await confirmUpload(supabase, "user-1", KEY);
     expect(again).toMatchObject({ ok: false, status: 409 });
-    expect(db.used).toBe(100);
+    expect(bucket.used).toBe(100);
   });
 });

@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { normalizeBuzzDoc } from "@/lib/miniapps/buzz/state";
-import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   beginBuzzBinding,
   buzzHeartbeat,
@@ -48,7 +48,7 @@ const DOC_PATH = ".hermes/miniapps/buzz/default.json";
 const NSEC = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzzz";
 const NPUB = "npub1exampleexampleexampleexample";
 
-let db = new FakeDb();
+let db = new FakeSupabase();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
@@ -73,7 +73,7 @@ beforeAll(() => {
 
 afterEach(() => {
   boxFiles.clear();
-  db = new FakeDb();
+  db = new FakeSupabase();
 });
 
 describe("buzz mini-app", () => {
