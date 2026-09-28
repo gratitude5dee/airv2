@@ -60,7 +60,6 @@ import {
   maybeHandleMuseInbound,
   museModeIsActive,
 } from "@/lib/muse/commands";
-import { log } from "@/lib/log";
 
 export const maxDuration = 800;
 

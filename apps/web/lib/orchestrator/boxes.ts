@@ -20,13 +20,13 @@ import { log } from "../log";
 import { mirrorBrandIfStale } from "../brand/mirror";
 import {
   loadBoxCredentials,
+  type BoxCredentials,
   recordDashboardRoute,
   recordHostedRoute,
 } from "../box/credentials";
 import { recordBoxStateEvent } from "../box/events";
 import { boxTarget } from "../compute/runtime";
 import { assertAdmissionOpen } from "../migration/admission";
-import { log } from "../log";
 
 export const STOP_AFTER_MINUTES = 20;
 
@@ -264,7 +264,7 @@ export async function ensureBoxAwake(
 
   const inFlight = wakeWaiters.get(boxId);
   if (inFlight) return inFlight;
-  const waiter = wakeBox(supabase, userId, row).finally(() => {
+  const waiter = wakeBox(supabase, userId, creds).finally(() => {
     // Only the entry that is still this waiter may be cleared — a wake that
     // finished and a new one started for the same box must not be deleted
     // out from under the newer caller.
@@ -283,9 +283,9 @@ export async function ensureBoxAwake(
 async function wakeBox(
   supabase: SupabaseClient,
   userId: string,
-  row: BoxRow
+  creds: BoxCredentials
 ): Promise<UserBox> {
-  const boxId = row.provider_box_id;
+  const boxId = creds.boxId;
   let wroteStarting = false;
   try {
   const box = await getBox(boxId);

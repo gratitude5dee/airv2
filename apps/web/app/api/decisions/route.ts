@@ -8,58 +8,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { batchApproveEmailDrafts } from "@/lib/decisions/batch";
-import { EmailDraftError, sendHeldDraft } from "@/lib/decisions/email";
-import {
-  approveAdWrite,
-  dismissAdWrite,
-  AdWriteError,
-} from "@/lib/ads/approvals";
-import { approveContentPlan, dismissContentPlan } from "@/lib/publish/propose";
-import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
-import { approveRun, HermesApiError } from "@/lib/hermes/client";
-import { approveInboxEvent, dismissInboxEvent } from "@/lib/calendar/store";
-import {
-  denyMasterkeyRun,
-  executeMasterkeyRun,
-  findPendingMasterkeyRun,
-  MasterkeyRunError,
-} from "@/lib/masterkey/runs";
-import {
-  hostedErrorResponse,
-  resolveHostedDecision,
-  type HostedDecision,
-} from "@/lib/approvals/hosted";
-import { applyPatchOnBox, sanitizePatch } from "@/lib/crm/store";
-import {
-  denyTransfer,
-  executeTransfer,
-  findPendingTransfer,
-  WalletSendError,
-  WalletSubmitUnknownError,
-} from "@/lib/wallet/send";
-import {
-  clampToWakingHours,
-  nextRunAt,
-  SCHEDULE_COLUMNS,
-  parseAgentSchedule,
-} from "@/lib/calendar/schedule";
-import { approveCatalogPublish } from "@/lib/commerce/catalog";
-import { CommerceError } from "@/lib/commerce/merchants";
-import {
-  approveBackendForOwner,
-  isBackendError,
-  resolveBackendDecisionRow,
-} from "@/lib/functions/approval";
-import { BACKEND_DECISION_KIND } from "@/lib/functions/backend";
-import { AppOriginRefusedError } from "@/lib/functions/deploy";
-import { PublishError, setPublishStatus } from "@/lib/miniapps/publish";
-import { onPublishDecision, PUBLISH_DECISION_KIND } from "@/lib/create/finalize";
-import { recordOpsEvent } from "@/lib/security/limits";
-import {
-  MuseCapabilityError,
-  resolveMuseActionDecision,
-} from "@/lib/muse/capabilities";
-import { log } from "@/lib/log";
 import { listDecisions } from "@/lib/decisions/queue";
 import { resolveDecision } from "@/lib/decisions/resolve";
 

@@ -18,7 +18,6 @@ import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import { shellQuote } from "./shell";
 import * as tenki from "./tenki";
-import { isTenkiBoxId, isTenkiTemplateRef } from "./tenki-refs";
 import {
   BoxApiError,
   BoxSchema,

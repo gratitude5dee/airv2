@@ -1367,7 +1367,7 @@ describe("gateway model families", () => {
 
   it("splices the OpenAI retry into the open stream when a non-OpenAI answer ends empty", async () => {
     setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
-    meteredRows.length = 0;
+    db.inserts = db.inserts.filter((i) => i.table !== "agent_runs");
     const reasoningOnly =
       'data: {"choices":[{"delta":{"reasoning":"thinking"}}]}\n\ndata: [DONE]\n\n';
     const answersSse =
@@ -1399,7 +1399,7 @@ describe("gateway model families", () => {
     // metered row's fallback_from instead.
     expect(response.headers.get("X-Air-Served-Family")).toBe("openrouter");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const row = meteredRows[0]!;
+    const row = metered()[0]!;
     expect(row["model_family"]).toBe("openai");
     expect(row["fallback_from"]).toBe("openrouter");
   });

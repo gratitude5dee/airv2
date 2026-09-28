@@ -113,7 +113,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     // only the durable Spectrum session that already exists.
     await refreshCheckoutCard(supabase, String(box.userId), handoff).catch(
       (error: unknown) => {
-        log.error("checkout card refresh failed", {user_id: String(box.user_id),
+        log.error("checkout card refresh failed", {user_id: String(box.userId),
             handoff_id: handoff.id,
             error: error instanceof Error ? error.message : "unknown",});
       }

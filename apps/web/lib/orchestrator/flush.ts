@@ -20,8 +20,11 @@ import { log } from "../log";
 import { completeOperation } from "../migration/admission";
 import { command, writeFile } from "../box/client";
 import {
+  type ConversationMessage,
   createRun,
   ensureSession,
+  type HermesBoxTarget,
+  loadConversationTranscript,
   MAIN_SESSION,
   MAIN_SESSION_TITLE,
   runEvents,
@@ -70,7 +73,6 @@ import {
   startProgressTimeline,
   type ProgressTimeline,
 } from "./ttfk";
-import { log } from "../log";
 
 const ATTACHMENT_MARKER = /^\[attachment:([^\]]+)\]$/;
 

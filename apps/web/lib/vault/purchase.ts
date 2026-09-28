@@ -20,9 +20,6 @@ import {
   HermesApiError,
   type HermesBoxTarget,
 } from "../hermes/client";
-import { db } from "../db";
-import { approveRun, type HermesBoxTarget } from "../hermes/client";
-import { log } from "../log";
 import { hostSupportsLink } from "../payments/link";
 import { appendVaultEvent, VaultCliError } from "./client";
 import {

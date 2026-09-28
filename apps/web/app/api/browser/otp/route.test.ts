@@ -122,12 +122,12 @@ describe("browser OTP lane", () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "not_found" });
-    const scoping = state.calls.filter(
-      (c) =>
-        c.table === "otp_requests" &&
-        c.method === "eq" &&
-        c.args[0] === "user_id" &&
-        c.args[1] === "user-1"
+    const scoping = state.fake.filters.filter(
+      (f) =>
+        f.table === "otp_requests" &&
+        f.op === "eq" &&
+        f.column === "user_id" &&
+        f.value === "user-1"
     );
     expect(scoping.length).toBeGreaterThan(0);
   });

@@ -3,7 +3,7 @@
  * proposed slots plus one pending content_plan decision — and it must not
  * leave half a plan behind when an insert fails.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeSupabase } from "../testing/fakeSupabase";
 import { AgentPlanError, proposeAgentPlan } from "./agentPlan";
 

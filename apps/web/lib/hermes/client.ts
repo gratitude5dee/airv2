@@ -6,7 +6,6 @@
  */
 import { z } from "zod";
 import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
-import { log } from "../log";
 import {
   parseRawMessages,
   sanitizeConversation,

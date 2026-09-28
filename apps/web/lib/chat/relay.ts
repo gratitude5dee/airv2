@@ -16,7 +16,6 @@ import {
   runEvents,
 } from "../hermes/client";
 import { log } from "../log";
-import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
 import { createTerminalScanner } from "../hermes/terminal";
 import { routeTurn, routingInstructions } from "../jev/router";
 

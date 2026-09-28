@@ -81,7 +81,7 @@ export async function POST(
   const parsed = await parseBody(request, Body);
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
-  const auth = authenticate(request, id, body.k);
+  const auth = await authenticate(request, id, body.k);
   if (!auth) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
