@@ -52,7 +52,7 @@ const base = "https://air.test/api/admin/boxes/stop-idle";
 const authed = (body?: string) =>
   new NextRequest(base, {
     method: "POST",
-    headers: { authorization: "Bearer admin-key" },
+    headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" },
     ...(body !== undefined ? { body } : {}),
   });
 

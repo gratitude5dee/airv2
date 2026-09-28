@@ -23,3 +23,5 @@ apps/web/public/creator-os/deck-pending.js
 apps/web/public/creator-os/deck-timing.js
 apps/web/public/creator-os/intro-cinematic.js
 apps/web/public/creator-os/create.js
+apps/web/public/creator-os/draw-studio.js
+apps/web/public/creator-os/freeze-studio.js
