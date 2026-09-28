@@ -16,8 +16,8 @@ export interface TargetCredentials {
   environment: string;
   hosted_url: string;
   hosted_token: string;
-  dashboard_url: string;
-  dashboard_token: string;
+  dashboard_url: string | null;
+  dashboard_token: string | null;
   /** Sealed dashboard basic-auth password for the boxes row (CM1). */
   dashboard_auth: string | null;
   api_server_key: string;

@@ -114,6 +114,8 @@ const twin: DigitalTwin | null = built
 const snapshot: OnboardingSnapshot = {
   state: defaultOnboardingState(),
   environment: "ubuntu",
+  harness: "hermes",
+  harnessAvailable: { hermes: true, exo: false },
   username: "gratitude",
   address: "gratitude@wzrd.tech",
   mailboxDomain: "wzrd.tech",
