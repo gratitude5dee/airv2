@@ -1,10 +1,11 @@
-name: Apply database migrations
+name: Apply database migrations (manual)
 
+# Production applies happen in ci.yml's deploy-migrations job — after green
+# CI, only when a main push touched supabase/migrations, gated by the
+# `production` environment's required-reviewer approval (R-P0-5). This
+# workflow remains as a manual escape hatch (e.g. recovering a failed or
+# skipped apply) and carries the same environment approval.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "supabase/migrations/**"
   workflow_dispatch:
 
 concurrency:
@@ -14,6 +15,8 @@ concurrency:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - name: Apply pending migrations to production
