@@ -310,6 +310,11 @@ export const env = {
     process.env["CREATE_BRIDGE_SECRET"] ?? null,
   liveTokenSecret: (): string | null =>
     process.env["LIVE_TOKEN_SECRET"] ?? null,
+  // R-SEC-09: the at-rest seal key for Berd/Buzz command envelopes
+  // (lib/miniapps/commandLane.ts). Required — 64 hex chars, rotated
+  // independently of SESSION_SECRET so a session rotation never strands
+  // sealed rows. Checked at boot in instrumentation.ts.
+  commandLaneKey: (): string => required("COMMAND_LANE_KEY"),
   /** Origin of the air-create Worker the Workflow and OwnerRoom live behind. */
   createJobsOrigin: (): string =>
     optional("CREATE_JOBS_ORIGIN", "https://create.wzrd.tech"),
