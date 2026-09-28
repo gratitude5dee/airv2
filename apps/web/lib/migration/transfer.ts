@@ -182,9 +182,13 @@ export async function importPass(
   const dir = airDir(migrationId);
   await writeSecretFile(target, `${dir}/key`, transferKey);
   await writeSecretFile(target, `${dir}/token`, serveToken);
+  // R-SEC-08: the hosted URL ends in `?_token=…` — on argv it is readable
+  // in ps and lands in the box's shell history, so it travels in a 0600
+  // file like the key and bearer token do.
+  await writeSecretFile(target, `${dir}/import-url-${passName}`, url);
   const result = await runCommand(
     target,
-    `${PYTHON} ${SCRIPT} import --url '${url.replace(/'/g, "'\\''")}' ` +
+    `${PYTHON} ${SCRIPT} import --urlfile ${dir}/import-url-${passName} ` +
       `--tokenfile ${dir}/token --keyfile ${dir}/key ` +
       `--dest ${dir}/staging-${passName} --timeout 550`,
     600

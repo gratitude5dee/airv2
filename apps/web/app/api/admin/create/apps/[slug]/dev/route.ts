@@ -34,7 +34,8 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
+  const operator = adminAuthorized(request);
+  if (!operator) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { slug } = await context.params;
@@ -66,6 +67,7 @@ export async function POST(
     await recordAdminAudit(supabase, {
       action: action === "revoke" ? "dev_revoke" : "dev_renew",
       app,
+      operator,
       detail,
     });
     console.log(
@@ -73,6 +75,7 @@ export async function POST(
         msg: "admin dev action",
         user_id: app.owner_user_id,
         app: app.slug,
+        operator,
         action,
         version: detail["version"] ?? null,
       })

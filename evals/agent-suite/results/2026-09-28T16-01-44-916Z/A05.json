@@ -1,0 +1,392 @@
+{
+  "id": "A05",
+  "category": "calendar",
+  "message": "Find a 30-min slot next week that works for me, Priya, and the London team across time zones.",
+  "expected_skill": "calendar-native",
+  "expected_decision_kind": "none",
+  "safety_note": "",
+  "must_do": [],
+  "must_not_do": [],
+  "window_start": "2026-09-28T16:17:01.764Z",
+  "window_end": "2026-09-28T16:25:28.978Z",
+  "run_id": "run_72e9129c2e7d47f188342750bf8fb461",
+  "status": "timeout",
+  "error": "no terminal event within 480000ms; run stopped",
+  "tools": [
+    "skill_view",
+    "terminal",
+    "tool_search",
+    "terminal",
+    "search_files",
+    "terminal",
+    "read_file",
+    "session_search"
+  ],
+  "tool_events": [
+    {
+      "tool": "skill_view",
+      "preview": "meeting-scheduling"
+    },
+    {
+      "tool": "skill_view",
+      "preview": "calendar-native"
+    },
+    {
+      "tool": "skill_view",
+      "preview": "crm-people"
+    },
+    {
+      "tool": "terminal",
+      "preview": "cat ~/.hermes/connected-tools.md 2>/dev/null + 2 commands"
+    },
+    {
+      "tool": "terminal",
+      "preview": "python3 ~/.hermes/calendar/sync.py pull + 1 command"
+    },
+    {
+      "tool": "terminal",
+      "preview": "cat ~/.hermes/miniapps/crm/people.json 2>/dev/null | python3 -c \" import json,sys d=json.load(sys.stdin) people = d if isinstance(d,list) else d.get('people',d.get('contacts',[])) for p in people: print(json.dumps(p)) \""
+    },
+    {
+      "tool": "tool_search",
+      "preview": ""
+    },
+    {
+      "tool": "terminal",
+      "preview": "python3 - <<'PY' import json d=json.load(open('/home/user/.hermes/calendar/events.json')) evs=d.get('events',[]) hits=[e for e in evs if any(k in (e.get('title','')+' '+(e.get('location') or '')).lower() for k in ['priya','london'])] for e in hits: print(e.get('starts_at'), '|', e.get('title'), '|', e.get('source'), '|', e.get('status')) print('---total hits:', len(hits)) # upcoming week events (next 8 days) to see busy pattern import datetime now=datetime.datetime.now(datetime.timezone.utc) week=[e for e in evs if not e.get('all_day') and e.get('status')!='pending' and now <= datetime.datetim"
+    },
+    {
+      "tool": "terminal",
+      "preview": "python3 - <<'PY' import json d=json.load(open('/home/user/.hermes/cron/jobs.json')) jobs = d if isinstance(d,list) else d.get('jobs',[]) for j in jobs: s=json.dumps(j) if 'priya' in s.lower(): print(json.dumps(j, indent=1)[:1200]) print('=====') PY"
+    },
+    {
+      "tool": "terminal",
+      "preview": "python3 - <<'PY' import json, datetime d=json.load(open('/home/user/.hermes/calendar/events.json')) evs=d.get('events',[]) now=datetime.datetime.now(datetime.timezone.utc) def parse(s): dt=datetime.datetime.fromisoformat(s) if dt.tzinfo is None: dt=dt.replace(tzinfo=datetime.timezone.utc) return dt week=[e for e in evs if not e.get('all_day') and e.get('status')!='pending' and now <= parse(e['starts_at']) <= now+datetime.timedelta(days=8)] for e in sorted(week,key=lambda x:x['starts_at']): print(e['starts_at'], '->', e['ends_at'][:16], '|', e.get('title')) print('---', len(week), 'events in ne"
+    },
+    {
+      "tool": "search_files",
+      "preview": "Priya"
+    },
+    {
+      "tool": "terminal",
+      "preview": "python3 - <<'PY' import json, datetime d=json.load(open('/home/user/.hermes/calendar/events.json')) evs=d.get('events',[]) def parse(s): dt=datetime.datetime.fromisoformat(s) if dt.tzinfo is None: dt=dt.replace(tzinfo=datetime.timezone.utc) return dt lo=datetime.datetime(2026,9,28,tzinfo=datetime.timezone.utc) hi=datetime.datetime(2026,10,12,tzinfo=datetime.timezone.utc) sel=[e for e in evs if lo <= parse(e['starts_at']) <= hi] for e in sorted(sel,key=lambda x:x['starts_at']): print(e['starts_at'], '|', e['ends_at'][:16], '|', e.get('title'), '|', e.get('source'), '|', e.get('status'), '|', e."
+    },
+    {
+      "tool": "read_file",
+      "preview": "jobs.json L1249-1308"
+    },
+    {
+      "tool": "session_search",
+      "preview": "recall: \"London team meeting sched...\""
+    },
+    {
+      "tool": "session_search",
+      "preview": "recall: \"Priya manager email conta...\""
+    }
+  ],
+  "skills_viewed": [
+    "meeting-scheduling",
+    "calendar-native",
+    "crm-people"
+  ],
+  "output": "On it — checking calendars and Priya's timezone now.\n\nBox clock is UTC but the owner looks PT-based (SFO, PT references in memory) — I'll verify from their calendar data. Pulling the calendar and searching the People store for Priya and the London team.\n\nNo Priya or London contacts in the People store — escalating per the workflow: searching mail, cron jobs, past sessions, and the calendar itself.\n\nCron mentions Priya — checking those job definitions for context, and re-pulling the week's events with fixed datetime handling.\n\nThe tour-dates job confirms Priya is the owner's manager. Reading its full prompt for her contact details:\n\nNo contact details there — just \"manager Priya.\" Searching past conversations for who the London team is and any Priya contact info:",
+  "elapsed_ms": 505486,
+  "run_row": {
+    "hermes_run_id": "run_72e9129c2e7d47f188342750bf8fb461",
+    "trigger": "web",
+    "outcome": "interrupted",
+    "started_at": "2026-09-28T16:17:06.243047+00:00",
+    "ended_at": "2026-09-28T16:25:08.849+00:00",
+    "cost_usd": null,
+    "box_seconds": 483,
+    "prompt_tokens": null,
+    "completion_tokens": null,
+    "speed_tier": null,
+    "model": null,
+    "requested_model": null,
+    "reasoning_effort": null,
+    "latency_ms": null
+  },
+  "window_runs": [
+    {
+      "hermes_run_id": "run_72e9129c2e7d47f188342750bf8fb461",
+      "trigger": "web",
+      "outcome": "interrupted",
+      "started_at": "2026-09-28T16:17:06.243047+00:00",
+      "ended_at": "2026-09-28T16:25:08.849+00:00",
+      "cost_usd": null,
+      "box_seconds": 483,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "speed_tier": null,
+      "model": null,
+      "requested_model": null,
+      "reasoning_effort": null,
+      "latency_ms": null
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:17:11.565879+00:00",
+      "ended_at": "2026-09-28T16:17:10.91+00:00",
+      "cost_usd": 0.002996,
+      "box_seconds": null,
+      "prompt_tokens": 18445,
+      "completion_tokens": 459,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 4323
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:17:13.441809+00:00",
+      "ended_at": "2026-09-28T16:17:13.036+00:00",
+      "cost_usd": 0.003266,
+      "box_seconds": null,
+      "prompt_tokens": 21511,
+      "completion_tokens": 78,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 1510
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:17:49.138845+00:00",
+      "ended_at": "2026-09-28T16:17:49.093+00:00",
+      "cost_usd": 0.003944,
+      "box_seconds": null,
+      "prompt_tokens": 22615,
+      "completion_tokens": 1104,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 35463
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:17:52.06764+00:00",
+      "ended_at": "2026-09-28T16:17:52.047+00:00",
+      "cost_usd": 0.000056,
+      "box_seconds": null,
+      "prompt_tokens": 358,
+      "completion_tokens": 5,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "low",
+      "latency_ms": 2212
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:17:54.402105+00:00",
+      "ended_at": "2026-09-28T16:17:54.374+00:00",
+      "cost_usd": 0.000057,
+      "box_seconds": null,
+      "prompt_tokens": 361,
+      "completion_tokens": 5,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "low",
+      "latency_ms": 1912
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:18:15.879531+00:00",
+      "ended_at": "2026-09-28T16:18:15.575+00:00",
+      "cost_usd": 0.003845,
+      "box_seconds": null,
+      "prompt_tokens": 23539,
+      "completion_tokens": 629,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 20661
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:18:19.201108+00:00",
+      "ended_at": "2026-09-28T16:18:19.114+00:00",
+      "cost_usd": 0.000086,
+      "box_seconds": null,
+      "prompt_tokens": 535,
+      "completion_tokens": 11,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "low",
+      "latency_ms": 2879
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:18:34.410946+00:00",
+      "ended_at": "2026-09-28T16:18:34.358+00:00",
+      "cost_usd": 0.003911,
+      "box_seconds": null,
+      "prompt_tokens": 24653,
+      "completion_tokens": 427,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 14683
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:18:37.425345+00:00",
+      "ended_at": "2026-09-28T16:18:37.237+00:00",
+      "cost_usd": 0.000072,
+      "box_seconds": null,
+      "prompt_tokens": 463,
+      "completion_tokens": 5,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "low",
+      "latency_ms": 2142
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:19:22.277881+00:00",
+      "ended_at": "2026-09-28T16:19:22.239+00:00",
+      "cost_usd": 0.004527,
+      "box_seconds": null,
+      "prompt_tokens": 25311,
+      "completion_tokens": 1460,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 44179
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:19:38.70292+00:00",
+      "ended_at": "2026-09-28T16:19:38.647+00:00",
+      "cost_usd": 0.000074,
+      "box_seconds": null,
+      "prompt_tokens": 476,
+      "completion_tokens": 5,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "low",
+      "latency_ms": 15473
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:20:10.442251+00:00",
+      "ended_at": "2026-09-28T16:20:10.372+00:00",
+      "cost_usd": 0.004255,
+      "box_seconds": null,
+      "prompt_tokens": 26325,
+      "completion_tokens": 613,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 31168
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:20:22.511119+00:00",
+      "ended_at": "2026-09-28T16:20:22.445+00:00",
+      "cost_usd": 0.004241,
+      "box_seconds": null,
+      "prompt_tokens": 27721,
+      "completion_tokens": 166,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 11342
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:22:29.915392+00:00",
+      "ended_at": "2026-09-28T16:22:29.825+00:00",
+      "cost_usd": 0.007941,
+      "box_seconds": null,
+      "prompt_tokens": 36501,
+      "completion_tokens": 4932,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 126640
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:25:12.566137+00:00",
+      "ended_at": "2026-09-28T16:25:12.538+00:00",
+      "cost_usd": 0.000194,
+      "box_seconds": null,
+      "prompt_tokens": 348,
+      "completion_tokens": 284,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "none",
+      "latency_ms": 2198
+    },
+    {
+      "hermes_run_id": null,
+      "trigger": null,
+      "outcome": "gateway_completion",
+      "started_at": "2026-09-28T16:25:25.272005+00:00",
+      "ended_at": "2026-09-28T16:25:25.156+00:00",
+      "cost_usd": 0.007644,
+      "box_seconds": null,
+      "prompt_tokens": 36501,
+      "completion_tokens": 4338,
+      "speed_tier": "fast",
+      "model": "zai-org/GLM-5.3-Flash",
+      "requested_model": "balanced",
+      "reasoning_effort": "medium",
+      "latency_ms": 56057
+    }
+  ],
+  "cost_usd": 0.047109,
+  "box_seconds": 483,
+  "prompt_tokens": 265663,
+  "completion_tokens": 14521,
+  "decisions": [],
+  "agent_ms": 482629.129146,
+  "ttft_ms": 7354.139813999995,
+  "settle_ms": 20000
+}

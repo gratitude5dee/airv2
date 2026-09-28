@@ -15,6 +15,10 @@ evals/agent-suite/
                    web-split/fast-tier probes
   run.ts           executor — one case at a time, resumable; a fresh Hermes
                    session per case unless the case names a `group`
+  k-case-sets.json  R-EV-09 provenance: which K-cases are held out of prompt
+                   tuning (id % 3 === 0) and which are in-sample (message
+                   shares ≥2 distinctive tokens with its route's
+                   ROUTE_OPTIONS text); regenerate with k-case-sets.ts
   score.ts         grader — writes report.md; optional LLM honesty judge
   seed.ts          fixture seeder — writes the wzrdmail-luna-seeded box
                    state (calendar, people, onairos) via the box REST API
