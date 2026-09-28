@@ -34,18 +34,24 @@ export default defineConfig({
     pool: "threads",
     projects: [
       {
+        // vitest 3.2 does not inherit root esbuild/setupFiles into named
+        // projects — declare them per-project.
         resolve: { alias },
+        esbuild: { jsx: "automatic" },
         test: {
           name: "pure",
           include: pureTests,
           poolOptions: { threads: { isolate: false } },
+          setupFiles: ["./lib/testing/vitest.setup.ts"],
         },
       },
       {
         resolve: { alias },
+        esbuild: { jsx: "automatic" },
         test: {
           name: "unit",
           exclude: [...configDefaults.exclude, ...pureTests],
+          setupFiles: ["./lib/testing/vitest.setup.ts"],
         },
       },
     ],

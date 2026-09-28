@@ -45,7 +45,14 @@ import { berd } from "@/lib/miniapps/apps/berd";
 
 const DOC_PATH = ".hermes/miniapps/berd/default.json";
 
-let db = new FakeSupabase();
+function newDb(): FakeSupabase {
+  // Postgres column defaults the impl relies on: links insert as paired.
+  const db = new FakeSupabase();
+  db.defaults["berd_links"] = { status: "paired" };
+  return db;
+}
+
+let db = newDb();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
@@ -70,7 +77,7 @@ beforeAll(() => {
 
 afterEach(() => {
   boxFiles.clear();
-  db = new FakeSupabase();
+  db = newDb();
 });
 
 describe("berd mini-app", () => {

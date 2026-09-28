@@ -5,6 +5,7 @@
  * the retry paths share. Pure functions — unit-testable without NextRequest.
  */
 import { isModelFamily, type ModelFamily } from "../entitlements/models";
+import { env } from "../env";
 
 type Json = Record<string, unknown>;
 
@@ -63,7 +64,7 @@ export function openingUserTurnText(body: Json): string | null {
 
 /** True when a gmi request's opening user turn reads as routine work. */
 export function gmiRoutineTurn(body: Json): boolean {
-  if (process.env["GMI_ROUTINE_FAST"] === "off") return false;
+  if (env.gmiRoutineFast() === "off") return false;
   const text = openingUserTurnText(body)?.trim();
   if (!text || text.length > GMI_ROUTINE_MAX_CHARS) return false;
   return !GMI_DEEP_TURN_RE.test(text) && !GMI_RISK_TURN_RE.test(text);
@@ -101,7 +102,7 @@ export function gmiFastToolContinuation(body: Json): boolean {
  * key so operations can move spend between platform credit pools.
  */
 export function gatewayModelFamilyOverride(): ModelFamily | null {
-  const value = process.env["GATEWAY_MODEL_FAMILY_OVERRIDE"] ?? "";
+  const value = env.gatewayModelFamilyOverride() ?? "";
   return isModelFamily(value) ? value : null;
 }
 

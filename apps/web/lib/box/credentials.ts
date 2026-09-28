@@ -9,6 +9,7 @@
  * None of it ever leaves the server: C3 gates every consumer.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { db } from "../db";
 import type { HermesBoxTarget } from "../hermes/client";
 import type { HostedRoute } from "./types";
 
@@ -86,10 +87,13 @@ export async function recordHostedRoute(
   boxId: string,
   route: HostedRoute
 ): Promise<void> {
-  await supabase
-    .from("boxes")
-    .update({ hosted_url: route.url, hosted_token: route.token })
-    .eq("provider_box_id", boxId);
+  await db.write(
+    supabase
+      .from("boxes")
+      .update({ hosted_url: route.url, hosted_token: route.token })
+      .eq("provider_box_id", boxId),
+    { what: "record hosted route", box_id: boxId }
+  );
 }
 
 /** Persist a (re-)registered dashboard hosted route's rotated URL+token. */
@@ -98,8 +102,11 @@ export async function recordDashboardRoute(
   boxId: string,
   route: HostedRoute
 ): Promise<void> {
-  await supabase
-    .from("boxes")
-    .update({ dashboard_url: route.url, dashboard_token: route.token })
-    .eq("provider_box_id", boxId);
+  await db.write(
+    supabase
+      .from("boxes")
+      .update({ dashboard_url: route.url, dashboard_token: route.token })
+      .eq("provider_box_id", boxId),
+    { what: "record dashboard route", box_id: boxId }
+  );
 }

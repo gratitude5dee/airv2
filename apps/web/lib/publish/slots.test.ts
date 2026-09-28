@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   capHeadroom,
@@ -12,6 +12,9 @@ const db = new FakeSupabase();
 const supabase = db.client();
 
 beforeEach(() => db.reset());
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
 describe("zonedTimeToInstant", () => {
   it("resolves a wall-clock time before a DST transition", () => {

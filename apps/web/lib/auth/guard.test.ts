@@ -17,7 +17,7 @@ import {
 import { createSessionToken } from "./session";
 import { mintToken } from "../miniapps/tokens";
 
-const db = vi.hoisted(() => new FakeSupabase());
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 
 function ownerSession(userId: string, sessionId: string): string {
@@ -37,20 +37,16 @@ function fakeBoxes(
   row: { user_id: string; provider_box_id: string } | null,
   error: { message: string } | null = null
 ): SupabaseClient {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: row, error }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const f = new FakeSupabase();
+  if (row) f.tables["boxes"] = [{ gateway_token: "gt", ...row }];
+  if (error) f.errors["boxes"] = error;
+  return f.client();
 }
 
 const BOX = { user_id: "user-alice", provider_box_id: "box-1" };
 
 afterEach(() => {
+  db.reset();
   vi.unstubAllEnvs();
 });
 

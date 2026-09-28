@@ -127,6 +127,7 @@ describe("runFlush during a Spectrum outage", () => {
       (update) => update.table === "flush_jobs"
     );
     expect(reschedule?.patch["attempts"]).toBe(1);
+    expectLog(/imessage holding line send failed/, { level: "warn" });
   });
 
   it("does not carry a bridge marker when the bridged reply fails to send", async () => {
@@ -149,6 +150,7 @@ describe("runFlush during a Spectrum outage", () => {
       (update) => update.table === "flush_jobs"
     );
     expect(reschedule?.patch["attempts"]).toBe(1);
+    expectLog(/imessage bridged reply send failed/, { level: "warn" });
   });
 
   it("carries and retries a model stream failure before any bubble is sent", async () => {

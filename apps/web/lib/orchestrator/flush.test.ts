@@ -1022,7 +1022,6 @@ describe("runFlush history replay", () => {
       expect(request).toMatchObject({
         input: "[from +19998887777] is he around?",
         sessionId: "contact:+19998887777",
-        conversationHistory: [],
         metadata: {
           channel: "imessage",
           sender_tier: "1",
@@ -1077,6 +1076,10 @@ describe("runFlush history replay", () => {
           sender_ref: "contact:+19998887777",
         },
       });
+      // conversationHistory is omitted, not emptied: the box hydrates the
+      // contact's own session transcript, which keeps contact threads
+      // coherent while never touching owner history.
+      expect(request).not.toHaveProperty("conversationHistory");
     });
   });
 });

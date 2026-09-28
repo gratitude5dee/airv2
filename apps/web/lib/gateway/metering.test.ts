@@ -1,23 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectLog } from "../testing/expectLog";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
-const insertCalls: Record<string, unknown>[] = [];
-const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
+const db = new FakeSupabase();
 const settleAppSpend = vi.fn(async () => undefined);
 
-vi.mock("../supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) => ({
-      insert: async (row: Record<string, unknown>) => {
-        insertCalls.push({ table, ...row });
-        return { error: null };
-      },
-    }),
-    rpc: async (name: string, args: Record<string, unknown>) => {
-      rpcCalls.push({ name, args });
-      return { error: null };
-    },
-  }),
-}));
+vi.mock("../supabase", () => ({ serviceClient: () => db.client() }));
 vi.mock("../functions/runtime", () => ({
   settleAppSpend: (...args: unknown[]) => settleAppSpend(...(args as [])),
 }));
@@ -47,6 +35,9 @@ async function drain(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 describe("meteringTee", () => {
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
   it("passes the stream through unmodified and reports the usage chunk", async () => {
     const payload =
       'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n' +
@@ -135,8 +126,8 @@ describe("carriesAssistantWork", () => {
 
 describe("meter", () => {
   it("inserts the agent_runs row and settles spend", async () => {
-    insertCalls.length = 0;
-    rpcCalls.length = 0;
+    db.inserts.length = 0;
+    db.rpcCalls.length = 0;
     settleAppSpend.mockClear();
     await meter(
       "user-1",
@@ -157,7 +148,7 @@ describe("meter", () => {
         },
       },
     );
-    const run = insertCalls.find((row) => row["table"] === "agent_runs");
+    const run = db.inserts.find((i) => i.table === "agent_runs")?.row;
     expect(run).toBeDefined();
     expect(run).toMatchObject({
       user_id: "user-1",
@@ -170,18 +161,19 @@ describe("meter", () => {
       requested_model: "fast",
       reasoning_effort: "low",
     });
-    expect(rpcCalls).toEqual([
-      { name: "add_spend", args: { p_user_id: "user-1", p_cost_usd: expect.any(Number) } },
+    expectLog(/gateway provider fallback/, { level: "warn" });
+    expect(db.rpcCalls).toEqual([
+      { fn: "add_spend", args: { p_user_id: "user-1", p_cost_usd: expect.any(Number) } },
     ]);
     expect(settleAppSpend).toHaveBeenCalledOnce();
   });
 
   it("records zero cost on a personal key and does not fall back", async () => {
-    insertCalls.length = 0;
-    rpcCalls.length = 0;
+    db.inserts.length = 0;
+    db.rpcCalls.length = 0;
     await meter("user-2", "deep", "openai", { prompt_tokens: 1 }, "gpt-x", true);
-    const run = insertCalls.find((row) => row["table"] === "agent_runs");
+    const run = db.inserts.find((i) => i.table === "agent_runs")?.row;
     expect(run).toMatchObject({ cost_usd: 0, fallback_from: null });
-    expect(rpcCalls[0]?.args["p_cost_usd"]).toBe(0);
+    expect((db.rpcCalls[0]?.args as Record<string, unknown>)["p_cost_usd"]).toBe(0);
   });
 });

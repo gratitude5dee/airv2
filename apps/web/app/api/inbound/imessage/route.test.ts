@@ -331,7 +331,8 @@ describe("POST /api/inbound/imessage — routing", () => {
     expect(mocks.flushAfterDebounce).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ messageId: "m-owner" }),
-      expect.any(String)
+      expect.any(String),
+      undefined
     );
   });
 });

@@ -5,7 +5,7 @@
  * 1 s → 2 s → 4 s → 8 s rather than polling on a fixed 5 s tick.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   ensureBoxAwake,
   wakeProbeDelayMs,
@@ -39,29 +39,20 @@ vi.mock("../provisioning/connectors", () => ({
 }));
 
 function fakeSupabase(boxId: string) {
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: () =>
-            Promise.resolve({
-              data: {
-                provider_box_id: boxId,
-                hosted_url: "https://box.example",
-                hosted_token: "",
-                api_server_key: "k",
-                dashboard_url: null,
-                dashboard_token: null,
-                dashboard_auth: null,
-              },
-              error: null,
-            }),
-        }),
-      }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
-  };
-  return supabase as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  db.tables["boxes"] = [
+    {
+      user_id: "user-1",
+      provider_box_id: boxId,
+      hosted_url: "https://box.example",
+      hosted_token: "",
+      api_server_key: "k",
+      dashboard_url: null,
+      dashboard_token: null,
+      dashboard_auth: null,
+    },
+  ];
+  return db.client();
 }
 
 beforeEach(() => {

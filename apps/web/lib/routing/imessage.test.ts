@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const isBurstStart = vi.fn();
@@ -33,7 +33,12 @@ const message: InboundMessage = {
 
 const supabase = {} as SupabaseClient;
 
-function fakeSender(over: Partial<Record<keyof SpectrumSender, unknown>> = {}) {
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+function fakeSender(
+  over: Partial<Record<keyof SpectrumSender, unknown>> = {},
+) {
   return {
     sendText: vi.fn(async () => undefined),
     sendReply: vi.fn(async () => true),

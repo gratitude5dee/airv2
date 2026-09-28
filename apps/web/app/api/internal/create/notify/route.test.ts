@@ -3,41 +3,37 @@
  * adapter route. Every case signs (or mis-signs) the raw body the same way
  * the Worker does — ts + HMAC-SHA256 over `${ts}.${method}.${path}.${sha}`.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase, type FakeResult } from "@/lib/testing/fakeSupabase";
 import { NextRequest } from "next/server";
 
-const state = vi.hoisted(() => {
-  const calls: { table: string; method: string; args: unknown[] }[] = [];
-  const responses: Record<string, { data: unknown; error: unknown }[]> = {};
-  function chain(table: string): Record<string, (...args: unknown[]) => unknown> {
-    const ops: Record<string, (...args: unknown[]) => unknown> = {};
-    for (const method of [
-      "select",
-      "insert",
-      "update",
-      "eq",
-      "is",
-      "order",
-      "limit",
-    ]) {
-      ops[method] = (...args: unknown[]) => {
-        calls.push({ table, method, args });
-        return ops;
-      };
-    }
-    for (const terminal of ["single", "maybeSingle"]) {
-      ops[terminal] = async () =>
-        responses[`${table}:${terminal}`]?.shift() ??
-        responses[`${table}:always`]?.[0] ?? { data: null, error: null };
-    }
-    return ops;
+const db = new FakeSupabase();
+const responses: Record<string, Partial<FakeResult>[]> = {};
+// Harness terminal keys: "t:maybeSingle"/"t:single" answer the matching
+// single-row terminal (consumed once), "t:rows" an awaited select, and
+// "t:always" is the stable fallback. Writes fall through to FakeSupabase.
+db.resolve = (q) => {
+  if (q.single) {
+    return (
+      responses[`${q.table}:maybeSingle`]?.shift() ??
+      responses[`${q.table}:single`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
+    );
   }
-  return { calls, responses, client: { from: (t: string) => chain(t) } };
-});
+  if (q.mode === "select") {
+    return (
+      responses[`${q.table}:rows`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
+    );
+  }
+  return undefined;
+};
 
 const sendText = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => state.client }));
+vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 vi.mock("@/lib/miniapps/registry", () => ({
   getRegistryAppById: vi.fn(async () => ({ name: "Sketch", slug: "sketch" })),
 }));
@@ -91,15 +87,19 @@ function signed(
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+
   vi.clearAllMocks();
-  state.calls.length = 0;
-  for (const key of Object.keys(state.responses)) delete state.responses[key];
+  db.queries.length = 0;
+  for (const key of Object.keys(responses)) delete responses[key];
   process.env["CREATE_BRIDGE_SECRET"] = SECRET;
-  state.responses["create_jobs:always"] = [{ data: jobRow(), error: null }];
-  state.responses["imessage_destinations:always"] = [
+  responses["create_jobs:always"] = [{ data: jobRow(), error: null }];
+  responses["imessage_destinations:always"] = [
     { data: { space_id: "space-1", phone: "+15551234567" }, error: null },
   ];
 });
+afterEach(() => vi.useRealTimers());
+
 
 describe("POST /api/internal/create/notify bridge auth", () => {
   it("rejects unsigned requests", async () => {
@@ -148,7 +148,7 @@ describe("POST /api/internal/create/notify bridge auth", () => {
   );
 
   it("404s a job_id that does not exist", async () => {
-    delete state.responses["create_jobs:always"];
+    delete responses["create_jobs:always"];
     const response = await POST(
       signed({ job_id: JOB_ID, outcome: "live" })
     );
@@ -156,7 +156,9 @@ describe("POST /api/internal/create/notify bridge auth", () => {
   });
 
   it("accepts a valid signature and notifies the owner", async () => {
-    const response = await POST(signed({ job_id: JOB_ID, outcome: "live" }));
+    // A distinct body → a distinct nonce; the earlier tests already burned
+    // {job_id, outcome:"live"}'s signature into create_bridge_nonces.
+    const response = await POST(signed({ job_id: JOB_ID, outcome: "stuck" }));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, sent: true });
     expect(sendText).toHaveBeenCalledTimes(1);

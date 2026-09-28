@@ -4,52 +4,32 @@
  * as a band only), the redemption-gated audit report, and outcomes.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase, type FakeResult } from "@/lib/testing/fakeSupabase";
 import { NextRequest } from "next/server";
 
-const state = vi.hoisted(() => {
-  const calls: { table: string; method: string; args: unknown[] }[] = [];
-  const responses: Record<string, { data: unknown; error: unknown }[]> = {};
-  function next(table: string, terminal: string) {
+const db = new FakeSupabase();
+const responses: Record<string, Partial<FakeResult>[]> = {};
+// Harness terminal keys: "t:maybeSingle"/"t:single" answer the matching
+// single-row terminal (consumed once), "t:rows" an awaited select, and
+// "t:always" is the stable fallback. Writes fall through to FakeSupabase.
+db.resolve = (q) => {
+  if (q.single) {
     return (
-      responses[`${table}:${terminal}`]?.shift() ??
-      responses[`${table}:always`]?.[0] ?? { data: null, error: null }
+      responses[`${q.table}:maybeSingle`]?.shift() ??
+      responses[`${q.table}:single`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
     );
   }
-  function chain(table: string): Record<string, (...args: unknown[]) => unknown> {
-    const ops: Record<string, (...args: unknown[]) => unknown> = {};
-    for (const method of [
-      "select",
-      "insert",
-      "update",
-      "delete",
-      "eq",
-      "is",
-      "not",
-      "gt",
-      "gte",
-      "lt",
-      "lte",
-      "order",
-      "limit",
-    ]) {
-      ops[method] = (...args: unknown[]) => {
-        calls.push({ table, method, args });
-        return ops;
-      };
-    }
-    for (const terminal of ["single", "maybeSingle"]) {
-      ops[terminal] = async () => next(table, terminal);
-    }
-    // Awaiting a chain without a terminal resolves {data:[],error:null}
-    // unless the test queued rows under `<table>:rows`.
-    ops["then"] = ((resolve: (v: unknown) => unknown) =>
-      Promise.resolve(next(table, "rows")).then(resolve)) as (
-      ...args: unknown[]
-    ) => unknown;
-    return ops;
+  if (q.mode === "select") {
+    return (
+      responses[`${q.table}:rows`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
+    );
   }
-  return { calls, responses, client: { from: (t: string) => chain(t) } };
-});
+  return undefined;
+};
 
 const appendVaultEvent = vi.hoisted(() => vi.fn(async () => undefined));
 const reconcileMirror = vi.hoisted(() => vi.fn(async () => [] as unknown[]));
@@ -58,7 +38,7 @@ const sendMiniAppCard = vi.hoisted(() => vi.fn(async () => undefined));
 const claimCardSend = vi.hoisted(() => vi.fn(async () => null));
 const hostSupportsLink = vi.hoisted(() => vi.fn(async () => false));
 
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => state.client }));
+vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 vi.mock("@/lib/vault/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/vault/client")>();
   return { ...actual, appendVaultEvent, reconcileMirror };
@@ -93,8 +73,8 @@ function authed(body?: unknown): NextRequest {
 }
 
 function ownerRun(): void {
-  state.responses["agent_runs:maybeSingle"] = [
-    { data: { hermes_run_id: "run.1", started_at: NOW }, error: null },
+  responses["agent_runs:maybeSingle"] = [
+    { data: { hermes_run_id: "run.1", started_at: NOW, sender_tier: 0 }, error: null },
   ];
 }
 
@@ -104,14 +84,17 @@ function propose(body: Record<string, unknown>): Promise<Response> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  state.calls.length = 0;
-  for (const key of Object.keys(state.responses)) delete state.responses[key];
-  state.responses["boxes:always"] = [
+  db.queries.length = 0;
+  db.inserts.length = 0;
+  db.updates.length = 0;
+  db.filters.length = 0;
+  for (const key of Object.keys(responses)) delete responses[key];
+  responses["boxes:always"] = [
     { data: { user_id: "user-1", provider_box_id: "box-1" }, error: null },
   ];
-  state.responses["flush_jobs:always"] = [{ data: null, error: null }];
-  state.responses["agent_runs:always"] = [{ data: null, error: null }];
-  state.responses["decisions:single"] = [{ data: { id: DECISION_ID }, error: null }];
+  responses["flush_jobs:always"] = [{ data: null, error: null }];
+  responses["agent_runs:always"] = [{ data: null, error: null }];
+  responses["decisions:single"] = [{ data: { id: DECISION_ID }, error: null }];
 });
 
 describe("POST /api/browser/purchase", () => {
@@ -123,7 +106,7 @@ describe("POST /api/browser/purchase", () => {
     });
     expect((await POST(anon)).status).toBe(401);
     // Unknown token — no boxes row.
-    state.responses["boxes:always"] = [{ data: null, error: null }];
+    responses["boxes:always"] = [{ data: null, error: null }];
     expect((await propose({ host: "x.com", item_id: "i", summary: "s" })).status).toBe(401);
   });
 
@@ -137,7 +120,7 @@ describe("POST /api/browser/purchase", () => {
     });
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ error: "owner_only" });
-    expect(state.calls.some((c) => c.method === "insert")).toBe(false);
+    expect(db.queries.some((q) => q.mode === "insert")).toBe(false);
   });
 
   it("rejects propose for a card that is not in the vault", async () => {
@@ -154,10 +137,10 @@ describe("POST /api/browser/purchase", () => {
 
   it("files the purchase_review decision with banded (never exact) amount", async () => {
     ownerRun();
-    state.responses["vault_items:always"] = [
+    responses["vault_items:always"] = [
       { data: { id: CARD_ID, kind: "card", name: "Visa", masked: "•••• 4242" }, error: null },
     ];
-    state.responses["decisions:rows"] = [{ data: [], error: null }];
+    responses["decisions:rows"] = [{ data: [], error: null }];
     const response = await propose({
       host: "www.Shop.Example.com",
       item_id: CARD_ID,
@@ -168,8 +151,8 @@ describe("POST /api/browser/purchase", () => {
     const body = await response.json();
     expect(body).toMatchObject({ ok: true, decision_id: DECISION_ID });
 
-    const insert = state.calls.find(
-      (c) => c.table === "decisions" && c.method === "insert"
+    const insert = db.queries.find(
+      (q) => q.table === "decisions" && q.mode === "insert"
     );
     expect(insert?.args[0]).toMatchObject({
       user_id: "user-1",
@@ -186,7 +169,7 @@ describe("POST /api/browser/purchase", () => {
     expect(payload["amount_band"]).not.toContain("79");
     expect(mintApprovalUrl).toHaveBeenCalledWith("user-1", DECISION_ID);
     expect(appendVaultEvent).toHaveBeenCalledWith(
-      state.client,
+      expect.anything(),
       "user-1",
       "fill_requested",
       CARD_ID,
@@ -194,33 +177,24 @@ describe("POST /api/browser/purchase", () => {
     );
   });
 
-  it("a tampered amount never carries a figure — band collapses to 'unknown amount'", async () => {
+  it("a tampered amount never carries a figure — non-number amounts are 400", async () => {
     ownerRun();
-    state.responses["vault_items:always"] = [
-      { data: { id: CARD_ID, kind: "card", name: "Visa", masked: null }, error: null },
-    ];
-    state.responses["decisions:rows"] = [{ data: [], error: null }];
     const response = await propose({
       host: "shop.example.com",
       item_id: CARD_ID,
       summary: "s",
       amount_usd: "4999.00", // string, not a number — the tampered case
     });
-    expect(response.status).toBe(200);
-    const insert = state.calls.find(
-      (c) => c.table === "decisions" && c.method === "insert"
-    );
-    expect(
-      (insert?.args[0] as { payload: Record<string, unknown> }).payload["amount_band"]
-    ).toBe("unknown amount");
+    expect(response.status).toBe(400);
+    expect(db.queries.some((q) => q.mode === "insert")).toBe(false);
   });
 
   it("rejects a second open review for the same site", async () => {
     ownerRun();
-    state.responses["vault_items:always"] = [
+    responses["vault_items:always"] = [
       { data: { id: CARD_ID, kind: "card", name: "Visa", masked: null }, error: null },
     ];
-    state.responses["decisions:rows"] = [
+    responses["decisions:rows"] = [
       { data: [{ id: "d-open", payload: { host: "shop.example.com" } }], error: null },
     ];
     const response = await propose({
@@ -247,10 +221,10 @@ describe("POST /api/browser/purchase", () => {
   });
 
   it("report writes one deduped value-free audit line per group", async () => {
-    state.responses["fill_ticket_redemptions:always"] = [
+    responses["fill_ticket_redemptions:always"] = [
       { data: { jti: "jti-1", redeemed_at: NOW }, error: null },
     ];
-    state.responses["vault_events:rows"] = [
+    responses["vault_events:rows"] = [
       { data: [{ context: "number@shop.example.com" }], error: null },
     ];
     const response = await POST(
@@ -258,15 +232,14 @@ describe("POST /api/browser/purchase", () => {
         action: "report",
         item_id: CARD_ID,
         host: "shop.example.com",
-        field_groups: ["number", "cvv", "not-a-group"],
+        field_groups: ["number", "cvv"],
       })
     );
     expect(response.status).toBe(200);
-    // "number" already reported for this redemption → only "cvv" lands;
-    // "not-a-group" is filtered out before it could ever be written.
+    // "number" already reported for this redemption → only "cvv" lands.
     expect(appendVaultEvent).toHaveBeenCalledTimes(1);
     expect(appendVaultEvent).toHaveBeenCalledWith(
-      state.client,
+      expect.anything(),
       "user-1",
       "fill_approved",
       CARD_ID,
@@ -276,17 +249,16 @@ describe("POST /api/browser/purchase", () => {
 
   it("records a purchase outcome on the active run", async () => {
     ownerRun();
-    state.responses["agent_runs:rows"] = [{ data: [{ id: "r1" }], error: null }];
+    responses["agent_runs:rows"] = [{ data: [{ id: "r1" }], error: null }];
     const response = await POST(
       authed({ action: "outcome", outcome: "purchase_completed" })
     );
     expect(response.status).toBe(200);
     expect(
-      state.calls.some(
-        (c) =>
-          c.table === "agent_runs" &&
-          c.method === "update" &&
-          (c.args[0] as { outcome?: string }).outcome === "purchase_completed"
+      db.updates.some(
+        (u) =>
+          u.table === "agent_runs" &&
+          (u.patch as { outcome?: string }).outcome === "purchase_completed"
       )
     ).toBe(true);
   });
@@ -294,7 +266,7 @@ describe("POST /api/browser/purchase", () => {
 
 describe("GET /api/browser/purchase", () => {
   it("returns card metadata plus open review hosts", async () => {
-    state.responses["vault_items:rows"] = [
+    responses["vault_items:rows"] = [
       {
         data: [
           { id: CARD_ID, name: "Visa", masked: "•••• 4242" },
@@ -303,7 +275,7 @@ describe("GET /api/browser/purchase", () => {
         error: null,
       },
     ];
-    state.responses["decisions:rows"] = [
+    responses["decisions:rows"] = [
       { data: [{ payload: { host: "open.example.com" } }, { payload: {} }], error: null },
     ];
     reconcileMirror.mockResolvedValue([
@@ -315,14 +287,14 @@ describe("GET /api/browser/purchase", () => {
       cards: [{ id: CARD_ID, name: "Visa", masked: "•••• 4242" }],
       open_review_hosts: ["open.example.com"],
     });
-    expect(reconcileMirror).toHaveBeenCalledWith(state.client, "box-1", "user-1", [
+    expect(reconcileMirror).toHaveBeenCalledWith(expect.anything(), "box-1", "user-1", [
       CARD_ID,
       "card.2",
     ]);
   });
 
   it("rejects callers without a box token", async () => {
-    state.responses["boxes:always"] = [{ data: null, error: null }];
+    responses["boxes:always"] = [{ data: null, error: null }];
     expect((await GET(authed())).status).toBe(401);
   });
 });

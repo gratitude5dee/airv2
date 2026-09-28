@@ -14,6 +14,7 @@
  * carry item ids, masked tails, hosts, and amount bands only (C18/C19).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { db } from "../db";
 import { command, writeFile } from "../box/client";
 import {
   approveRun,
@@ -381,11 +382,14 @@ export async function retryFailedApprovalRelays(
     try {
       if (!row.ref) {
         // Nothing to resume — close the decision.
-        await supabase
-          .from("decisions")
-          .update({ status: "dismissed", resolved_at: new Date().toISOString() })
-          .eq("id", row.id)
-          .eq("status", "relay_failed");
+        await db.write(
+          supabase
+            .from("decisions")
+            .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+            .eq("id", row.id)
+            .eq("status", "relay_failed"),
+          { what: "close ref-less relay decision", user_id: row.user_id }
+        );
         closed += 1;
         continue;
       }
@@ -403,14 +407,17 @@ export async function retryFailedApprovalRelays(
           relayError instanceof HermesApiError &&
           [404, 409, 410].includes(relayError.status)
         ) {
-          await supabase
-            .from("decisions")
-            .update({
-              status: approved ? "approved" : "dismissed",
-              resolved_at: new Date().toISOString(),
-            })
-            .eq("id", row.id)
-            .eq("status", "relay_failed");
+          await db.write(
+            supabase
+              .from("decisions")
+              .update({
+                status: approved ? "approved" : "dismissed",
+                resolved_at: new Date().toISOString(),
+              })
+              .eq("id", row.id)
+              .eq("status", "relay_failed"),
+            { what: "close lost relay decision", user_id: row.user_id }
+          );
           closed += 1;
         } else {
           throw relayError;
@@ -419,14 +426,17 @@ export async function retryFailedApprovalRelays(
       } finally {
         await rearm(row.user_id).catch(() => undefined);
       }
-      await supabase
-        .from("decisions")
-        .update({
-          status: approved ? "approved" : "dismissed",
-          resolved_at: new Date().toISOString(),
-        })
-        .eq("id", row.id)
-        .eq("status", "relay_failed");
+      await db.write(
+        supabase
+          .from("decisions")
+          .update({
+            status: approved ? "approved" : "dismissed",
+            resolved_at: new Date().toISOString(),
+          })
+          .eq("id", row.id)
+          .eq("status", "relay_failed"),
+        { what: "resolve relay decision", user_id: row.user_id }
+      );
       retried += 1;
       closed += 1;
     } catch (error) {
@@ -566,26 +576,35 @@ export async function recordPurchaseOutcome(
 ): Promise<void> {
   const turn = await resolveActiveTurn(supabase, userId);
   if (turn.runId) {
-    const { data: updated } = await supabase
-      .from("agent_runs")
-      .update({ outcome })
-      .eq("user_id", userId)
-      .eq("hermes_run_id", turn.runId)
-      .select("id");
+    const updated = await db.write(
+      supabase
+        .from("agent_runs")
+        .update({ outcome })
+        .eq("user_id", userId)
+        .eq("hermes_run_id", turn.runId)
+        .select("id"),
+      { what: "record purchase outcome", user_id: userId }
+    );
     if (updated && updated.length > 0) return;
-    await supabase.from("agent_runs").insert({
-      user_id: userId,
-      hermes_run_id: turn.runId,
-      trigger: "imessage",
-      outcome,
-    });
+    await db.write(
+      supabase.from("agent_runs").insert({
+        user_id: userId,
+        hermes_run_id: turn.runId,
+        trigger: "imessage",
+        outcome,
+      }),
+      { what: "record purchase outcome", user_id: userId }
+    );
     return;
   }
   // No resolvable run (e.g. the run closed between fill and confirmation):
   // still keep the receipt as its own value-free row.
-  await supabase.from("agent_runs").insert({
-    user_id: userId,
-    ended_at: new Date().toISOString(),
-    outcome,
-  });
+  await db.write(
+    supabase.from("agent_runs").insert({
+      user_id: userId,
+      ended_at: new Date().toISOString(),
+      outcome,
+    }),
+    { what: "record purchase outcome", user_id: userId }
+  );
 }

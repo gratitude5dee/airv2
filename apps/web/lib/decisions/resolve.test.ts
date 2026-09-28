@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { resolveDecision, type PendingDecisionRow } from "./resolve";
 
 /**
  * The claim tail runs the same for every kind: update … where status =
  * 'pending', then read the current row when the update claimed nothing.
+ * Seeded row's status reproduces both outcomes: pending = claim won,
+ * anything else = someone else resolved it first.
  */
 function fakeDecisions(opts: {
   /** Rows the pending-claim update returns (empty = someone else won). */
@@ -13,41 +15,13 @@ function fakeDecisions(opts: {
   /** The row's status when the claim lost and the current value is read. */
   currentStatus?: string;
 }) {
-  const updates: Record<string, unknown>[] = [];
-  const supabase = {
-    from(table: string) {
-      if (table !== "decisions") {
-        throw new Error(`unexpected table: ${table}`);
-      }
-      return {
-        update(values: Record<string, unknown>) {
-          updates.push(values);
-          const filters = {
-            eq: () => filters,
-            select: async () => ({
-              data: opts.updated ?? [],
-              error: opts.updateError ?? null,
-            }),
-          };
-          return filters;
-        },
-        select: () => {
-          const filters = {
-            eq: () => filters,
-            maybeSingle: async () => ({
-              data:
-                opts.currentStatus !== undefined
-                  ? { status: opts.currentStatus }
-                  : null,
-              error: null,
-            }),
-          };
-          return filters;
-        },
-      };
-    },
-  };
-  return { supabase: supabase as unknown as SupabaseClient, updates };
+  const db = new FakeSupabase();
+  const won = (opts.updated?.length ?? 0) > 0;
+  db.tables["decisions"] = [
+    { id: "d1", user_id: "user-1", status: won ? "pending" : (opts.currentStatus ?? "resolved") },
+  ];
+  if (opts.updateError) db.opErrors["decisions:update"] = opts.updateError;
+  return { supabase: db.client(), db };
 }
 
 const decision = (over: Partial<PendingDecisionRow>): PendingDecisionRow => ({
@@ -61,7 +35,7 @@ const decision = (over: Partial<PendingDecisionRow>): PendingDecisionRow => ({
 
 describe("resolveDecision", () => {
   it("refuses to approve a social_post with no paused-run ref", async () => {
-    const { supabase, updates } = fakeDecisions({});
+    const { supabase, db } = fakeDecisions({});
     const res = await resolveDecision(
       supabase,
       "user-1",
@@ -73,11 +47,11 @@ describe("resolveDecision", () => {
       error: "the agent is no longer waiting on this — dismiss it instead",
     });
     // The refused approval never reaches the claim update.
-    expect(updates).toHaveLength(0);
+    expect(db.updates).toHaveLength(0);
   });
 
   it("claims a still-pending row and reports the choice", async () => {
-    const { supabase, updates } = fakeDecisions({ updated: [{ id: "d1" }] });
+    const { supabase, db } = fakeDecisions({ updated: [{ id: "d1" }] });
     const res = await resolveDecision(
       supabase,
       "user-1",
@@ -86,7 +60,7 @@ describe("resolveDecision", () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(updates[0]?.["status"]).toBe("dismissed");
+    expect(db.updates[0]?.patch["status"]).toBe("dismissed");
   });
 
   it("reports the opposite choice as a conflict when the row already resolved", async () => {

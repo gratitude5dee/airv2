@@ -48,7 +48,14 @@ const DOC_PATH = ".hermes/miniapps/buzz/default.json";
 const NSEC = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzzz";
 const NPUB = "npub1exampleexampleexampleexample";
 
-let db = new FakeSupabase();
+function newDb(): FakeSupabase {
+  // Postgres column defaults the impl relies on: links pair as connected.
+  const db = new FakeSupabase();
+  db.defaults["buzz_links"] = { status: "connected" };
+  return db;
+}
+
+let db = newDb();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
@@ -73,7 +80,7 @@ beforeAll(() => {
 
 afterEach(() => {
   boxFiles.clear();
-  db = new FakeSupabase();
+  db = newDb();
 });
 
 describe("buzz mini-app", () => {

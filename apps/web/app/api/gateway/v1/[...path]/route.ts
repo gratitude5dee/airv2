@@ -46,7 +46,6 @@ import {
   isTimeoutError,
 } from "@/lib/gateway/routing";
 import {
-  carriesAssistantWork,
   meter,
   meteringTee,
   type RouteTrace,
@@ -756,68 +755,11 @@ export async function POST(
       });
     }
 
-    // Streamed non-OpenAI answers get the same empty check: the whole SSE body
-    // is buffered (these families answer in one burst) and replayed, or
-    // replaced by an OpenAI stream when no delta carried user-visible content
-    // or a tool call. Reasoning alone is not an answer: accepting it leaves
-    // Hermes with an empty final_response and the iMessage turn retries forever.
-    if (streaming && servedFamily !== "openai" && nonOpenAiProvider) {
-      let hasAssistantWork: boolean;
-      try {
-        hasAssistantWork = await carriesAssistantWork(upstream);
-      } catch (error) {
-        await upstream.body?.cancel().catch(() => undefined);
-        upstream = await recoverTimedOutAstra(error);
-        hasAssistantWork = await carriesAssistantWork(upstream);
-      }
-      if (!hasAssistantWork) {
-        console.warn(
-          JSON.stringify({
-            msg: "gateway response missing user-visible work",
-            user_id: userId,
-            family: servedFamily,
-            model: servedModel,
-            streaming: true,
-          })
-        );
-        await upstream.body?.cancel().catch(() => undefined);
-        if (canFallBack) {
-          servedFamily = "openai";
-          upstream = await dispatch(servedFamily);
-          if (!upstream.ok || !upstream.body) {
-            const errorBody = await upstream.text();
-            return new NextResponse(errorBody, {
-              status: upstream.status,
-              headers: { "Content-Type": "application/json", ...servedHeaders() },
-            });
-          }
-        } else {
-          // The fleet GMI override cannot spill to OpenAI, but a reasoning-only
-          // completion is often a transient output-limit/provider edge. Retry
-          // once on GMI before surfacing a controlled error to the box.
-          upstream = await dispatch(servedFamily);
-          if (!upstream.ok || !upstream.body) {
-            const errorBody = await upstream.text();
-            return new NextResponse(errorBody, {
-              status: upstream.status,
-              headers: { "Content-Type": "application/json", ...servedHeaders() },
-            });
-          }
-          if (!(await carriesAssistantWork(upstream))) {
-            await upstream.body.cancel().catch(() => undefined);
-            return NextResponse.json(
-              {
-                error: {
-                  message: `${servedFamily} returned no user-visible response`,
-                  type: "upstream_empty_response",
-                },
-              },
-              { status: 502 }
-            );
-          }
-        }
-      }
-    }
+    // Streamed non-OpenAI answers used to get the same empty check here,
+    // buffered whole — watchStream below now does it incrementally: every
+    // chunk forwards as it arrives while the leading deltas are scanned,
+    // and a stream that closes without work splices one retry into the
+    // still-open response.
 
     // A latency recovery dispatch can itself return an upstream error. The
     // earlier status check ran before stream validation, so repeat the guard

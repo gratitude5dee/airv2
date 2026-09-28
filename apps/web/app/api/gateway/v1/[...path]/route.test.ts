@@ -1402,6 +1402,8 @@ describe("gateway model families", () => {
     const row = metered()[0]!;
     expect(row["model_family"]).toBe("openai");
     expect(row["fallback_from"]).toBe("openrouter");
+    expectLog(/gateway\ response\ missing\ user\-visible\ work/, { level: "warn" });
+    expectLog(/gateway\ provider\ fallback/, { level: "warn" });
   });
 
   it("reports the served family and model on every gateway response", async () => {
@@ -1461,6 +1463,7 @@ describe("gateway model families", () => {
     expect(response.headers.get("X-Air-Served-Family")).toBe("openai");
     expect(response.headers.get("X-Air-Served-Model")).toBe("gpt-5.6-luna");
     expect(response.headers.get("X-Air-Fallback")).toBe("1");
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
   });
 
   it("never falls back for the openai family", async () => {

@@ -5,6 +5,7 @@
  * link is the welcome), so the sends no-op for them.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "../log";
 import { sendMiniAppCard } from "../miniapps/cards";
 import { createSpectrumSender } from "../spectrum/sender";
 import { ensureComputeProvisioned } from "./provision";
@@ -37,13 +38,10 @@ export async function sendComputeReadyMessages(
     await sender.sendText(spaceId, phone, WELCOME_TEXT);
     welcomed = true;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "compute welcome text send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("compute welcome text send failed", {box_id: null,
+      user_id: userId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
   } finally {
     await sender.close().catch(() => undefined);
   }
@@ -59,13 +57,10 @@ export async function sendComputeReadyMessages(
     );
     cardSent = true;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "compute onboarding card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("compute onboarding card send failed", {box_id: null,
+      user_id: userId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
   }
   return { welcomed, cardSent };
 }

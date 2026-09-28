@@ -26,7 +26,6 @@ import {
   toPublic,
   type BotPublic,
 } from "@/lib/bots/store";
-import { getBot, listBots, toPublic, type BotPublic } from "@/lib/bots/store";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";

@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asRecord } from "../records";
+import { db } from "../db";
 import { EmailDraftError, sendHeldDraft } from "./email";
 import { approveAdWrite, dismissAdWrite, AdWriteError } from "../ads/approvals";
 import { approveContentPlan, dismissContentPlan } from "../publish/propose";
@@ -303,13 +304,16 @@ export async function resolveDecision(
     // the intake and kicks the mirror. The hook never throws (CR20).
     const slug = decision.ref as string;
     const resolution = action === "approve" ? "approved" : "dismissed";
-    const { data: claimed } = await supabase
-      .from("decisions")
-      .update({ status: resolution, resolved_at: new Date().toISOString() })
-      .eq("id", decision.id)
-      .eq("user_id", userId)
-      .eq("status", "pending")
-      .select("id, payload");
+    const claimed = await db.write(
+      supabase
+        .from("decisions")
+        .update({ status: resolution, resolved_at: new Date().toISOString() })
+        .eq("id", decision.id)
+        .eq("user_id", userId)
+        .eq("status", "pending")
+        .select("id, payload"),
+      { what: "claim decision resolution", user_id: userId }
+    );
     if (!claimed || claimed.length === 0) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
@@ -532,9 +536,10 @@ export async function resolveDecision(
         } catch {
           next = new Date(Date.now() + 24 * 60 * 60 * 1000);
         }
-        await supabase
-          .from("agent_schedules")
-          .update({
+        await db.write(
+          supabase
+            .from("agent_schedules")
+            .update({
             status: "active",
             failure_count: 0,
             next_run_at: clampToWakingHours(
@@ -542,8 +547,10 @@ export async function resolveDecision(
               schedule.timezone,
               schedule.deliver,
             ).toISOString(),
-          })
-          .eq("id", schedule.id);
+            })
+            .eq("id", schedule.id),
+          { what: "reschedule agent run", user_id: userId }
+        );
       }
     }
   }
@@ -554,18 +561,21 @@ export async function resolveDecision(
     decision.ref
   ) {
     // Approving re-queues the parked slot; the next sweep publishes it.
-    await supabase
-      .from("content_slots")
-      .update({
-        status: "scheduled",
-        scheduled_at: new Date().toISOString(),
-        attempt: 0,
-        last_verdict: null,
-        error_message: null,
-      })
-      .eq("id", decision.ref)
-      .eq("user_id", userId)
-      .eq("status", "parked");
+    await db.write(
+      supabase
+        .from("content_slots")
+        .update({
+          status: "scheduled",
+          scheduled_at: new Date().toISOString(),
+          attempt: 0,
+          last_verdict: null,
+          error_message: null,
+        })
+        .eq("id", decision.ref)
+        .eq("user_id", userId)
+        .eq("status", "parked"),
+      { what: "requeue content slot", user_id: userId }
+    );
   }
 
   // Only a still-pending row takes this resolution. A concurrent request

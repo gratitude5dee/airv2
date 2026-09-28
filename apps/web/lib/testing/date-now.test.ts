@@ -45,6 +45,8 @@ const LEGACY = new Set([
   "lib/miniapps/actionLog.test.ts",
   "lib/miniapps/apps/checkout.test.tsx",
   "lib/miniapps/cardSends.test.ts",
+  "lib/miniapps/client/draw-studio.test.tsx",
+  "lib/miniapps/client/freeze-studio.test.tsx",
   "lib/miniapps/commandLane.test.ts",
   "lib/miniapps/draw-admission.test.ts",
   "lib/miniapps/freeze.test.ts",

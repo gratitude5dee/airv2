@@ -20,7 +20,6 @@ import { log } from "../log";
 import { completeOperation } from "../migration/admission";
 import { command, writeFile } from "../box/client";
 import {
-  type ConversationMessage,
   createRun,
   ensureSession,
   type HermesBoxTarget,
@@ -30,6 +29,7 @@ import {
   runEvents,
   stopRun,
 } from "../hermes/client";
+import type { ConversationMessage } from "../hermes/history";
 import { isStateDatabaseError, logStateDatabaseHealth } from "../hermes/stateHealth";
 import { maybeRecoverStateDatabase } from "../hermes/stateRecovery";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
@@ -1391,15 +1391,12 @@ async function runFlushInner(
           runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : senderRef
         );
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "session ensure failed before run",
-            user_id: job.userId,
-            space_id: job.spaceId,
-            session_id: runSession,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("session ensure failed before run", {box_id: null,
+          user_id: job.userId,
+          space_id: job.spaceId,
+          session_id: runSession,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 

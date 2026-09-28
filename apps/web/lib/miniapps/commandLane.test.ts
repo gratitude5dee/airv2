@@ -38,9 +38,18 @@ function makeLink(db: FakeSupabase, token: string, envelopeKey: string): void {
   });
 }
 
+
+function newDb(): FakeSupabase {
+  // Postgres column defaults the impl relies on: envelopes start queued.
+  const db = new FakeSupabase();
+  db.defaults["berd_envelopes"] = { state: "queued" };
+  db.defaults["buzz_intents"] = { state: "queued" };
+  return db;
+}
+
 describe("command lane", () => {
   it("claims an envelope once, delivers args, and nulls the ciphertext", async () => {
-    const db = new FakeSupabase();
+    const db = newDb();
     const token = "berd_deadbeef";
     const key = mintEnvelopeKey();
     makeLink(db, token, key);
@@ -109,7 +118,7 @@ describe("command lane", () => {
   });
 
   it("fails expired envelopes at claim time and drops their args", async () => {
-    const db = new FakeSupabase();
+    const db = newDb();
     const token = "berd_deadbeef";
     makeLink(db, token, mintEnvelopeKey());
     const supabase = db.client();
@@ -132,7 +141,7 @@ describe("command lane", () => {
   });
 
   it("refuses completion replays and foreign envelopes", async () => {
-    const db = new FakeSupabase();
+    const db = newDb();
     const token = "buzz_deadbeef";
     const key = mintEnvelopeKey();
     db.rows("buzz_links").push({
@@ -199,7 +208,7 @@ describe("command lane", () => {
   });
 
   it("bounds in-flight envelopes and argument size", async () => {
-    const db = new FakeSupabase();
+    const db = newDb();
     const supabase = db.client();
     for (let i = 0; i < 30; i += 1) {
       const queued = await enqueueEnvelope(
@@ -237,7 +246,7 @@ describe("command lane", () => {
   });
 
   it("returns no envelopes for a link without an envelope key", async () => {
-    const db = new FakeSupabase();
+    const db = newDb();
     const token = "berd_pre0067";
     db.rows("berd_links").push({
       id: "link-old",

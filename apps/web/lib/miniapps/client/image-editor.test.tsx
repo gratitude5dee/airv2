@@ -4,7 +4,7 @@
  * renders its empty stage; the options drawer opens on tap.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import "@/lib/testing/jsdom";
 import { DEFAULT_IMAGE_DOC } from "@/lib/miniapps/creativeDocs";
 
@@ -35,7 +35,9 @@ describe("image-editor", () => {
 
   it("opens the layers & options drawer on tap", async () => {
     const toggle = await screen.findByLabelText("expand editor panel");
-    toggle.click();
+    await act(async () => {
+      toggle.click();
+    });
     await waitFor(() => {
       expect(screen.getByLabelText("document title")).toBeTruthy();
     });
