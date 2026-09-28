@@ -268,4 +268,5 @@ jobs:
       - run: npx tsc -p evals/agent-suite/tsconfig.json --noEmit
       - run: npx tsc -p evals/agent-suite/create/tsconfig.json --noEmit
       - run: npx tsc -p evals/model-bench/tsconfig.json --noEmit
+      - run: npx tsc -p evals/memory/tsconfig.json --noEmit
       - run: npx vitest run evals/agent-suite/score.test.ts
