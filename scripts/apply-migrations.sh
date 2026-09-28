@@ -71,7 +71,8 @@ if [ -f "$RENAMES_FILE" ]; then
 fi
 
 pending=0
-for file in $(ls "$MIGRATIONS_DIR"/*.sql | sort); do
+shopt -s nullglob
+for file in "$MIGRATIONS_DIR"/*.sql; do
   name=$(basename "$file")
   hash=$(sha256sum "$file" | cut -d' ' -f1)
   recorded=$(grep -F "$name|" <<< "$applied" | head -1 | cut -d'|' -f2- | tr -d '[:space:]' || true)
