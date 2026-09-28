@@ -5,9 +5,10 @@
  */
 import type { NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
+import { env } from "@/lib/env";
 
 export function cronAuthorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
+  const secret = env.cronSecret();
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
