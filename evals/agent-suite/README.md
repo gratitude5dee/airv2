@@ -22,6 +22,10 @@ evals/agent-suite/
   imessage.ts      iMessage-path executor — signed Spectrum webhooks in,
                    recorded outbound bubbles out (TTFK timing)
   imessage-lib.ts  webhook signing + timing math for imessage.ts
+  k-case-sets.json  R-EV-09 provenance: which K-cases are held out of prompt
+                   tuning (id % 3 === 0) and which are in-sample (message
+                   shares ≥2 distinctive tokens with its route's
+                   ROUTE_OPTIONS text); regenerate with k-case-sets.ts
   score.ts         grader — writes report.md
   lib.ts           case parsing, SSE framing, PostgREST reads, redaction
   installed-skills.txt  the box's `~/.hermes/skills` inventory at run time
