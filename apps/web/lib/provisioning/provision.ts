@@ -24,7 +24,7 @@ import {
   type BoxProviderKind,
   type HostedRoute,
 } from "../box/client";
-import { isTenkiSnapshotRef } from "../box/tenki";
+import { isTenkiSnapshotRef } from "../box/tenki-refs";
 import {
   createMacInstance,
   publishMacIngress,

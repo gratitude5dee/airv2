@@ -155,26 +155,6 @@ export async function loadConversationTranscript(
   if (!response.ok) {
     const body = await response.text();
     throw new HermesApiError(response.status, body.slice(0, 500));
-  try {
-    const response = await fetch(
-      url(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`),
-      {
-        signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
-        headers: headers(target),
-      }
-    );
-    if (!response.ok) return { rows: 0, history: [] };
-    const raw = parseRawMessages(await response.json());
-    return { rows: raw.length, history: sanitizeConversation(raw) };
-  } catch (error) {
-    // An empty history here is silent amnesia for the turn — log it so the
-    // amnesia shows up in the control plane (R-ARCH-06).
-    log.error("conversation transcript load failed", {
-      box_id: null,
-      session_id: sessionId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { rows: 0, history: [] };
   }
   const raw = parseRawMessages(await response.json());
   return { rows: raw.length, history: sanitizeConversation(raw) };

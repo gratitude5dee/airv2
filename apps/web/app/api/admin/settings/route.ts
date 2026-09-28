@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { isTenkiSnapshotRef } from "@/lib/box/tenki";
+import { isTenkiSnapshotRef } from "@/lib/box/tenki-refs";
 import {
   BOX_DEFAULT_PROVIDER_KEY,
   readPlatformSetting,

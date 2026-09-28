@@ -4,15 +4,14 @@
  * to the human's message, not as a new bubble. Spectrum maps these six
  * universal aliases to native tapbacks on iMessage.
  */
-import { Emoji } from "spectrum-ts";
-
+/** The six universal tapback aliases spectrum-ts maps on iMessage. */
 export const TAPBACK_EMOJI: readonly string[] = [
-  Emoji.love,
-  Emoji.like,
-  Emoji.dislike,
-  Emoji.laugh,
-  Emoji.emphasize,
-  Emoji.question,
+  "❤️", // Emoji.love
+  "👍", // Emoji.like
+  "👎", // Emoji.dislike
+  "😂", // Emoji.laugh
+  "‼️", // Emoji.emphasize
+  "❓", // Emoji.question
 ];
 
 /** Longest reply (trimmed) that could still be a lone tapback emoji. */

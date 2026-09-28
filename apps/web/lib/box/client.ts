@@ -18,6 +18,7 @@ import { env } from "../env";
 import { requestSignal } from "../http/timeout";
 import { shellQuote } from "./shell";
 import * as tenki from "./tenki";
+import { isTenkiBoxId, isTenkiTemplateRef } from "./tenki-refs";
 import {
   BoxApiError,
   BoxSchema,
@@ -166,7 +167,7 @@ export async function fork(options: ForkOptions): Promise<Box> {
     }
   }
   if (providerOf(options.templateId) === "tenki") {
-    return tenki.fork(options);
+    return (await import("./tenki")).fork(options);
   }
   const envelope = await boxFetch(
     `/boxes/${options.templateId}/fork`,

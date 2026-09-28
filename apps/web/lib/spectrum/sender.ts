@@ -5,23 +5,7 @@
  * the lines row — never the Chat SDK adapter's line inference, which throws
  * NotImplementedError on every cold thread once per-user lines exist.
  */
-import {
-  Spectrum,
-  app as appCard,
-  attachment,
-  edit,
-  reaction,
-  read,
-  reply,
-  richlink,
-  text,
-  typing,
-  type Message,
-} from "spectrum-ts";
-import {
-  customizedMiniApp,
-  imessage,
-} from "spectrum-ts/providers/imessage";
+import type { Message } from "spectrum-ts";
 import type {
   AdvancedIMessage,
   LocationRequestReceipt,
@@ -146,10 +130,13 @@ export interface AppCardLayout {
  * the extension UI inline in the transcript bubble, while a static card
  * opens the full-screen sheet view on tap — the presentation mini-apps need.
  */
-function buildAppCard(
+async function buildAppCard(
   url: string,
   layout: AppCardLayout | undefined
-): ReturnType<typeof appCard> {
+) {
+  const { customizedMiniApp } = await import(
+    "spectrum-ts/providers/imessage"
+  );
   const extension = env.imessageMiniAppExtension();
   return customizedMiniApp({
     appName: extension.appName,
@@ -209,6 +196,23 @@ export async function createSpectrumSender(
   const outbox = env.spectrumRecordOutbox();
   if (outbox) return createRecordingSpectrumSender(outbox);
   const startedAt = Date.now();
+  const [
+    {
+      Spectrum,
+      attachment,
+      edit,
+      reaction,
+      read,
+      reply,
+      richlink,
+      text,
+      typing,
+    },
+    { imessage },
+  ] = await Promise.all([
+    import("spectrum-ts"),
+    import("spectrum-ts/providers/imessage"),
+  ]);
   const app = await Spectrum({
     projectId: env.spectrumProjectId(),
     projectSecret: env.spectrumProjectSecret(),
@@ -267,7 +271,7 @@ export async function createSpectrumSender(
     },
     sendApp: async (spaceId, phone, url, layout) => {
       return (await space(spaceId, phone)).send(
-        buildAppCard(await url(), layout)
+        await buildAppCard(await url(), layout)
       );
     },
     editApp: async (spaceId, phone, session, url, layout) => {
@@ -293,7 +297,7 @@ export async function createSpectrumSender(
       const target = Object.assign(message, {
         miniAppCardSession: session,
       });
-      await s.send(edit(buildAppCard(await url(), layout), target));
+      await s.send(edit(await buildAppCard(await url(), layout), target));
       return parseMiniAppCardSession(target.miniAppCardSession);
     },
     requestLocation: async (spaceId, phone, address, clientMessageId) => {
