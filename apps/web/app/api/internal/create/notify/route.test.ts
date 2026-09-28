@@ -3,20 +3,23 @@
  * adapter route. Every case signs (or mis-signs) the raw body the same way
  * the Worker does — ts + HMAC-SHA256 over `${ts}.${method}.${path}.${sha}`.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const state = vi.hoisted(() => {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
   const responses: Record<string, { data: unknown; error: unknown }[]> = {};
+  const claimed = new Set<string>();
   function chain(table: string): Record<string, (...args: unknown[]) => unknown> {
     const ops: Record<string, (...args: unknown[]) => unknown> = {};
     for (const method of [
       "select",
       "insert",
       "update",
+      "delete",
       "eq",
       "is",
+      "lt",
       "order",
       "limit",
     ]) {
@@ -30,9 +33,19 @@ const state = vi.hoisted(() => {
         responses[`${table}:${terminal}`]?.shift() ??
         responses[`${table}:always`]?.[0] ?? { data: null, error: null };
     }
+    if (table === "create_bridge_nonces") {
+      ops["upsert"] = (row: unknown) => ({
+        select: () => {
+          const sig = (row as { sig: string }).sig;
+          const fresh = !claimed.has(sig);
+          if (fresh) claimed.add(sig);
+          return Promise.resolve({ data: fresh ? [row] : [], error: null });
+        },
+      });
+    }
     return ops;
   }
-  return { calls, responses, client: { from: (t: string) => chain(t) } };
+  return { calls, responses, claimed, client: { from: (t: string) => chain(t) } };
 });
 
 const sendText = vi.hoisted(() => vi.fn(async () => undefined));
@@ -92,13 +105,20 @@ function signed(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
   state.calls.length = 0;
+  state.claimed.clear();
   for (const key of Object.keys(state.responses)) delete state.responses[key];
   process.env["CREATE_BRIDGE_SECRET"] = SECRET;
   state.responses["create_jobs:always"] = [{ data: jobRow(), error: null }];
   state.responses["imessage_destinations:always"] = [
     { data: { space_id: "space-1", phone: "+15551234567" }, error: null },
   ];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("POST /api/internal/create/notify bridge auth", () => {
