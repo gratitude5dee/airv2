@@ -20,14 +20,11 @@ import { command, writeFile } from "../box/client";
 import {
   createRun,
   ensureSession,
-  loadConversationTranscript,
   MAIN_SESSION,
   MAIN_SESSION_TITLE,
   runEvents,
   stopRun,
-  type HermesBoxTarget,
 } from "../hermes/client";
-import type { ConversationMessage } from "../hermes/history";
 import { isStateDatabaseError, logStateDatabaseHealth } from "../hermes/stateHealth";
 import { maybeRecoverStateDatabase } from "../hermes/stateRecovery";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
@@ -662,84 +659,6 @@ async function notifyFirstRetry(
 }
 
 /**
- * Explicit, observable history replay for an iMessage turn.
- *
- * createRun replays the transcript itself when `conversationHistory` is
- * omitted, but that load degrades to an empty history on any error — an
- * unreachable box or an odd payload silently starts the turn blank and the
- * agent re-asks for what the human already sent. Doing it here makes the
- * degradation visible: the session is ensured first (so a first turn
- * persists its transcript) and an empty replay against a session the box
- * already had is logged as a dropped replay. Counts only — transcript
- * content never enters control-plane logs (C4).
- *
- * Returns null when an existing session returns no transcript rows even
- * after a retry — running that turn would answer with total amnesia, so the
- * caller should hold the burst and try again rather than reply blank. A
- * transcript whose rows sanitise to nothing replayable (user inputs with no
- * assistant reply yet) is not amnesia: the store is hydrated, so the turn
- * proceeds with an empty history.
- */
-export async function replayHistory(
-  target: HermesBoxTarget,
-  sessionId: string,
-  context: {
-    userId: string;
-    spaceId: string;
-    title: string;
-    /** Set when the caller already ensured the session this turn. */
-    firstTurn?: boolean;
-  }
-): Promise<ConversationMessage[] | null> {
-  let firstTurn = context.firstTurn ?? false;
-  try {
-    if (context.firstTurn === undefined) {
-      firstTurn = (await ensureSession(target, sessionId, context.title))
-        .created;
-    }
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "session ensure failed before run",
-        user_id: context.userId,
-        space_id: context.spaceId,
-        session_id: sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
-  }
-  let transcript = await loadConversationTranscript(target, sessionId);
-  if (transcript.rows === 0 && !firstTurn) {
-    // One immediate retry: the load is best-effort and a transient proxy
-    // hiccup or a box mid-resume often clears within a moment.
-    transcript = await loadConversationTranscript(target, sessionId);
-  }
-  if (transcript.rows === 0 && !firstTurn) {
-    console.error(
-      JSON.stringify({
-        msg: "history replay empty on existing session",
-        user_id: context.userId,
-        space_id: context.spaceId,
-        session_id: sessionId,
-      })
-    );
-    return null;
-  }
-  console.log(
-    JSON.stringify({
-      msg: "history replayed",
-      user_id: context.userId,
-      space_id: context.spaceId,
-      session_id: sessionId,
-      rows: transcript.rows,
-      messages: transcript.history.length,
-      first_turn: firstTurn,
-    })
-  );
-  return transcript.history;
-}
-
-/**
  * Run one debounced turn for a chat. Called after the claim succeeds; owns
  * drain → resume → run → stream → stop_after re-arm.
  */
@@ -752,10 +671,11 @@ export async function runFlush(
     attempts: number;
     senderTier: number | null;
   },
-  chainStartedAt: string
+  chainStartedAt: string,
+  sender?: SpectrumSender
 ): Promise<void> {
   try {
-    await runFlushInner(supabase, job, chainStartedAt);
+    await runFlushInner(supabase, job, chainStartedAt, sender);
   } finally {
     // Release the claim_flush operation lease (held under the space id);
     // expiry is the backstop when this invocation died mid-run.
@@ -772,21 +692,29 @@ async function runFlushInner(
     attempts: number;
     senderTier: number | null;
   },
-  chainStartedAt: string
+  chainStartedAt: string,
+  sharedSender?: SpectrumSender
 ): Promise<void> {
   // Connect to Spectrum BEFORE draining: draining deletes the queued rows,
   // so a sender that cannot be created (e.g. a Spectrum/Cloudflare 502)
   // must leave the burst in the queue and retry with backoff instead of
-  // silently destroying it.
+  // silently destroying it. A sharedSender is the turn's warm sender
+  // (R-PERF-04): already connected, and owned by the caller — never closed
+  // here, so the webhook's tapback/receipts and the flush share one init.
+  const ownsSender = !sharedSender;
   let sender: SpectrumSender;
-  try {
-    sender = await createSpectrumSender();
-  } catch (error) {
-    if (job.attempts < MAX_ATTEMPTS) {
-      await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
-      return;
+  if (sharedSender) {
+    sender = sharedSender;
+  } else {
+    try {
+      sender = await createSpectrumSender("flush");
+    } catch (error) {
+      if (job.attempts < MAX_ATTEMPTS) {
+        await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+        return;
+      }
+      throw error;
     }
-    throw error;
   }
   let progressTimeline: ProgressTimeline | undefined;
   
@@ -1045,6 +973,7 @@ async function runFlushInner(
             userId: job.userId,
             phone: job.phone,
             senderTier: job.senderTier,
+            sender,
           },
           tradeCommand
         );
@@ -1320,25 +1249,26 @@ async function runFlushInner(
       );
     }
 
-    const replayed = await replayHistory(runTarget, runSession, {
-      userId: job.userId,
-      spaceId: job.spaceId,
-      title: runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : BOT_CHAT_TITLE,
-      // The delegation branch above already ensured the bot chat session.
-      ...(botSessionCreated === undefined
-        ? {}
-        : { firstTurn: botSessionCreated }),
-    });
-    if (replayed === null && job.attempts < MAX_ATTEMPTS) {
-      // An existing session replayed empty: running now would answer with
-      // total amnesia. Hold the burst and retry, same as a wake failure.
-      await carryMessages(supabase, job.userId, job.spaceId, drained);
-      await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
-      return;
+    // No control-plane transcript replay: the run goes into a session
+    // Hermes itself hydrates, so fetching and replaying the transcript here
+    // only cost a round-trip per turn while truncating the box's own view.
+    // The session is still ensured so a first turn has somewhere to
+    // persist; the bot branch ensured its own session above.
+    if (botSessionCreated === undefined) {
+      try {
+        await ensureSession(runTarget, runSession, MAIN_SESSION_TITLE);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            msg: "session ensure failed before run",
+            user_id: job.userId,
+            space_id: job.spaceId,
+            session_id: runSession,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+      }
     }
-    // At max attempts a degraded (blank-context) answer beats dropping the
-    // burst on the floor.
-    const conversationHistory = replayed ?? [];
 
     const initialResponseDeadlineAt = Date.now() + INITIAL_RESPONSE_DEADLINE_MS;
     const finalResponseDeadlineAt = Date.now() + FINAL_RESPONSE_DEADLINE_MS;
@@ -1348,7 +1278,6 @@ async function runFlushInner(
         createRun(runTarget, {
           input: runInput,
           sessionId: runSession,
-          conversationHistory,
           metadata: { channel: "imessage" },
         }),
         initialResponseDeadlineAt,
@@ -1557,7 +1486,8 @@ async function runFlushInner(
         await sendMarkedCards(
           supabase,
           { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
-          stripped.cards
+          stripped.cards,
+          sender
         ).catch(() => 0);
       } else {
         await sender
@@ -1663,7 +1593,7 @@ async function runFlushInner(
     // cleared it, and a throw mid-turn must not leave the box awake with no
     // deadline. Monotonic, so a no-op for boxes that never woke.
     await armStopAfter(supabase, job.userId).catch(() => undefined);
-    await sender.close().catch(() => undefined);
+    if (ownsSender) await sender.close().catch(() => undefined);
   }
 }
 
@@ -1747,11 +1677,17 @@ export async function dropQuickAckMarker(
     .eq("message_id", messageId);
 }
 
-/** Debounce wait + claim + run; the webhook route calls this via after(). */
+/**
+ * Debounce wait + claim + run; the webhook route calls this via after().
+ * `sender` is the turn's warm Spectrum sender (R-PERF-04): the flush reuses
+ * it for every send/lane/card instead of a second SDK init, and the route
+ * retains ownership (it closes it after this resolves).
+ */
 export async function flushAfterDebounce(
   supabase: SupabaseClient,
   message: InboundMessage,
-  runAt: string
+  runAt: string,
+  sender?: SpectrumSender
 ): Promise<void> {
   const waitMs = new Date(runAt).getTime() - Date.now();
   if (waitMs > 0) {
@@ -1773,6 +1709,7 @@ export async function flushAfterDebounce(
       attempts: (data?.attempts as number | undefined) ?? 0,
       senderTier: message.senderTier ?? null,
     },
-    claim.chainStartedAt
+    claim.chainStartedAt,
+    sender
   );
 }
