@@ -6622,8 +6622,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #460",
+        "wallet send files a run_approval decision; executeDirectTransfer deleted — lib/muse/capabilities/wallet-request.test.ts + worker contract tests"
+      ],
       "notes": "In flight on parallel PRs per the work order."
     },
     {
@@ -6647,8 +6650,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #461",
+        "agent_runs.sender_tier migration 0128; unknown tier fails closed — agent_runs tier tests"
+      ],
       "notes": "In flight on parallel PRs per the work order."
     },
     {
@@ -6672,8 +6678,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #462",
+        "send-file outbox allowlist + realpath + tier-0 gate — send-file route tests (66 tests)"
+      ],
       "notes": "In flight on parallel PRs per the work order."
     },
     {
@@ -6697,8 +6706,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #463",
+        "CI audit job `npm audit --omit=dev --audit-level=high`; next 15.5.x; 0 high/critical after lockfile fix"
+      ],
       "notes": "In flight on parallel PRs per the work order."
     },
     {
@@ -6722,8 +6734,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #464",
+        "migrate.yml: shadow apply to scratch Postgres, sha256 chain, RLS backfill, environment=production gate"
+      ],
       "notes": "In flight on parallel PRs per the work order."
     },
     {
@@ -6747,8 +6762,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "in_progress",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #465",
+        "workers.yml: PR check matrix per worker, Node 22, cancel-in-progress:false, staticStub.test.ts restored"
+      ],
       "notes": "In flight on parallel PRs per the work order."
     },
     {
@@ -6772,8 +6790,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #467",
+        "python unittest job runs openviking/manage-soul/taskrouter suites in CI"
+      ],
       "notes": ""
     },
     {
@@ -6797,8 +6818,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #467",
+        "vitest coverage floor pinned per module at measured values"
+      ],
       "notes": ""
     },
     {
@@ -6822,8 +6846,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #468",
+        "eslint ignores built bundles; real warnings fixed; --max-warnings 0 (789→0)"
+      ],
       "notes": ""
     },
     {
@@ -6847,8 +6874,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #470",
+        "shellcheck job in CI"
+      ],
       "notes": ""
     },
     {
@@ -6872,8 +6902,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #470",
+        "skill .test.mjs job in CI"
+      ],
       "notes": ""
     },
     {
@@ -6897,8 +6930,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #470",
+        "eval suite typecheck in CI"
+      ],
       "notes": ""
     },
     {
@@ -6922,8 +6958,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #470",
+        "single Node version across workflows"
+      ],
       "notes": ""
     },
     {
@@ -6947,8 +6986,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #470",
+        "whole-kit typecheck job"
+      ],
       "notes": ""
     },
     {
@@ -6972,8 +7014,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #488",
+        "vitest threads pool + isolate:false; lazy heavy-SDK imports — wall-time reduced"
+      ],
       "notes": ""
     },
     {
@@ -6997,8 +7042,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #488",
+        "stale-PR audit filed at docs/reports/stale-pr-audit.md"
+      ],
       "notes": ""
     },
     {
@@ -7022,8 +7070,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #491",
+        "shared FakeSupabase with recorded filters; all test files migrated (lib/test/fake-supabase)"
+      ],
       "notes": ""
     },
     {
@@ -7047,8 +7098,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #492",
+        "setupFiles console capture + expectLog() — unexpected stderr fails tests"
+      ],
       "notes": ""
     },
     {
@@ -7072,8 +7126,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #472",
+        "webhook route behaviour tests"
+      ],
       "notes": ""
     },
     {
@@ -7097,8 +7154,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #472",
+        "auth primitive tests"
+      ],
       "notes": ""
     },
     {
@@ -7122,8 +7182,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #472",
+        "Date.now flake pinned"
+      ],
       "notes": ""
     },
     {
@@ -7147,8 +7210,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #475",
+        "money-route tests (wallet send, vault reveal, browser purchase)"
+      ],
       "notes": ""
     },
     {
@@ -7172,8 +7238,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #475",
+        "shared cron auth helper"
+      ],
       "notes": ""
     },
     {
@@ -7197,8 +7266,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #476",
+        "source-grep tests converted to renders/spawns"
+      ],
       "notes": ""
     },
     {
@@ -7222,8 +7294,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #476",
+        "jsdom smoke tests"
+      ],
       "notes": ""
     },
     {
@@ -7247,8 +7322,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #476",
+        "injectable cortex seam"
+      ],
       "notes": ""
     },
     {
@@ -7272,8 +7350,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #473",
+        "freebie routing scores removed from scorer"
+      ],
       "notes": ""
     },
     {
@@ -7297,8 +7378,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #473",
+        "tool-only execution; session ids minted in air-* namespace (run.ts sessionFor fix)"
+      ],
       "notes": ""
     },
     {
@@ -7322,8 +7406,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #473",
+        "optional LLM judge"
+      ],
       "notes": ""
     },
     {
@@ -7347,8 +7434,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #473",
+        "scorer honesty fix"
+      ],
       "notes": ""
     },
     {
@@ -7372,8 +7462,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #473",
+        "reproducible run artifacts (suite.json + report.md committed)"
+      ],
       "notes": ""
     },
     {
@@ -7397,8 +7490,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #473",
+        "model-tier run wiring"
+      ],
       "notes": ""
     },
     {
@@ -7422,8 +7518,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #478",
+        "contract-eval CI job — stub Hermes + 31-case runner through real control plane"
+      ],
       "notes": ""
     },
     {
@@ -7447,8 +7546,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #489",
+        "iMessage-path eval via signed Spectrum webhooks + recording sender"
+      ],
       "notes": ""
     },
     {
@@ -7472,8 +7574,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #490",
+        "K-case labelling"
+      ],
       "notes": ""
     },
     {
@@ -7497,8 +7602,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #490",
+        "tenki run2 writeup"
+      ],
       "notes": ""
     },
     {
@@ -7522,8 +7630,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #490",
+        "memory recall eval"
+      ],
       "notes": ""
     },
     {
@@ -7547,8 +7658,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #474",
+        "create report writer"
+      ],
       "notes": ""
     },
     {
@@ -7572,8 +7686,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #474",
+        "model-bench report writer + honesty fixes"
+      ],
       "notes": ""
     },
     {
@@ -7597,8 +7714,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #479",
+        "gateway tee streaming — incremental response, empty-check"
+      ],
       "notes": ""
     },
     {
@@ -7622,8 +7742,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #479",
+        "served-model response headers"
+      ],
       "notes": ""
     },
     {
@@ -7647,8 +7770,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #479",
+        "per-turn transcript re-fetch dropped"
+      ],
       "notes": ""
     },
     {
@@ -7672,8 +7798,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #477",
+        "one Spectrum sender per turn"
+      ],
       "notes": ""
     },
     {
@@ -7697,8 +7826,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #477",
+        "health-driven wake waiter"
+      ],
       "notes": ""
     },
     {
@@ -7722,8 +7854,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #481",
+        "cron instrumentation"
+      ],
       "notes": ""
     },
     {
@@ -7747,8 +7882,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #481",
+        "mini-app bundle splitting"
+      ],
       "notes": ""
     },
     {
@@ -7772,8 +7910,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #481",
+        "ttfk lane recording (migration 0135 + agent_runs.ttfk_ms/met/lane)"
+      ],
       "notes": ""
     },
     {
@@ -7822,8 +7963,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #471",
+        "burst min-trust tier + isolated contact:<id> sessions — lib/chat burst tier tests"
+      ],
       "notes": ""
     },
     {
@@ -7847,8 +7991,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #471",
+        "per-sender [from <sender>] labels on burst lines — label tests"
+      ],
       "notes": ""
     },
     {
@@ -7872,8 +8019,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "Hermes approvals deny-list; publishing tools always pause — config.yaml mode test"
+      ],
       "notes": ""
     },
     {
@@ -7897,8 +8047,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "webhook replay protection — migrations + replay tests"
+      ],
       "notes": ""
     },
     {
@@ -7922,8 +8075,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "approval relay failures surfaced (CA-23)"
+      ],
       "notes": ""
     },
     {
@@ -7947,8 +8103,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "security finding fix — see PR #480"
+      ],
       "notes": ""
     },
     {
@@ -7972,8 +8131,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "sessions table (0134) + fail-closed sessionUserId — auth/session tests"
+      ],
       "notes": ""
     },
     {
@@ -7997,8 +8159,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "security finding fix — see PR #480"
+      ],
       "notes": ""
     },
     {
@@ -8022,8 +8187,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "security finding fix — see PR #480"
+      ],
       "notes": ""
     },
     {
@@ -8047,8 +8215,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #480",
+        "security finding fix — see PR #480"
+      ],
       "notes": ""
     },
     {
@@ -8074,7 +8245,8 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+        "PR #469",
+        "ledger resynced; 321 rows"
       ],
       "notes": ""
     },
@@ -8101,7 +8273,8 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "ffbbf0b70eee7bedbda051ec21dd05473b82e789 scripts/check-commit-ids.sh + commit-ids job in ci.yml"
+        "PR #469",
+        "commit-ID CI gate rejects commits without finding IDs"
       ],
       "notes": ""
     },
@@ -8128,7 +8301,9 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+        "PR #466",
+        "PR #469",
+        "review + work order landed on main (review.md, docs/review-findings.json)"
       ],
       "notes": ""
     },
@@ -8153,8 +8328,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #488",
+        "CA-19 freeze lifted in writing at goal-create-v13.md §16"
+      ],
       "notes": ""
     },
     {
@@ -8180,7 +8358,8 @@
       "external_evidence_needed": [],
       "implementation_status": "implemented",
       "evidence": [
-        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+        "PR #469",
+        "README webhook claim scoped"
       ],
       "notes": ""
     },
@@ -8205,8 +8384,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #483",
+        "one auth module lib/auth/guard.ts; cron/admin/muse/box migrated"
+      ],
       "notes": ""
     },
     {
@@ -8230,8 +8412,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #484",
+        "boot env validation — zod manifest in instrumentation.ts"
+      ],
       "notes": ""
     },
     {
@@ -8255,8 +8440,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #484",
+        "zod-validated bodies on money/secret routes"
+      ],
       "notes": ""
     },
     {
@@ -8280,8 +8468,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #485",
+        "lib/log structured logger + console→log codemod + scoped box_id"
+      ],
       "notes": ""
     },
     {
@@ -8305,8 +8496,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #486",
+        "db.write error-checking wrapper"
+      ],
       "notes": ""
     },
     {
@@ -8330,8 +8524,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #486",
+        "ten high-consequence swallowed promises fixed"
+      ],
       "notes": ""
     },
     {
@@ -8355,8 +8552,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #487",
+        "three P0-adjacent route handlers thinned (imessage, decisions, gateway)"
+      ],
       "notes": ""
     },
     {
@@ -8380,8 +8580,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #482",
+        "one box seam — lib/box owns credential columns"
+      ],
       "notes": ""
     },
     {
@@ -8405,8 +8608,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "PR #482",
+        "learning contracts enforced — jsonschema/ajv validation tests"
+      ],
       "notes": ""
     }
   ],
