@@ -351,7 +351,6 @@ export function JobView({
       {state === "live" && devUrl ? (
         <div className="flex flex-col gap-2">
           {shot ? (
-            // eslint-disable-next-line @next/next/no-img-element -- remote screenshot
             <img src={shot} alt="App screenshot" className="w-full max-w-xs rounded border border-current/20" />
           ) : null}
           <code className="break-all text-[11px]">{devUrl}</code>
