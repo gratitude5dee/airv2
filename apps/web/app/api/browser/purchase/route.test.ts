@@ -94,7 +94,8 @@ function authed(body?: unknown): NextRequest {
 
 function ownerRun(): void {
   state.responses["agent_runs:maybeSingle"] = [
-    { data: { hermes_run_id: "run.1", started_at: NOW }, error: null },
+    // sender_tier 0 = owner turn (R-P0-2 fail-closed).
+    { data: { hermes_run_id: "run.1", started_at: NOW, sender_tier: 0 }, error: null },
   ];
 }
 

@@ -4,7 +4,7 @@
  * 409 — the signature itself is the nonce (HMAC over
  * ts.METHOD.path.sha256(body), so a replay is byte-identical).
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adapterBody } from "./adapter";
@@ -15,6 +15,7 @@ const PATH = "/api/internal/create/dev-expire";
 
 beforeAll(() => {
   process.env["CREATE_BRIDGE_SECRET"] = SECRET;
+  vi.useFakeTimers();
 });
 
 /** In-memory stand-in for the create_bridge_nonces claim queries. */

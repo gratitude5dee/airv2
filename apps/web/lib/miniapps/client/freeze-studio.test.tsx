@@ -12,6 +12,10 @@ const fetchMock = vi.fn(async () => {
 });
 globalThis.fetch = fetchMock as unknown as typeof fetch;
 
+// Pin the clock (date-now rule) while still letting timers advance so
+// testing-library waitFor keeps polling.
+vi.useFakeTimers({ shouldAdvanceTime: true });
+
 const payload = {
   sessionId: "freeze-session-1",
   expiresAt: new Date(Date.now() + 3600_000).toISOString(),

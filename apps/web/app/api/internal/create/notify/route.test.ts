@@ -15,8 +15,11 @@ const state = vi.hoisted(() => {
       "select",
       "insert",
       "update",
+      "delete",
+      "upsert",
       "eq",
       "is",
+      "lt",
       "order",
       "limit",
     ]) {
@@ -30,6 +33,13 @@ const state = vi.hoisted(() => {
         responses[`${table}:${terminal}`]?.shift() ??
         responses[`${table}:always`]?.[0] ?? { data: null, error: null };
     }
+    // Awaiting a bare chain (e.g. `await from(t).upsert(...).select()`)
+    // resolves the queued `rows`/`always` response.
+    ops["then"] = ((resolve: (v: unknown) => unknown) =>
+      Promise.resolve(
+        responses[`${table}:rows`]?.shift() ??
+        responses[`${table}:always`]?.[0] ?? { data: null, error: null }
+      ).then(resolve)) as (...args: unknown[]) => unknown;
     return ops;
   }
   return { calls, responses, client: { from: (t: string) => chain(t) } };
@@ -92,10 +102,15 @@ function signed(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers();
   state.calls.length = 0;
   for (const key of Object.keys(state.responses)) delete state.responses[key];
   process.env["CREATE_BRIDGE_SECRET"] = SECRET;
   state.responses["create_jobs:always"] = [{ data: jobRow(), error: null }];
+  // Fresh sigs claim (upsert returns the inserted row).
+  state.responses["create_bridge_nonces:always"] = [
+    { data: [{ sig: "fresh" }], error: null },
+  ];
   state.responses["imessage_destinations:always"] = [
     { data: { space_id: "space-1", phone: "+15551234567" }, error: null },
   ];
