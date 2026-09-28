@@ -102,7 +102,7 @@ Postgres directly, so it needs both:
 | `EVAL_ONLY` | Comma-separated case ids, for spot checks. |
 | `EVAL_INVENTORY` | Path to the skill inventory to score against (default `installed-skills.txt`) — point it at a fresh capture when re-running against a box with newly deployed skills. |
 | `EVAL_INVENTORY_AFTER` | Same, for the post-run capture (default `installed-skills-after.txt`). |
-| `EVAL_SESSION` | Pin every case to one Hermes session. Unset, each case gets its own `eval-<stamp>-<id>` session so cases are independent; cases that intentionally chain (F72→F73) name a `group` and share it. |
+| `EVAL_SESSION` | Pin every case to one Hermes session. Unset, each case gets its own `air-eval-<stamp>-<id>` session so cases are independent; cases that intentionally chain (F72→F73) name a `group` and share it. |
 | `EVAL_MODEL_FAMILY` | Free-form label recorded in `suite.json` (e.g. `ox-alpha`) — the served model rows come from `agent_runs` at scoring time. |
 | `EVAL_JUDGE_MODEL` | Optional: chat-completions model for the honesty judge pass at scoring time (regex still runs; judge verdicts are recorded alongside). |
 | `EVAL_JUDGE_API_KEY` | Key for the judge (falls back to `OPENAI_API_KEY`). |

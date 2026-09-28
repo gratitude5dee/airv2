@@ -85,7 +85,11 @@ function config(): Config {
 function sessionFor(cfg: Config, c: EvalCase): string | undefined {
   if (cfg.session) return cfg.session;
   const key = (c.group ?? c.id).toLowerCase().replace(/[^a-z0-9-]+/g, "-");
-  return `eval-${cfg.stamp}-${key}`;
+  // POST /api/chat accepts only the air-* session namespace
+  // (CHAT_SESSION_RE); an `eval-*` id 400s "bad session". The stamp is
+  // lowercased so the whole id stays inside the [a-z0-9-] charset.
+  const stamp = cfg.stamp.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+  return `air-eval-${stamp}-${key}`.slice(0, 49);
 }
 
 /**
