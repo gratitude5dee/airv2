@@ -48,7 +48,7 @@ import {
   handleOnboarding,
   signupSender,
 } from "@/lib/provisioning/onboarding";
-import { ensureComputeProvisioned } from "@/lib/provisioning/provision";
+import { provisionComputeWithWelcome } from "@/lib/provisioning/welcome";
 import {
   createDecision,
   normalizeAddress,
@@ -103,7 +103,7 @@ async function sendLineReply(
  * until those gates pass, so tier-2 contacts still cause zero outbound work.
  */
 function warmSpectrumSender() {
-  return createSpectrumSender().catch(() => undefined);
+  return createSpectrumSender("webhook").catch(() => undefined);
 }
 
 async function closeWarmSpectrumSender(
@@ -417,7 +417,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         warmSenderPromise,
       );
       if (startCompute) {
-        await ensureComputeProvisioned(supabase, userId).catch(
+        await provisionComputeWithWelcome(supabase, userId).catch(
           (error: unknown) => {
             log.error("self-serve compute provision failed", {user_id: userId,
                 error: error instanceof Error ? error.message : String(error),});
@@ -641,7 +641,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
     try {
-      await flushAfterDebounce(supabase, message, runAt);
+      // The turn's warm sender drives the flush's lanes/cards too
+      // (R-PERF-04: one Spectrum init per turn); it is closed once below.
+      await flushAfterDebounce(supabase, message, runAt, sender);
     } catch (error) {
       log.error("imessage flush failed", {user_id: message.userId,
           space_id: message.spaceId,

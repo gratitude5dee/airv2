@@ -489,7 +489,6 @@ function Booth({ mode }: { mode: BoothMode }): React.ReactElement {
               <div className="cam-row">
                 <span className="cam-thumb">
                   {lastShot ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- in-memory blob: URL
                     <img src={lastShot} alt="last saved shot" />
                   ) : null}
                 </span>

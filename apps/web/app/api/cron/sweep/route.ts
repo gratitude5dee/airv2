@@ -9,7 +9,6 @@
  *    versions after 30 days, unpublished drafts beyond the newest five.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { serviceClient } from "@/lib/supabase";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { recoverOrphanedCarriedJobs } from "@/lib/orchestrator/carryRecovery";
@@ -27,25 +26,20 @@ import { sweepVersions } from "@/lib/create/versions";
 import { reconcileAppOriginMarks, reconcileAppOrigins } from "@/lib/functions/deploy";
 import { reconcileMigrations } from "@/lib/migration/sweep";
 import { resolveDueLocationRequests } from "@/lib/location/resolve";
+import { retryFailedApprovalRelays } from "@/lib/vault/purchase";
+import { armStopAfter, peekUserBox } from "@/lib/orchestrator/boxes";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
-function authorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (token.length !== secret.length) return false;
-  return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!authorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const startedAtMs = Date.now();
   const supabase = serviceClient();
   const now = new Date();
   const nowIso = now.toISOString();
@@ -179,6 +173,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     log.error("sweeper migration reconcile failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
+  // R-SEC-05 (CA-23): retry approval relays whose first attempt never
+  // reached the paused run. peekUserBox only returns an already-ready
+  // box, so the retry never pays a resume just to relay an answer; the
+  // arm restores the stop_after the decision's own resolve cleared.
+  let approvalRelays = { retried: 0, closed: 0 };
+  try {
+    approvalRelays = await retryFailedApprovalRelays(
+      supabase,
+      (userId) => peekUserBox(supabase, userId),
+      (userId) => armStopAfter(supabase, userId)
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper approval relay sweep failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   // Find My: pending "near me" requests probe the shared location on the
   // sweep tick — consume (coarse label only), back off, or expire.
   let locationsResolved = 0;
@@ -191,18 +205,68 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     log.error("sweeper location resolve failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
+  // Rows-touched counts for the TTL pass (R-PERF-06): count: "exact"
+  // returns the deleted row count without changing what is deleted.
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
-  await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
-  await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
-  await supabase
-    .from("carried_messages")
-    .delete()
-    .lt("received_at", ttlCutoff);
-  await supabase.from("github_deliveries").delete().lt("received_at", ttlCutoff);
-  await supabase
+  const [{ count: inboundEventsDeleted }, { count: batchQueueDeleted }] =
+    await Promise.all([
+      supabase
+        .from("inbound_events")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+      supabase
+        .from("batch_queue")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+    ]);
+  const [{ count: carriedMessagesDeleted }, { count: githubDeliveriesDeleted }] =
+    await Promise.all([
+      supabase
+        .from("carried_messages")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+      supabase
+        .from("github_deliveries")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+    ]);
+  const { count: slugHoldsExpired } = await supabase
     .from("miniapp_slug_holds")
-    .delete()
+    .delete({ count: "exact" })
     .lt("held_until", new Date().toISOString());
+  const ttlRows = {
+    inbound_events: inboundEventsDeleted ?? 0,
+    batch_queue: batchQueueDeleted ?? 0,
+    carried_messages: carriedMessagesDeleted ?? 0,
+    github_deliveries: githubDeliveriesDeleted ?? 0,
+    miniapp_slug_holds: slugHoldsExpired ?? 0,
+  };
+
+  // R-PERF-06: one duration + rows-touched line per run. A week of these
+  // feeds the decision on whether this every-minute cron should keep its
+  // schedule, stretch, or move to a queue trigger.
+  console.info(
+    JSON.stringify({
+      msg: "cron sweep",
+      duration_ms: Date.now() - startedAtMs,
+      stopped,
+      indexingDeferred,
+      indexing,
+      reconciled,
+      orphanedCarried,
+      flushed,
+      uploadsReleased,
+      fleet,
+      draftsFiled,
+      versionsRetired,
+      originsMarked,
+      originsRepaired,
+      migrationsDriven,
+      locationsResolved,
+      locationsExpired,
+      ttl_rows: ttlRows,
+    })
+  );
 
   return NextResponse.json({
     ok: true,
@@ -219,7 +283,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     originsMarked,
     originsRepaired,
     migrationsDriven,
+    approvalRelays,
     locationsResolved,
     locationsExpired,
+    ttl_rows: ttlRows,
   });
 }

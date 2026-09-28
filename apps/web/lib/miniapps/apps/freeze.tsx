@@ -512,7 +512,7 @@ export const freeze: MiniAppModule = {
           const name = `freeze-${String(asset.sha256).slice(0, 8)}.mp4`;
           let sent = false;
           try {
-            const sender = await createSpectrumSender();
+            const sender = await createSpectrumSender("freeze-attachment");
             try {
               await sender.sendAttachment(
                 session.space_id,
