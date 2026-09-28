@@ -9,7 +9,7 @@
  *    versions after 30 days, unpublished drafts beyond the newest five.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { cronAuthorized } from "@/lib/cron/auth";
 import { serviceClient } from "@/lib/supabase";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { recoverOrphanedCarriedJobs } from "@/lib/orchestrator/carryRecovery";
@@ -27,22 +27,15 @@ import { sweepVersions } from "@/lib/create/versions";
 import { reconcileAppOriginMarks, reconcileAppOrigins } from "@/lib/functions/deploy";
 import { reconcileMigrations } from "@/lib/migration/sweep";
 import { resolveDueLocationRequests } from "@/lib/location/resolve";
+import { retryFailedApprovalRelays } from "@/lib/vault/purchase";
+import { armStopAfter, peekUserBox } from "@/lib/orchestrator/boxes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
-function authorized(request: NextRequest): boolean {
-  const secret = process.env["CRON_SECRET"] ?? "";
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (token.length !== secret.length) return false;
-  return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
-}
-
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!authorized(request)) {
+  if (!cronAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
@@ -228,6 +221,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // R-SEC-05 (CA-23): retry approval relays whose first attempt never
+  // reached the paused run. peekUserBox only returns an already-ready
+  // box, so the retry never pays a resume just to relay an answer; the
+  // arm restores the stop_after the decision's own resolve cleared.
+  let approvalRelays = { retried: 0, closed: 0 };
+  try {
+    approvalRelays = await retryFailedApprovalRelays(
+      supabase,
+      (userId) => peekUserBox(supabase, userId),
+      (userId) => armStopAfter(supabase, userId)
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        msg: "sweeper approval relay sweep failed",
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+  }
+
   // Find My: pending "near me" requests probe the shared location on the
   // sweep tick — consume (coarse label only), back off, or expire.
   let locationsResolved = 0;
@@ -273,6 +286,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     originsMarked,
     originsRepaired,
     migrationsDriven,
+    approvalRelays,
     locationsResolved,
     locationsExpired,
   });

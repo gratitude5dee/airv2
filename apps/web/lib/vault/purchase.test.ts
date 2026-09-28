@@ -131,11 +131,43 @@ describe("resolveActiveTurn", () => {
 
   it("treats an open web run as the owner's composer", async () => {
     const supabase = fakeSupabase({
-      agent_runs: { hermes_run_id: "run-2", started_at: "2026-08-18T08:05:00Z" },
+      agent_runs: {
+        hermes_run_id: "run-2",
+        started_at: "2026-08-18T08:05:00Z",
+        sender_tier: 0,
+      },
       flush_jobs: null,
     });
     const turn = await resolveActiveTurn(supabase, "user-1");
     expect(turn).toEqual({ runId: "run-2", ownerInitiated: true });
+  });
+
+  it("never treats a newer tier-1 open run as the owner (R-P0-2)", async () => {
+    // The burst's own agent_runs row carries sender_tier — an open run is
+    // not the owner's composer just because it is the newest row.
+    const supabase = fakeSupabase({
+      agent_runs: {
+        hermes_run_id: "run-9",
+        started_at: "2026-08-18T08:05:00Z",
+        sender_tier: 1,
+      },
+      flush_jobs: OWNER_FLUSH,
+    });
+    const turn = await resolveActiveTurn(supabase, "user-1");
+    expect(turn).toEqual({ runId: "run-9", ownerInitiated: false });
+  });
+
+  it("fails closed on an open run with unknown tier", async () => {
+    const supabase = fakeSupabase({
+      agent_runs: {
+        hermes_run_id: "run-9",
+        started_at: "2026-08-18T08:05:00Z",
+        sender_tier: null,
+      },
+      flush_jobs: null,
+    });
+    const turn = await resolveActiveTurn(supabase, "user-1");
+    expect(turn.ownerInitiated).toBe(false);
   });
 
   it("surfaces a failed turn read instead of reading as not-the-owner", async () => {
