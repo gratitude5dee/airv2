@@ -3,7 +3,7 @@
  * proposed slots plus one pending content_plan decision — and it must not
  * leave half a plan behind when an insert fails.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AgentPlanError, proposeAgentPlan } from "./agentPlan";
 
@@ -121,6 +121,16 @@ const STEPS = [
 ];
 
 describe("proposeAgentPlan", () => {
+  // A pinned clock keeps every Date.now() identical — fixture deltas stay
+  // exact and the impl's lead-time shift is deterministic.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("files proposed slots and one pending content_plan decision", async () => {
     const supabase = fakeSupabase();
     const result = await proposeAgentPlan(supabase.client, "user-1", {
