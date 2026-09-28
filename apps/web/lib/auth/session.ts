@@ -90,6 +90,12 @@ export function verifySessionToken(token: string): string | undefined {
   if (expected.length !== actual.length) return undefined;
   if (!timingSafeEqual(expected, actual)) return undefined;
   try {
+    // The algorithm is pinned: a token claiming another alg never verifies,
+    // even when correctly signed — the header is a constraint, not a choice.
+    const header = JSON.parse(
+      Buffer.from(parts[0] as string, "base64url").toString()
+    ) as { alg?: string };
+    if (header.alg !== "HS256") return undefined;
     const claims = JSON.parse(
       Buffer.from(parts[1] as string, "base64url").toString()
     ) as { sub?: string; exp?: number };
