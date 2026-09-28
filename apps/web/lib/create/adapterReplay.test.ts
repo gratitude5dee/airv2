@@ -4,7 +4,7 @@
  * 409 — the signature itself is the nonce (HMAC over
  * ts.METHOD.path.sha256(body), so a replay is byte-identical).
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adapterBody } from "./adapter";
@@ -15,6 +15,17 @@ const PATH = "/api/internal/create/dev-expire";
 
 beforeAll(() => {
   process.env["CREATE_BRIDGE_SECRET"] = SECRET;
+});
+
+beforeEach(() => {
+  // ts stamps are read off Date.now() on both sides of the window check —
+  // pin the clock so the test can never flap at a boundary.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-25T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /** In-memory stand-in for the create_bridge_nonces claim queries. */

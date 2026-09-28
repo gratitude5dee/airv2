@@ -14,7 +14,7 @@ globalThis.fetch = fetchMock as unknown as typeof fetch;
 
 const payload = {
   sessionId: "freeze-session-1",
-  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+  expiresAt: "2030-01-01T00:00:00.000Z",
   lite: true,
   latest: 0,
   activeJob: null,

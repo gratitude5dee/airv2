@@ -3,7 +3,7 @@
  * adapter route. Every case signs (or mis-signs) the raw body the same way
  * the Worker does — ts + HMAC-SHA256 over `${ts}.${method}.${path}.${sha}`.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const state = vi.hoisted(() => {
@@ -15,8 +15,16 @@ const state = vi.hoisted(() => {
       "select",
       "insert",
       "update",
+      "upsert",
+      "delete",
       "eq",
       "is",
+      "not",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "in",
       "order",
       "limit",
     ]) {
@@ -30,6 +38,13 @@ const state = vi.hoisted(() => {
         responses[`${table}:${terminal}`]?.shift() ??
         responses[`${table}:always`]?.[0] ?? { data: null, error: null };
     }
+    // Awaiting a chain (upsert().select(), delete().lt()) resolves the next
+    // entry queued under `<table>:rows`, falling back to `<table>:always`.
+    ops["then"] = ((resolve: (v: unknown) => unknown) =>
+      Promise.resolve(
+        responses[`${table}:rows`]?.shift() ??
+          responses[`${table}:always`]?.[0] ?? { data: null, error: null }
+      ).then(resolve)) as (...args: unknown[]) => unknown;
     return ops;
   }
   return { calls, responses, client: { from: (t: string) => chain(t) } };
@@ -92,6 +107,10 @@ function signed(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Pin the clock: signed() stamps ts off Date.now() and the bridge checks
+  // it against the ±300s window — both sides must see the same now.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(NOW));
   state.calls.length = 0;
   for (const key of Object.keys(state.responses)) delete state.responses[key];
   process.env["CREATE_BRIDGE_SECRET"] = SECRET;
@@ -99,6 +118,16 @@ beforeEach(() => {
   state.responses["imessage_destinations:always"] = [
     { data: { space_id: "space-1", phone: "+15551234567" }, error: null },
   ];
+  // R-SEC-04's nonce store: every validly-signed request claims its sig.
+  // The delete-sweep and the claim select share this terminal — a non-empty
+  // row back from the upsert-select means "claimed".
+  state.responses["create_bridge_nonces:always"] = [
+    { data: [{ sig: "sig-1" }], error: null },
+  ];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("POST /api/internal/create/notify bridge auth", () => {
@@ -139,13 +168,30 @@ describe("POST /api/internal/create/notify bridge auth", () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
-  it.todo(
-    // R-SEC-04 (parallel PR): the bridge has no nonce/replay store, so a
-    // captured (ts, sig, body) replays within the tolerance window today.
-    // When the replay fix lands this becomes a real assertion: second POST
-    // with identical headers → 401 and sendText still called once.
-    "rejects a replayed signature inside the tolerance window"
-  );
+  it("rejects a replayed signature inside the tolerance window", async () => {
+    // R-SEC-04 landed: claimBridgeNonce dedupes on the signature. Each
+    // request consumes two rows entries — the delete sweep first, then the
+    // upsert-select claim — so the second delivery sees an empty select.
+    state.responses["create_bridge_nonces:rows"] = [
+      { data: null, error: null }, // request 1: sweep
+      { data: [{ sig: "sig-1" }], error: null }, // request 1: claimed
+      { data: null, error: null }, // request 2: sweep
+      { data: [], error: null }, // request 2: sig already claimed
+    ];
+    const first = signed({ job_id: JOB_ID, outcome: "live" });
+    // A replay is a second delivery byte-identical to the first — same
+    // ts, sig, and body — so sign a fresh request with the captured pair.
+    const second = signed(
+      { job_id: JOB_ID, outcome: "live" },
+      {
+        ts: first.headers.get("x-air-ts") ?? "",
+        sig: first.headers.get("x-air-sig") ?? "",
+      }
+    );
+    expect((await POST(first)).status).toBe(200);
+    expect((await POST(second)).status).toBe(409);
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
 
   it("404s a job_id that does not exist", async () => {
     delete state.responses["create_jobs:always"];
