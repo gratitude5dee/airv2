@@ -94,7 +94,10 @@ function authed(body?: unknown): NextRequest {
 
 function ownerRun(): void {
   state.responses["agent_runs:maybeSingle"] = [
-    { data: { hermes_run_id: "run.1", started_at: NOW }, error: null },
+    {
+      data: { hermes_run_id: "run.1", started_at: NOW, sender_tier: 0 },
+      error: null,
+    },
   ];
 }
 

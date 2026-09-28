@@ -12,6 +12,9 @@ const fetchMock = vi.fn(async () => {
 });
 globalThis.fetch = fetchMock as unknown as typeof fetch;
 
+vi.useFakeTimers({ toFake: ["Date"] });
+vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+
 const payload = {
   sessionId: "draw-session-1",
   expiresAt: new Date(Date.now() + 3600_000).toISOString(),

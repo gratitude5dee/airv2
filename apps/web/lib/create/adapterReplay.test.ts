@@ -4,7 +4,7 @@
  * 409 — the signature itself is the nonce (HMAC over
  * ts.METHOD.path.sha256(body), so a replay is byte-identical).
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adapterBody } from "./adapter";
@@ -63,6 +63,13 @@ function signedRequest(body: string, ts?: string): NextRequest {
 }
 
 describe("R-SEC-04: create bridge replay protection", () => {
+  beforeAll(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+  });
+  afterAll(() => vi.useRealTimers());
+
+
   it("accepts the first signed request and rejects its replay with 409", async () => {
     const supabase = nonceDb();
     const raw = JSON.stringify({ now: "2026-09-25T00:00:00Z" });
