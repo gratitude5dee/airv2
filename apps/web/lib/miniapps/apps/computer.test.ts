@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { computer } from "./computer";
 import { captureScreenshotPng } from "@/lib/box/screenshot";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import type { MiniAppContext } from "./types";
 
 vi.mock("@/lib/box/screenshot", () => ({
@@ -17,32 +18,16 @@ vi.mock("@/lib/box/desktop", () => ({
   desktopStreamUrlIfUp: vi.fn(),
 }));
 
-function fakeSupabase(boxState: string | null) {
-  const rows: Record<string, unknown> = {
-    boxes: boxState ? { provider_box_id: "bx_test", state: boxState } : null,
-    agent_runs: [],
-    box_state_events: [],
-  };
-  return {
-    from(table: string) {
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        order: () => chain,
-        limit: () =>
-          Promise.resolve({ data: rows[table] as unknown[], error: null }),
-        maybeSingle: () =>
-          Promise.resolve({ data: rows[table], error: null }),
-      };
-      return chain;
-    },
-  };
-}
-
 function ctxFor(boxState: string | null, url: string): MiniAppContext {
+  const db = new FakeSupabase();
+  if (boxState) {
+    db.tables["boxes"] = [
+      { user_id: "user-1", provider_box_id: "bx_test", state: boxState },
+    ];
+  }
   return {
     request: new NextRequest(new URL(url, "https://mini.wzrd.tech")),
-    supabase: fakeSupabase(boxState),
+    supabase: db.client(),
     app: { slug: "computer" },
     session: { role: "owner", userId: "user-1", via: "card" },
     basePath: "/computer",

@@ -1,5 +1,5 @@
 /**
- * Kernel vault lane for /shop, box-auth (gateway_token bearer like
+ * Kernel vault lane for /shop, box-auth (GATEWAY_TOKEN bearer like
  * /api/browser/purchase). Returns value-free item state only — masks,
  * providers, states. Provider action URLs never leave this route: they are
  * staged into kernel_actions and reach the owner via an iMessage card, not
@@ -19,6 +19,8 @@ import { stageKernelAction } from "@/lib/kernel/actions";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { ACTION_LABELS } from "@/lib/kernel/actions";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,24 +32,6 @@ function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string; boxId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id, provider_box_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return null;
-  return {
-    userId: box.user_id as string,
-    boxId: box.provider_box_id as string,
-  };
-}
 
 async function vaultEnabledOrThrow(): Promise<void> {
   if (!kernelAvailable() || !env.kernelVaultsEnabled()) {
@@ -96,21 +80,15 @@ async function notifyOwnerOfAction(
     );
   } catch (error) {
     await claim?.release().catch(() => undefined);
-    console.error(
-      JSON.stringify({
-        msg: "kernel action card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("kernel action card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  try {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;try {
     await vaultEnabledOrThrow();
   } catch (error) {
     if (error instanceof KernelError) {
@@ -141,9 +119,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const body = (await request.json().catch(() => null)) as {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const body = (await request.json().catch(() => null)) as {
     action?: unknown;
   } | null;
   const action = typeof body?.action === "string" ? body.action : "";

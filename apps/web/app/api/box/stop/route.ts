@@ -10,6 +10,7 @@ import { stop } from "@/lib/box/client";
 import { recordBoxStateEvent } from "@/lib/box/events";
 import { assertNoLiveMigration } from "@/lib/migration/exclusion";
 import { MigrationConflictError } from "@/lib/migration/types";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,13 +70,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .from("boxes")
       .update({ state: "ready" })
       .eq("user_id", session.userId);
-    console.error(
-      JSON.stringify({
-        msg: "user stop refused",
+    log.error("user stop refused", {box_id: row.provider_box_id,
         user_id: session.userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ error: "stop_refused" }, { status: 409 });
   }
   if (result.state === "stopping" || result.state === "archiving") {

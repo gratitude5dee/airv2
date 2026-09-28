@@ -1,0 +1,11 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "experiment_completed",
+  "idempotency_key": "f1e2d3c4b5a6978899aabbccddeeff00",
+  "occurred_at": "2026-09-20T05:01:44Z",
+  "experiment_id": "exp_4f6a8c2d1e0b",
+  "aggregate": {
+    "tokens": 184320,
+    "prompts_replayed": 24
+  }
+}

@@ -240,11 +240,12 @@ export async function claimDueLocationRequests(
     .limit(limit);
   const claimed: LocationRequest[] = [];
   for (const row of (data ?? []) as LocationRequest[]) {
+    const claimedRevision = row.revision + 1;
     const { data: updated, error } = await supabase
       .from("location_requests")
       .update({
         status: "resolving",
-        revision: row.revision + 1,
+        revision: claimedRevision,
       })
       .eq("id", row.id)
       .eq("revision", row.revision)
@@ -252,7 +253,7 @@ export async function claimDueLocationRequests(
       .select("id")
       .maybeSingle();
     if (!error && updated) {
-      claimed.push({ ...row, status: "resolving", revision: row.revision + 1 });
+      claimed.push({ ...row, status: "resolving", revision: claimedRevision });
     }
   }
   return claimed;

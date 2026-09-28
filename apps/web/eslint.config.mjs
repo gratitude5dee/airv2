@@ -7,6 +7,8 @@ const config = [
   {
     ignores: [
       ".next/**", "node_modules/**", "next-env.d.ts",
+      // vitest --coverage output (generated report, not source).
+      "coverage/**",
       // esbuild bundles emitted by the prebuild scripts (git-ignored).
       "public/creator-os/onairos-connect.js", "public/creator-os/identity-booth.js",
       "public/creator-os/image-editor.js", "public/creator-os/prompt-copy.js",

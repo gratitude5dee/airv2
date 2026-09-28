@@ -12,6 +12,7 @@
  * owner's files.
  */
 import { bundleContentType, type BundleFile } from "../miniapps/bundles";
+import { env } from "../env";
 
 export type FindingSeverity = "hard" | "soft";
 
@@ -97,7 +98,7 @@ const HINTS: Record<LintRule, string> = {
 
 /** Image origins the publisher CSP admits besides 'self' and data: (§14.1). */
 export function allowedImageOrigins(): string[] {
-  const configured = process.env["R2_PUBLIC_BASE_URL"];
+  const configured = env.r2PublicBaseUrl();
   return ["https://media.wzrd.tech", ...(configured ? [configured] : [])].map(
     (origin) => origin.replace(/\/+$/, "").toLowerCase()
   );

@@ -27,7 +27,6 @@
  * Namespace path. API_SERVER_KEY / dashboard basic auth still gate every
  * request, and the URL never leaves the server (C3).
  */
-import { randomBytes } from "node:crypto";
 import {
   SandboxError,
   SessionExpiredError,
@@ -52,13 +51,16 @@ import {
   type CommandResult,
   type ForkOptions,
 } from "./types";
+import { log } from "../log";
+import {
+  boxTag,
+  newBoxKey,
+  toBoxId,
+  toBoxKey,
+  toSnapshotId,
+} from "./tenki-refs";
 
-export const TENKI_ID_PREFIX = "tk_";
-export const TENKI_TEMPLATE_PREFIX = "tenki:";
-export const TENKI_BOX_TAG_PREFIX = "air-box:";
-/** Provider limit on a session/snapshot tag. */
-export const TENKI_TAG_MAX_LENGTH = 32;
-export const TENKI_BOX_KEY_BYTES = 12;
+export * from "./tenki-refs";
 
 /** How long stop() waits for the snapshot before reporting "stopping". */
 export const STOP_WAIT_MS = 10_000;
@@ -80,48 +82,6 @@ export const TENKI_BOX_SHAPE = {
  */
 export const ROUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const ROUTE_RENEW_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;
-
-export function isTenkiBoxId(boxId: string): boolean {
-  return boxId.startsWith(TENKI_ID_PREFIX);
-}
-
-export function isTenkiTemplateRef(templateRef: string): boolean {
-  return templateRef.startsWith(TENKI_TEMPLATE_PREFIX);
-}
-
-/**
- * Strict form of a template ref a snapshot can actually come from: the
- * `tenki:` prefix plus a non-empty suffix that isn't a `tk_` box/session id
- * — `providerOf` alone accepts all of those, so config validation (the
- * TENKI_TEMPLATE_ID default probe, the tenki fork path) needs this.
- */
-export function isTenkiSnapshotRef(templateRef: string): boolean {
-  if (!isTenkiTemplateRef(templateRef)) return false;
-  const suffix = templateRef.slice(TENKI_TEMPLATE_PREFIX.length).trim();
-  return suffix.length > 0 && !isTenkiBoxId(suffix);
-}
-
-export function toBoxId(boxKey: string): string {
-  return `${TENKI_ID_PREFIX}${boxKey}`;
-}
-
-export function newBoxKey(): string {
-  return randomBytes(TENKI_BOX_KEY_BYTES).toString("hex");
-}
-
-export function toBoxKey(boxId: string): string {
-  if (!isTenkiBoxId(boxId)) {
-    throw new BoxApiError(400, `${boxId} is not a Tenki box id`);
-  }
-  return boxId.slice(TENKI_ID_PREFIX.length);
-}
-
-export function toSnapshotId(templateRef: string): string {
-  if (!isTenkiTemplateRef(templateRef)) {
-    throw new BoxApiError(400, `${templateRef} is not a Tenki template ref`);
-  }
-  return templateRef.slice(TENKI_TEMPLATE_PREFIX.length);
-}
 
 /**
  * Tenki session state → the Box state vocabulary callers already branch on.
@@ -194,8 +154,7 @@ let client: TenkiSandbox | null = null;
 function sandbox(): TenkiSandbox {
   if (!client) {
     const authToken = env.tenkiApiKey().trim();
-    const baseUrl = process.env["TENKI_API_ENDPOINT"] ||
-      process.env["TENKI_API_URL"] || "https://api.tenki.cloud";
+    const baseUrl = env.tenkiApiBase();
     client = new TenkiSandbox({
       authToken,
       baseUrl,
@@ -215,15 +174,6 @@ function sandbox(): TenkiSandbox {
 /** Test seam: inject a fake client. */
 export function setTenkiClientForTests(next: TenkiSandbox | null): void {
   client = next;
-}
-
-/** Tag every session and snapshot of a box carries; the lookup key. */
-export function boxTag(boxId: string): string {
-  const tag = `${TENKI_BOX_TAG_PREFIX}${toBoxKey(boxId)}`;
-  if (tag.length > TENKI_TAG_MAX_LENGTH || tag !== tag.toLowerCase()) {
-    throw new BoxApiError(400, `${boxId} does not fit a Tenki tag`);
-  }
-  return tag;
 }
 
 function snapshotName(boxId: string): string {
@@ -751,14 +701,9 @@ export async function requestDesktop(
 ): Promise<string | undefined> {
   const ensure = await command(boxId, DESKTOP_ENSURE_SCRIPT, 300);
   if (ensure.exitCode !== 0) {
-    console.log(
-      JSON.stringify({
-        msg: "tenki desktop ensure failed",
-        box_id: boxId,
+    log.info("tenki desktop ensure failed", {box_id: boxId,
         exit_code: ensure.exitCode,
-        stderr: ensure.stderr.trim().slice(0, 500),
-      })
-    );
+        stderr: ensure.stderr.trim().slice(0, 500),});
     return undefined;
   }
   const route = await hostRoute(boxId, DESKTOP_WEB_PORT, {
@@ -768,22 +713,15 @@ export async function requestDesktop(
   if (route.rotated) {
     const rotated = await command(boxId, DESKTOP_ROTATE_SCRIPT, 90);
     if (rotated.exitCode !== 0) {
-      console.log(
-        JSON.stringify({
-          msg: "tenki desktop password rotation failed",
-          box_id: boxId,
+      log.info("tenki desktop password rotation failed", {box_id: boxId,
           exit_code: rotated.exitCode,
-          stderr: rotated.stderr.trim().slice(0, 500),
-        })
-      );
+          stderr: rotated.stderr.trim().slice(0, 500),});
       return undefined;
     }
   }
   const secret = (await command(boxId, DESKTOP_SECRET_READ, 15)).stdout.trim();
   if (!secret) {
-    console.log(
-      JSON.stringify({ msg: "tenki desktop secret missing", box_id: boxId })
-    );
+    log.info("tenki desktop secret missing", {box_id: boxId});
     return undefined;
   }
   const base = route.url.endsWith("/") ? route.url.slice(0, -1) : route.url;

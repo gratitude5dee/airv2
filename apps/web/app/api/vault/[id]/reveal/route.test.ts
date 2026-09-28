@@ -4,28 +4,32 @@
  * is read. A 404 must never wake the box.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase, type FakeResult } from "@/lib/testing/fakeSupabase";
 import { NextRequest } from "next/server";
 
-const state = vi.hoisted(() => {
-  const calls: { table: string; method: string; args: unknown[] }[] = [];
-  const responses: Record<string, { data: unknown; error: unknown }[]> = {};
-  function chain(table: string): Record<string, (...args: unknown[]) => unknown> {
-    const ops: Record<string, (...args: unknown[]) => unknown> = {};
-    for (const method of ["select", "insert", "update", "eq", "is", "order", "limit"]) {
-      ops[method] = (...args: unknown[]) => {
-        calls.push({ table, method, args });
-        return ops;
-      };
-    }
-    for (const terminal of ["single", "maybeSingle"]) {
-      ops[terminal] = async () =>
-        responses[`${table}:${terminal}`]?.shift() ??
-        responses[`${table}:always`]?.[0] ?? { data: null, error: null };
-    }
-    return ops;
+const db = new FakeSupabase();
+const responses: Record<string, Partial<FakeResult>[]> = {};
+// Harness terminal keys: "t:maybeSingle"/"t:single" answer the matching
+// single-row terminal (consumed once), "t:rows" an awaited select, and
+// "t:always" is the stable fallback. Writes fall through to FakeSupabase.
+db.resolve = (q) => {
+  if (q.single) {
+    return (
+      responses[`${q.table}:maybeSingle`]?.shift() ??
+      responses[`${q.table}:single`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
+    );
   }
-  return { calls, responses, client: { from: (t: string) => chain(t) } };
-});
+  if (q.mode === "select") {
+    return (
+      responses[`${q.table}:rows`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
+    );
+  }
+  return undefined;
+};
 
 const isSameOriginRequest = vi.hoisted(() => vi.fn(() => true));
 const requestSession = vi.hoisted(() =>
@@ -36,7 +40,7 @@ const armStopAfter = vi.hoisted(() => vi.fn(async () => undefined));
 const reveal = vi.hoisted(() => vi.fn(async () => "s3cret"));
 const totp = vi.hoisted(() => vi.fn(async () => "654321"));
 
-vi.mock("@/lib/supabase", () => ({ serviceClient: () => state.client }));
+vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 vi.mock("@/lib/http/origin", () => ({ isSameOriginRequest }));
 vi.mock("@/lib/auth/surface", () => ({ requestSession }));
 vi.mock("@/lib/orchestrator/boxes", async (importOriginal) => {
@@ -66,11 +70,20 @@ function post(body: unknown): Promise<Response> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  state.calls.length = 0;
-  for (const key of Object.keys(state.responses)) delete state.responses[key];
+  db.reset();
+  db.resolve = (q) => {
+    if (!q.single) return undefined;
+    return (
+      responses[`${q.table}:maybeSingle`]?.shift() ??
+      responses[`${q.table}:single`]?.shift() ??
+      responses[`${q.table}:always`]?.[0] ??
+      { data: null, error: null }
+    );
+  };
+  for (const key of Object.keys(responses)) delete responses[key];
   isSameOriginRequest.mockReturnValue(true);
   requestSession.mockResolvedValue({ userId: "user-1" });
-  state.responses["vault_items:always"] = [
+  responses["vault_items:always"] = [
     { data: { id: ITEM_ID, kind: "password" }, error: null },
   ];
 });
@@ -94,17 +107,15 @@ describe("POST /api/vault/[id]/reveal", () => {
   it("404s when the item belongs to another user — without waking a box", async () => {
     // The ownership query scopes on user_id; the fake returns no row for
     // this user (wrong owner) → 404 before ensureBoxAwake is touched.
-    state.responses["vault_items:maybeSingle"] = [{ data: null, error: null }];
+    responses["vault_items:maybeSingle"] = [{ data: null, error: null }];
     const response = await post({ field: "password" });
     expect(response.status).toBe(404);
     expect(ensureBoxAwake).not.toHaveBeenCalled();
-    const ownership = state.calls.find(
-      (c) => c.table === "vault_items" && c.method === "eq"
-    );
-    expect(state.calls.some(
-      (c) => c.table === "vault_items" && c.method === "eq" && c.args[0] === "user_id" && c.args[1] === "user-1"
-    )).toBe(true);
-    expect(ownership).toBeTruthy();
+    expect(
+      db.filters.some(
+        (f) => f.table === "vault_items" && f.op === "eq" && f.column === "user_id" && f.value === "user-1"
+      )
+    ).toBe(true);
   });
 
   it("rejects a bad item id and an unknown field with 400", async () => {

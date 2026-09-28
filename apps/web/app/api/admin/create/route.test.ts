@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { INTAKE_STAGES } from "@/lib/create/intake";
 
 const db = vi.hoisted(() => ({ fake: null as unknown as { client(): unknown } }));
@@ -20,11 +20,11 @@ const authed = (qs = "") =>
 const recent = new Date(Date.now() - 3_600_000).toISOString();
 const old = new Date(Date.now() - 400 * 86_400_000).toISOString();
 
-let fake: AdminFakeDb;
+let fake: FakeSupabase;
 
 beforeEach(() => {
   process.env["ADMIN_API_KEY"] = "admin-key";
-  fake = new AdminFakeDb();
+  fake = new FakeSupabase();
   db.fake = fake;
 });
 

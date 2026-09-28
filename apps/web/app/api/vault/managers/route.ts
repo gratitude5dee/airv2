@@ -22,6 +22,7 @@ import {
   refreshManager,
   type ManagerId,
 } from "@/lib/vault/managers";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,15 +105,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof ManagerInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    console.error(
-      JSON.stringify({
-        msg: "vault manager action failed",
-        user_id: session.userId,
+    log.error("vault manager action failed", {user_id: session.userId,
         manager,
         action,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "manager action failed" }, { status: 502 });
   }
 }

@@ -1,0 +1,6 @@
+{"comment": "F105 \u2014 Link spend request + control-plane payment_request decision"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "$LINK spend-request create --idempotencyKey checkout-eval-f105 --credentialType card --amount 2400 --currency usd --merchantName \"Roaster Coffee\" --merchantUrl \"https://roaster.example.com/checkout\" --context \"Purchase the 12-pack of the owner's usual espresso beans requested this turn; cart total confirmed at checkout.\" --requestApproval true"}}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "$LINK spend-request request-approval sr_eval_f105"}}
+{"call": {"method": "POST", "path": "/api/miniapps/commerce", "body": {"action": "payment_request", "currency": "usd", "amount": 2400, "payee": "roaster", "memo": "12-pack espresso beans"}}}
+{"sse": {"event": "message.delta", "delta": "Staged the spend request for the beans \u2014 it's waiting on your approval before anything is paid."}}
+{"sse": {"event": "run.completed"}}

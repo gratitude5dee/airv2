@@ -8,9 +8,9 @@
  * tokens are cached only in this warm process and refreshed before expiry;
  * no bearer is persisted or logged.
  */
-import { createGrpcClient } from "@photon-ai/advanced-imessage/grpc";
-import { cloud, type TokenData } from "spectrum-ts";
+import type { TokenData } from "spectrum-ts";
 import { env } from "../env";
+import { createRecordingFastReactionSender } from "./recording";
 
 const DEFAULT_IMESSAGE_ADDRESS = "imessage.spectrum.photon.codes:443";
 const TOKEN_REFRESH_SKEW_MS = 30_000;
@@ -30,10 +30,12 @@ async function issueTokenData(): Promise<TokenData> {
     return tokenCache.data;
   }
   if (!tokenRequest) {
-    tokenRequest = cloud
-      .issueImessageTokens(
-        env.spectrumProjectId(),
-        env.spectrumProjectSecret(),
+    tokenRequest = import("spectrum-ts")
+      .then(({ cloud }) =>
+        cloud.issueImessageTokens(
+          env.spectrumProjectId(),
+          env.spectrumProjectSecret(),
+        )
       )
       .then((data) => {
         tokenCache = {
@@ -86,12 +88,14 @@ export interface FastReactionSender {
 export async function createFastReactionSender(
   phone: string,
 ): Promise<FastReactionSender | undefined> {
+  const outbox = env.spectrumRecordOutbox();
+  if (outbox) return createRecordingFastReactionSender(outbox);
   // Eval runs record sends through the SpectrumSender seam instead; no
   // fast-path tokens exist there, so the caller falls back to sender.react.
   if (env.evalSpectrumRecordUrl()) return undefined;
   const tokenData = await issueTokenData();
   let address =
-    process.env["SPECTRUM_IMESSAGE_ADDRESS"] ?? DEFAULT_IMESSAGE_ADDRESS;
+    env.spectrumImessageAddress() ?? DEFAULT_IMESSAGE_ADDRESS;
   let token: string;
   if (tokenData.type === "shared") {
     token = tokenData.token;
@@ -103,6 +107,9 @@ export async function createFastReactionSender(
     token = dedicatedToken;
     address = `${server}.imsg.photon.codes:443`;
   }
+  const { createGrpcClient } = await import(
+    "@photon-ai/advanced-imessage/grpc"
+  );
   const client = createGrpcClient({
     address,
     autoIdempotency: true,

@@ -11,18 +11,20 @@
  * the merchant's Link flow in the headed browser themselves.
  */
 
+import { env } from "../env";
+
 export interface LinkProvider {
   hostSupportsLink(host: string): Promise<boolean>;
 }
 
 function linkEnabled(): boolean {
-  return process.env["STRIPE_LINK_ENABLED"] === "1";
+  return env.stripeLinkEnabled();
 }
 
 /** Env-allowlist stand-in until lib/payments/stripe.ts (Session B) lands. */
 const envAllowlistProvider: LinkProvider = {
   async hostSupportsLink(host: string): Promise<boolean> {
-    return (process.env["STRIPE_LINK_HOSTS"] ?? "")
+    return env.stripeLinkHosts()
       .split(",")
       .map((h) => h.trim().toLowerCase().replace(/^www\./, ""))
       .filter(Boolean)

@@ -3,19 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { activeTheme, userTheme, withTheme } from "./themeContext";
 import { DEFAULT_THEME, theme } from "./themes";
 import { renderShell } from "./shell";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 function usersClient(miniappTheme: string | null): SupabaseClient {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: miniappTheme === null ? null : { miniapp_theme: miniappTheme },
-          }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  db.tables["users"] =
+    miniappTheme === null ? [] : [{ id: "u1", miniapp_theme: miniappTheme }];
+  return db.client();
 }
 
 describe("themeContext", () => {

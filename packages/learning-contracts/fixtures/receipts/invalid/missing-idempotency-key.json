@@ -1,0 +1,5 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "daemon_started",
+  "occurred_at": "2026-09-20T04:12:33Z"
+}

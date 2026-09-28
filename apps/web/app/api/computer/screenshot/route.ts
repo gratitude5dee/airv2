@@ -11,6 +11,7 @@ import {
   captureScreenshotPng,
   ScreenshotError,
 } from "@/lib/box/screenshot";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,13 +51,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         { status: 501 }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "screenshot capture failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("screenshot capture failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "capture failed" }, { status: 502 });
   }
 }

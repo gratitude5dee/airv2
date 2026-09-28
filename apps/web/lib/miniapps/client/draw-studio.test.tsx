@@ -4,7 +4,7 @@
  * renders the canvas controls; the eraser toggles its pressed state.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import "@/lib/testing/jsdom";
 
 const fetchMock = vi.fn(async () => {
@@ -43,7 +43,9 @@ describe("draw-studio", () => {
   it("toggles the eraser on tap", async () => {
     const eraser = await screen.findByText("Eraser");
     expect(eraser.getAttribute("aria-pressed")).toBe("false");
-    eraser.click();
+    await act(async () => {
+      eraser.click();
+    });
     await waitFor(() => {
       expect(eraser.getAttribute("aria-pressed")).toBe("true");
     });

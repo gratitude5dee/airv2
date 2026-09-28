@@ -1,4 +1,5 @@
 import { command } from "../box/client";
+import { log } from "../log";
 
 /** Only inspect storage after SQLite itself reports corruption. Never log rows. */
 export function isStateDatabaseError(error: unknown): boolean {
@@ -46,11 +47,9 @@ export async function logStateDatabaseHealth(boxId: string): Promise<void> {
     const result = await command(boxId, STATE_HEALTH_PROBE, 20);
     // The fixed probe only emits file metadata, schema names and row counts.
     const health: unknown = result.exitCode === 0 ? JSON.parse(result.stdout) : null;
-    console.error(JSON.stringify({
-      msg: "hermes state database health", box_id: boxId,
-      exit_code: result.exitCode, health,
-    }));
+    log.error("hermes state database health", {box_id: boxId,
+      exit_code: result.exitCode, health,});
   } catch {
-    console.error(JSON.stringify({msg: "hermes state database probe unavailable", box_id: boxId}));
+    log.error("hermes state database probe unavailable", {box_id: boxId});
   }
 }

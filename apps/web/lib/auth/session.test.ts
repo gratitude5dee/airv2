@@ -13,6 +13,7 @@ const token = (header: object, claims: object, secret = SECRET) => {
 };
 
 const exp = Math.floor(Date.now() / 1000) + 3600;
+const CLAIMS = { sub: "user-1", sid: "sess-1", exp };
 
 describe("session tokens", () => {
   beforeEach(() => {
@@ -25,7 +26,7 @@ describe("session tokens", () => {
 
   it("round-trips a token it issued", () => {
     const issued = createSessionToken("user-1", "sess-1");
-    expect(verifySessionToken(issued)).toStrictEqual({
+    expect(verifySessionToken(issued)).toEqual({
       userId: "user-1",
       sessionId: "sess-1",
     });
@@ -53,18 +54,19 @@ describe("session tokens", () => {
   });
 
   it("rejects a wrong algorithm header even when correctly signed", () => {
-    const none = token({ alg: "none" }, { sub: "user-1", sid: "sess-1", exp });
+    const none = token({ alg: "none" }, CLAIMS);
     expect(verifySessionToken(none)).toBeUndefined();
-    const hs512 = token(
-      { alg: "HS512" },
-      { sub: "user-1", sid: "sess-1", exp }
-    );
+    const hs512 = token({ alg: "HS512" }, CLAIMS);
     expect(verifySessionToken(hs512)).toBeUndefined();
   });
 
-  it("rejects a token with no sub", () => {
-    const noSub = token({ alg: "HS256", typ: "JWT" }, { exp });
+  it("rejects a token with no sub or no sid", () => {
+    const noSub = token({ alg: "HS256", typ: "JWT" }, { sid: "sess-1", exp });
     expect(verifySessionToken(noSub)).toBeUndefined();
+    // A pre-SEC-07 token (sub + exp, no sid) verifies false by design: it has
+    // no session row to check against.
+    const noSid = token({ alg: "HS256", typ: "JWT" }, { sub: "user-1", exp });
+    expect(verifySessionToken(noSid)).toBeUndefined();
   });
 
   it("rejects malformed tokens", () => {

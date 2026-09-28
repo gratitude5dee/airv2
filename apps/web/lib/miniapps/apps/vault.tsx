@@ -35,6 +35,7 @@ import { esc, forbidden, withBaseHeaders } from "../html";
 import { renderShell, shellHtml } from "../shell";
 import { timedFetch } from "../timing";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 // V2 (C18/C20): card values never render on this reduced-trust surface —
 // card-field reveal is web-tab (full session) only. Logins may reveal here.
@@ -597,13 +598,8 @@ export const vault: MiniAppModule = {
         if (error instanceof VaultCliError) {
           return vaultPage(supabase, userId, null, "reveal failed", lite);
         }
-        console.error(
-          JSON.stringify({
-            msg: "vault mini reveal failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+        log.error("vault mini reveal failed", {user_id: userId,
+            error: error instanceof Error ? error.message : "unknown",});
         return vaultPage(supabase, userId, null, "reveal failed", lite);
       }
     }

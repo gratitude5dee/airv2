@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 type Row = Record<string, unknown>;
 
 let decisions: Row[] = [];
@@ -225,6 +226,183 @@ describe("POST /api/decisions — miniapp_publish (V12 §9.3)", () => {
       error: expect.stringContaining("upload a bundle"),
     });
     expect(finalize.onPublishDecision).not.toHaveBeenCalled();
+    expectLog(/miniapp_publish\ approval\ failed/, { level: "error" });
+  });
+});
+
+// R-TQ-06: auth + ownership on the Needs-you queue — the session user is the
+// only selector ever applied to the decisions table.
+describe("GET /api/decisions", () => {
+  beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
+    decisions = [
+      {
+        id: "d-pending",
+        user_id: "user-1",
+        kind: "note",
+        status: "pending",
+        created_at: "2026-09-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        id: "d-other-user",
+        user_id: "user-2",
+        kind: "note",
+        status: "pending",
+        created_at: "2026-09-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        id: "d-resolved",
+        user_id: "user-1",
+        kind: "note",
+        status: "approved",
+        created_at: "2026-09-01T00:00:00.000Z",
+        resolved_at: new Date().toISOString(),
+        payload: {},
+      },
+    ];
+  });
+
+  it("rejects unauthenticated callers with 401", async () => {
+    sessionUserId.mockReturnValue(null);
+    const response = await GET(new NextRequest("https://air.test/api/decisions"));
+    expect(response.status).toBe(401);
+  });
+
+  it("lists only the session user's pending decisions", async () => {
+    const response = await GET(new NextRequest("https://air.test/api/decisions"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.decisions.map((d: Row) => d["id"])).toEqual(["d-pending"]);
+  });
+
+  it("?status=resolved returns approved/dismissed receipts, not pending rows", async () => {
+    const response = await GET(
+      new NextRequest("https://air.test/api/decisions?status=resolved"),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.decisions.map((d: Row) => d["id"])).toEqual(["d-resolved"]);
+  });
+});
+
+describe("POST /api/decisions — auth and ownership", () => {
+  beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
+    decisions = [
+      {
+        id: "decision-1",
+        user_id: "user-2",
+        kind: "note",
+        ref: null,
+        status: "pending",
+        payload: {},
+      },
+    ];
+    updateError = null;
+    beforeUpdate = null;
+  });
+
+  it("rejects unauthenticated callers with 401", async () => {
+    sessionUserId.mockReturnValue(null);
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(401);
+    expect(decisions[0]).toMatchObject({ status: "pending" });
+  });
+
+  it("404s another user's decision and never resolves it", async () => {
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(404);
+    expect(decisions[0]).toMatchObject({ status: "pending" });
+  });
+});
+
+// R-TQ-06: auth + ownership on the Needs-you queue — the session user is the
+// only selector ever applied to the decisions table.
+describe("GET /api/decisions", () => {
+  beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
+    decisions = [
+      {
+        id: "d-pending",
+        user_id: "user-1",
+        kind: "note",
+        status: "pending",
+        created_at: "2026-09-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        id: "d-other-user",
+        user_id: "user-2",
+        kind: "note",
+        status: "pending",
+        created_at: "2026-09-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        id: "d-resolved",
+        user_id: "user-1",
+        kind: "note",
+        status: "approved",
+        created_at: "2026-09-01T00:00:00.000Z",
+        resolved_at: new Date().toISOString(),
+        payload: {},
+      },
+    ];
+  });
+
+  it("rejects unauthenticated callers with 401", async () => {
+    sessionUserId.mockReturnValue(null);
+    const response = await GET(new NextRequest("https://air.test/api/decisions"));
+    expect(response.status).toBe(401);
+  });
+
+  it("lists only the session user's pending decisions", async () => {
+    const response = await GET(new NextRequest("https://air.test/api/decisions"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.decisions.map((d: Row) => d["id"])).toEqual(["d-pending"]);
+  });
+
+  it("?status=resolved returns approved/dismissed receipts, not pending rows", async () => {
+    const response = await GET(
+      new NextRequest("https://air.test/api/decisions?status=resolved"),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.decisions.map((d: Row) => d["id"])).toEqual(["d-resolved"]);
+  });
+});
+
+describe("POST /api/decisions — auth and ownership", () => {
+  beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
+    decisions = [
+      {
+        id: "decision-1",
+        user_id: "user-2",
+        kind: "note",
+        ref: null,
+        status: "pending",
+        payload: {},
+      },
+    ];
+    updateError = null;
+    beforeUpdate = null;
+  });
+
+  it("rejects unauthenticated callers with 401", async () => {
+    sessionUserId.mockReturnValue(null);
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(401);
+    expect(decisions[0]).toMatchObject({ status: "pending" });
+  });
+
+  it("404s another user's decision and never resolves it", async () => {
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(404);
+    expect(decisions[0]).toMatchObject({ status: "pending" });
   });
 });
 

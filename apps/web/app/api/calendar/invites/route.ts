@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { callingBox } from "@/lib/box/auth";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 import { command } from "@/lib/box/client";
 import { serviceClient } from "@/lib/supabase";
 import { parseBody } from "@/lib/http/body";
@@ -33,13 +33,8 @@ const FileInviteSchema = z.object({
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) {
-    return NextResponse.json(
-      { error: "unauthorized" },
-      { status: 401, headers: NO_STORE }
-    );
-  }
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
   const parsed = await parseBody(request, FileInviteSchema);
   if (!parsed.ok) return parsed.response;
   const { filename, ics, sender } = parsed.data;

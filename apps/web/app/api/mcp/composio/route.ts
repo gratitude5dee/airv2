@@ -10,14 +10,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
 import { ensureComposioSession } from "@/lib/provisioning/connectors";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-function unauthorized(): NextResponse {
-  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-}
 
 /** MCP streamable-HTTP headers the client legitimately controls. */
 const FORWARDED_REQUEST_HEADERS = [
@@ -35,30 +33,16 @@ const FORWARDED_RESPONSE_HEADERS = [
 ] as const;
 
 async function proxy(request: NextRequest): Promise<Response> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return unauthorized();
-
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return unauthorized();
-  const userId = box.user_id as string;
-
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
+  const userId = box.userId;
   let mcpUrl: string;
   try {
     ({ mcpUrl } = await ensureComposioSession(supabase, userId));
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "composio mcp proxy: session resolve failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-      })
-    );
+    log.error("composio mcp proxy: session resolve failed", {user_id: userId,
+        error: error instanceof Error ? error.message.slice(0, 200) : "unknown",});
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
   }
 

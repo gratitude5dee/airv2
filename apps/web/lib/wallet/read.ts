@@ -4,8 +4,6 @@
  * the projected JSON from /api/wallet* (C21 — the secret never leaves the
  * server). Insight outages degrade to native-only rather than 500.
  */
-import { createThirdwebClient, defineChain, Insight } from "thirdweb";
-import { getWalletBalance } from "thirdweb/wallets";
 import { env } from "../env";
 import {
   displayAmount,
@@ -16,7 +14,8 @@ import {
 const MAX_TOKENS = 20;
 const MAX_ACTIVITY = 25;
 
-function serverClient() {
+async function serverClient() {
+  const { createThirdwebClient } = await import("thirdweb");
   return createThirdwebClient({ secretKey: env.thirdwebSecretKey() });
 }
 
@@ -39,7 +38,12 @@ export interface WalletSummary {
 export async function readWalletSummary(
   address: string
 ): Promise<WalletSummary> {
-  const client = serverClient();
+  const [{ defineChain, Insight }, { getWalletBalance }, client] =
+    await Promise.all([
+      import("thirdweb"),
+      import("thirdweb/wallets"),
+      serverClient(),
+    ]);
   const chainId = env.walletChainId();
   const chain = defineChain(chainId);
   let degraded = false;
@@ -86,7 +90,10 @@ export async function readWalletSummary(
 export async function readWalletActivity(
   address: string
 ): Promise<{ transactions: ProjectedTransaction[]; degraded: boolean }> {
-  const client = serverClient();
+  const [{ defineChain, Insight }, client] = await Promise.all([
+    import("thirdweb"),
+    serverClient(),
+  ]);
   const chainId = env.walletChainId();
   try {
     const transactions = await Insight.getTransactions({

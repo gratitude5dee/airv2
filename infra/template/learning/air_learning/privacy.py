@@ -71,6 +71,20 @@ ALLOWED_AGGREGATE_KEYS = {
 
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
+# Bounded enums in learning-receipt.v1 — a value outside the enum is
+# contract-invalid, not just unallowlisted.
+ALLOWED_BACKENDS = {"native", "hud", "harbor"}
+ALLOWED_OS_CLASSES = {"ubuntu", "omarchy", "macos"}
+ALLOWED_TIERS = {"fast", "balanced", "deep"}
+ALLOWED_ROLLBACK_REASONS = {
+    "hard_gate",
+    "integrity_error",
+    "task_family_regression",
+    "owner_rejection",
+    "incompatible_update",
+    "kill_switch",
+}
+
 # Secret shapes for local-log redaction and canary detection.
 _SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9]{16,}"),
@@ -91,6 +105,11 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
     unknown = set(receipt) - ALLOWED_KEYS
     if unknown:
         raise ContentBoundaryError(f"disallowed receipt keys: {sorted(unknown)}")
+    # learning-receipt.v1 "required": a receipt that lost any of these can
+    # neither be deduplicated nor ordered, so it must never leave the box.
+    for key in ("schema_version", "event_type", "idempotency_key", "occurred_at"):
+        if not isinstance(receipt.get(key), str) or not receipt[key]:
+            raise ContentBoundaryError(f"missing required key: {key}")
     if receipt.get("schema_version") != RECEIPT_SCHEMA_VERSION:
         raise ContentBoundaryError("bad schema_version")
     if receipt.get("event_type") not in ALLOWED_EVENT_TYPES:
@@ -99,6 +118,15 @@ def validate_receipt(receipt: dict[str, Any]) -> None:
         value = receipt.get(id_key)
         if value is not None and not _OPAQUE_ID.match(str(value)):
             raise ContentBoundaryError(f"{id_key} is not an opaque id")
+    for enum_key, allowed in (
+        ("backend", ALLOWED_BACKENDS),
+        ("os_class", ALLOWED_OS_CLASSES),
+        ("requested_tier", ALLOWED_TIERS),
+        ("rollback_reason", ALLOWED_ROLLBACK_REASONS),
+    ):
+        value = receipt.get(enum_key)
+        if value is not None and value not in allowed:
+            raise ContentBoundaryError(f"{enum_key} not in contract enum")
     aggregate = receipt.get("aggregate")
     if aggregate is not None:
         if not isinstance(aggregate, dict):

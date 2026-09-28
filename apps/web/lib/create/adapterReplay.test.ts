@@ -4,9 +4,10 @@
  * 409 — the signature itself is the nonce (HMAC over
  * ts.METHOD.path.sha256(body), so a replay is byte-identical).
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { adapterBody } from "./adapter";
 import { bridgePayload, bridgeSign } from "./bridge";
 
@@ -20,32 +21,22 @@ beforeAll(() => {
 /** In-memory stand-in for the create_bridge_nonces claim queries. */
 function nonceDb(): SupabaseClient {
   const claimed = new Set<string>();
-  const deleted: string[] = [];
-  return {
-    from: (table: string) => {
-      if (table !== "create_bridge_nonces") {
-        throw new Error(`unexpected table ${table}`);
-      }
-      return {
-        delete: () => ({
-          lt: (column: string, cutoff: string) => {
-            deleted.push(`${column}<${cutoff}`);
-            return Promise.resolve({ data: [], error: null });
-          },
-        }),
-        upsert: (row: { sig: string }) => ({
-          select: () => {
-            const fresh = !claimed.has(row.sig);
-            if (fresh) claimed.add(row.sig);
-            return Promise.resolve({
-              data: fresh ? [row] : [],
-              error: null,
-            });
-          },
-        }),
-      };
-    },
-  } as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  // upsert … onConflict sig ignoreDuplicates: fresh sig returns the row,
+  // a replayed sig returns []. FakeSupabase records but does not dedup, so
+  // the answer is programmed via `resolve`.
+  db.resolve = (q) => {
+    if (q.table !== "create_bridge_nonces") return undefined;
+    if (q.mode === "delete") return { data: [], error: null };
+    if (q.mode === "upsert") {
+      const sig = (q.args[0] as { sig: string }).sig;
+      const fresh = !claimed.has(sig);
+      if (fresh) claimed.add(sig);
+      return { data: fresh ? [{ sig }] : [], error: null };
+    }
+    return undefined;
+  };
+  return db.client();
 }
 
 function signedRequest(body: string, ts?: string): NextRequest {
@@ -63,13 +54,9 @@ function signedRequest(body: string, ts?: string): NextRequest {
 }
 
 describe("R-SEC-04: create bridge replay protection", () => {
-  beforeAll(() => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
-  });
-  afterAll(() => vi.useRealTimers());
 
-
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
   it("accepts the first signed request and rejects its replay with 409", async () => {
     const supabase = nonceDb();
     const raw = JSON.stringify({ now: "2026-09-25T00:00:00Z" });

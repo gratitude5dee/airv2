@@ -8,6 +8,7 @@ import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { stopRun } from "@/lib/hermes/client";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +41,8 @@ export async function POST(
     const box = await ensureBoxAwake(supabase, userId);
     await stopRun(box.target, runId);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "chat stop failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("chat stop failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ error: "stop failed" }, { status: 502 });
   }
   await supabase

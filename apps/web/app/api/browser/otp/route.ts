@@ -1,5 +1,5 @@
 /**
- * Live sign-in code lane (box-auth, gateway_token bearer like
+ * Live sign-in code lane (box-auth, GATEWAY_TOKEN bearer like
  * /api/browser/purchase). When a site sends a one-time code to the owner's
  * phone/email instead of using a TOTP seed, the box files a request, texts
  * the owner a vault miniapp card, then polls until the owner pastes the
@@ -17,6 +17,9 @@ import { serviceClient } from "@/lib/supabase";
 import { registerVaultValue } from "@/lib/vault/scrub";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,20 +36,6 @@ function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  return box ? { userId: box.user_id as string } : null;
-}
 
 async function sendOtpCard(
   supabase: SupabaseClient,
@@ -78,13 +67,8 @@ async function sendOtpCard(
     );
   } catch (error) {
     await claim?.release().catch(() => undefined);
-    console.error(
-      JSON.stringify({
-        msg: "otp card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("otp card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
@@ -118,19 +102,25 @@ async function requestOtp(
     .select("id")
     .single();
   if (decisionError || !decision) {
-    await supabase
-      .from("otp_requests")
-      .delete()
-      .eq("id", requestId)
-      .eq("user_id", userId);
+    await db.write(
+      supabase
+        .from("otp_requests")
+        .delete()
+        .eq("id", requestId)
+        .eq("user_id", userId),
+      { what: "drop undecided otp request", user_id: userId }
+    );
     throw new Error(
       `decisions insert failed: ${decisionError?.message ?? "unknown"}`
     );
   }
-  await supabase
-    .from("otp_requests")
-    .update({ decision_id: decision.id as string })
-    .eq("id", requestId);
+  await db.write(
+    supabase
+      .from("otp_requests")
+      .update({ decision_id: decision.id as string })
+      .eq("id", requestId),
+    { what: "link otp decision", user_id: userId }
+  );
   return {
     requestId,
     decisionId: decision.id as string,
@@ -153,34 +143,48 @@ async function pollOtp(
   const status = row.status as string;
   const expiresAt = row.expires_at as string;
   if (status === "pending" && new Date(expiresAt).getTime() <= Date.now()) {
-    await supabase
-      .from("otp_requests")
-      .update({ status: "expired" })
-      .eq("id", requestId)
-      .eq("status", "pending");
+    await db.write(
+      supabase
+        .from("otp_requests")
+        .update({ status: "expired" })
+        .eq("id", requestId)
+        .eq("status", "pending"),
+      { what: "expire otp request", user_id: userId }
+    );
     return { status: "expired" };
   }
   if (status !== "resolved") {
     return { status };
   }
-  // Exactly-once pop: whoever wins this update owns the code; it is wiped in
-  // the same write so a retry or second caller can never re-read it.
-  const { data: claimed } = await supabase
-    .from("otp_requests")
-    .update({
-      status: "popped",
-      popped_at: new Date().toISOString(),
-      code: null,
-    })
-    .eq("id", requestId)
-    .eq("user_id", userId)
-    .eq("status", "resolved")
-    .select("code")
-    .maybeSingle();
+  // Exactly-once pop: whoever wins the status CAS owns the code — RETURNING
+  // hands the winner the row's pre-wipe code in the same atomic write, and a
+  // losing concurrent caller sees status already "popped" and gets no row.
+  const claimed = await db.write(
+    supabase
+      .from("otp_requests")
+      .update({
+        status: "popped",
+        popped_at: new Date().toISOString(),
+      })
+      .eq("id", requestId)
+      .eq("user_id", userId)
+      .eq("status", "resolved")
+      .select("code")
+      .maybeSingle(),
+    { what: "pop otp request", user_id: userId }
+  );
   if (!claimed?.code) {
     return { status: "popped" };
   }
   const code = claimed.code as string;
+  await db.write(
+    supabase
+      .from("otp_requests")
+      .update({ code: null })
+      .eq("id", requestId)
+      .eq("status", "popped"),
+    { what: "wipe otp code", user_id: userId }
+  );
   registerVaultValue(code);
   return { status: "resolved", code };
 }
@@ -190,19 +194,25 @@ async function cancelOtp(
   userId: string,
   requestId: string
 ): Promise<{ status: string }> {
-  const { data: row } = await supabase
-    .from("otp_requests")
-    .update({ status: "denied", resolved_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("user_id", userId)
-    .eq("status", "pending")
-    .select("decision_id")
-    .maybeSingle();
+  const row = await db.write(
+    supabase
+      .from("otp_requests")
+      .update({ status: "denied", resolved_at: new Date().toISOString() })
+      .eq("id", requestId)
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .select("decision_id")
+      .maybeSingle(),
+    { what: "deny otp request", user_id: userId }
+  );
   if (row?.decision_id) {
-    await supabase
-      .from("decisions")
-      .update({ status: "dismissed", resolved_at: new Date().toISOString() })
-      .eq("id", row.decision_id as string);
+    await db.write(
+      supabase
+        .from("decisions")
+        .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+        .eq("id", row.decision_id as string),
+      { what: "dismiss otp decision", user_id: userId }
+    );
   }
   return { status: row ? "denied" : "not_pending" };
 }
@@ -213,9 +223,8 @@ function validRequestId(raw: unknown): string | null {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const requestId = validRequestId(
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const requestId = validRequestId(
     request.nextUrl.searchParams.get("request_id")
   );
   if (!requestId) return json({ error: "invalid request" }, 400);
@@ -225,9 +234,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const body = (await request.json().catch(() => null)) as {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const body = (await request.json().catch(() => null)) as {
     action?: unknown;
     host?: unknown;
     run_id?: unknown;

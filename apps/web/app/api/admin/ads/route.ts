@@ -8,18 +8,17 @@
  */
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import { sealSecret } from "@/lib/crypto/secretbox";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const body = (await request.json().catch(() => ({}))) as {
     user_id?: string;
     provider?: string;

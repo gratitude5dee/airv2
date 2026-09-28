@@ -5,6 +5,7 @@
  * route's sweep entry ran exactly once.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
@@ -38,37 +39,8 @@ const mocks = vi.hoisted(() => ({
   tickWatchlists: vi.fn(async () => 0),
 }));
 
-vi.mock("@/lib/supabase", () => {
-  const chain = (() => {
-    const self: Record<string, unknown> = {};
-    for (const method of [
-      "select",
-      "insert",
-      "update",
-      "delete",
-      "eq",
-      "is",
-      "in",
-      "gt",
-      "gte",
-      "lt",
-      "lte",
-      "not",
-      "order",
-      "limit",
-      "single",
-      "maybeSingle",
-    ]) {
-      self[method] = () => self;
-    }
-    self["then"] = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data: [], error: null }).then(resolve);
-    self["single"] = async () => ({ data: null, error: null });
-    self["maybeSingle"] = async () => ({ data: null, error: null });
-    return self;
-  })();
-  return { serviceClient: () => ({ from: () => chain }) };
-});
+const db = new FakeSupabase();
+vi.mock("@/lib/supabase", () => ({ serviceClient: () => db.client() }));
 vi.mock("@/lib/ads/metrics", () => ({
   ingestOpenAiMetrics: mocks.ingestOpenAiMetrics,
   enqueueMetaReporting: mocks.enqueueMetaReporting,

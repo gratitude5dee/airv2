@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 vi.mock("../thirdweb/client", () => ({ sendWalletTokens: vi.fn() }));
 
@@ -96,107 +96,64 @@ const TRANSFER: WalletTransfer = {
   resolved_at: null,
 };
 
-interface TransferRow {
-  status: WalletTransfer["status"];
-  transaction_id: string | null;
-  resolved_at: string | null;
+const OWNER_WALLET = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B";
+
+const db = new FakeSupabase();
+
+/** Seed one wallet_transfers row (a clone — the fake mutates rows in place)
+ * plus the owner users row executeTransfer looks up. */
+function seed(
+  status: WalletTransfer["status"],
+  walletAddress: string | null = OWNER_WALLET
+) {
+  db.tables["wallet_transfers"] = [
+    { ...TRANSFER, status, transaction_id: null, resolved_at: null },
+  ];
+  if (walletAddress !== null) {
+    db.tables["users"] = [{ id: TRANSFER.user_id, wallet_address: walletAddress }];
+  }
 }
 
-interface WalletDb {
-  transfer: TransferRow;
-  walletAddress: string | null;
-}
-
-/** In-memory wallet_transfers/users double implementing the exact chains
- * executeTransfer uses: conditional status updates and the owner lookup. */
-function fakeSupabase(db: WalletDb): SupabaseClient {
-  const client = {
-    from(table: string) {
-      if (table === "users") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: db.walletAddress
-                  ? { wallet_address: db.walletAddress }
-                  : null,
-              }),
-            }),
-          }),
-        };
-      }
-      return {
-        update(patch: Partial<TransferRow>) {
-          const filters: Record<string, unknown> = {};
-          const apply = () => {
-            if (
-              "status" in filters &&
-              filters["status"] !== db.transfer.status
-            ) {
-              return [];
-            }
-            db.transfer = { ...db.transfer, ...patch };
-            return [{ id: TRANSFER.id }];
-          };
-          const chain = {
-            eq(column: string, value: unknown) {
-              filters[column] = value;
-              return chain;
-            },
-            select: async () => ({ data: apply() }),
-            then(
-              resolve: (result: { data: unknown[]; error: null }) => void
-            ) {
-              resolve({ data: apply(), error: null });
-            },
-          };
-          return chain;
-        },
-      };
-    },
-  };
-  return client as unknown as SupabaseClient;
+function transferRow() {
+  return db.rows("wallet_transfers")[0]!;
 }
 
 describe("executeTransfer", () => {
   const sendMock = vi.mocked(sendWalletTokens);
 
   beforeEach(() => {
+    db.reset();
     sendMock.mockReset();
   });
 
   it("submits with an idempotency key derived from the transfer id", async () => {
-    const db: WalletDb = {
-      transfer: { status: "pending", transaction_id: null, resolved_at: null },
-      walletAddress: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-    };
+    seed("pending");
     sendMock.mockResolvedValue(["tx-1"]);
-    const txId = await executeTransfer(fakeSupabase(db), "user-1", TRANSFER);
+    const txId = await executeTransfer(db.client(), "user-1", TRANSFER);
     expect(txId).toBe("tx-1");
     expect(sendMock).toHaveBeenCalledWith(
-      "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+      OWNER_WALLET,
       TRANSFER.chain_id,
       TRANSFER.to_address,
       TRANSFER.amount_wei,
       null,
       transferIdempotencyKey(TRANSFER.id)
     );
-    expect(db.transfer.status).toBe("submitted");
-    expect(db.transfer.transaction_id).toBe("tx-1");
+    expect(transferRow()).toMatchObject({
+      status: "submitted",
+      transaction_id: "tx-1",
+    });
   });
 
   it("passes the ERC-20 contract through for USDC transfers", async () => {
-    const db: WalletDb = {
-      transfer: { status: "pending", transaction_id: null, resolved_at: null },
-      walletAddress: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-    };
+    seed("pending");
     sendMock.mockResolvedValue(["tx-2"]);
     const usdc = {
       ...TRANSFER,
       token_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       token_symbol: "USDC",
     };
-    await executeTransfer(fakeSupabase(db), "user-1", usdc);
+    await executeTransfer(db.client(), "user-1", usdc);
     expect(sendMock).toHaveBeenCalledWith(
       expect.any(String),
       usdc.chain_id,
@@ -208,58 +165,42 @@ describe("executeTransfer", () => {
   });
 
   it("marks a submit throw terminal-unknown — never back to pending", async () => {
-    const db: WalletDb = {
-      transfer: { status: "pending", transaction_id: null, resolved_at: null },
-      walletAddress: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-    };
+    seed("pending");
     sendMock.mockRejectedValue(new Error("socket hang up"));
     await expect(
-      executeTransfer(fakeSupabase(db), "user-1", TRANSFER)
+      executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toBeInstanceOf(WalletSubmitUnknownError);
-    expect(db.transfer.status).toBe("submit_unknown");
-    expect(db.transfer.resolved_at).not.toBeNull();
+    expect(transferRow()["status"]).toBe("submit_unknown");
+    expect(transferRow()["resolved_at"]).not.toBeNull();
     // A second approval can no longer claim the row — no re-broadcast.
     await expect(
-      executeTransfer(fakeSupabase(db), "user-1", TRANSFER)
+      executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toMatchObject({ status: 409 });
     expect(sendMock).toHaveBeenCalledTimes(1);
   });
 
   it("marks a submit without a transaction id terminal-unknown", async () => {
-    const db: WalletDb = {
-      transfer: { status: "pending", transaction_id: null, resolved_at: null },
-      walletAddress: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-    };
+    seed("pending");
     sendMock.mockResolvedValue([]);
     await expect(
-      executeTransfer(fakeSupabase(db), "user-1", TRANSFER)
+      executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toBeInstanceOf(WalletSubmitUnknownError);
-    expect(db.transfer.status).toBe("submit_unknown");
+    expect(transferRow()["status"]).toBe("submit_unknown");
   });
 
   it("releases the claim to pending when no wallet is on file", async () => {
-    const db: WalletDb = {
-      transfer: { status: "pending", transaction_id: null, resolved_at: null },
-      walletAddress: null,
-    };
+    seed("pending", null);
     await expect(
-      executeTransfer(fakeSupabase(db), "user-1", TRANSFER)
+      executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toMatchObject({ status: 409, message: "no wallet on file" });
-    expect(db.transfer.status).toBe("pending");
+    expect(transferRow()["status"]).toBe("pending");
     expect(sendMock).not.toHaveBeenCalled();
   });
 
   it("rejects when the row is already claimed", async () => {
-    const db: WalletDb = {
-      transfer: {
-        status: "submitting",
-        transaction_id: null,
-        resolved_at: null,
-      },
-      walletAddress: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-    };
+    seed("submitting");
     await expect(
-      executeTransfer(fakeSupabase(db), "user-1", TRANSFER)
+      executeTransfer(db.client(), "user-1", TRANSFER)
     ).rejects.toMatchObject({ status: 409 });
     expect(sendMock).not.toHaveBeenCalled();
   });

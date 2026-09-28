@@ -4,8 +4,8 @@
  * optionally filtered by status or kind.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +15,8 @@ const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const params = request.nextUrl.searchParams;
   const kind = params.get("kind");
   if (kind && !(KINDS as readonly string[]).includes(kind)) {

@@ -18,6 +18,7 @@ import { dedupeInboundEvent, resolveAgentAddress } from "@/lib/routing/inbound";
 import { processInboundEmail } from "@/lib/email/inbound";
 import { holdReceipt } from "@/lib/migration/replay";
 import { MigrationBusyError } from "@/lib/migration/types";
+import { log } from "@/lib/log";
 
 export const maxDuration = 800;
 
@@ -100,13 +101,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           );
           return;
         }
-        console.error(
-          JSON.stringify({
-            msg: "email turn failed",
-            user_id: resolvedUserId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("email turn failed", {user_id: resolvedUserId,
+            error: error instanceof Error ? error.message : String(error),});
       }
     });
   }

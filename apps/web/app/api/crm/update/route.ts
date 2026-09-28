@@ -14,32 +14,26 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import { armStopAfter } from "@/lib/orchestrator/boxes";
 import {
   applyPatchOnBox,
   sanitizePatch,
   type CrmPatch,
 } from "@/lib/crm/store";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function boxUserId(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<string | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  return box ? (box.user_id as string) : null;
-}
+/** The patch is an open-ended CRM document — sanitizePatch (PatchRow) does
+ * the field-level validation; the route-level schema only requires an
+ * object (a null/scalar body is not a patch). */
+const Body = z.record(z.string(), z.unknown());
+
 
 /** The active turn's sender tier, resolved server-side: an open flush chain
  * carries the burst's sender tier; an open run with no newer chain is the
@@ -83,17 +77,12 @@ async function activeTurnTier(
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const body = (await request.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!body) {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
-  }
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   const patch: CrmPatch = sanitizePatch(body);
   if (
     !patch.person_id &&

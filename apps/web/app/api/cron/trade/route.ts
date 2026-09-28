@@ -4,21 +4,21 @@
  * ticks armed watch items on already-awake boxes (plan §9 row 3 / §5.2).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/cron/auth";
 import { serviceClient } from "@/lib/supabase";
 import {
   expireTradeApprovals,
   reconcileTradeOrders,
 } from "@/lib/trade/service";
 import { tickWatchlists } from "@/lib/trade/watch";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!cronAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const startedAtMs = Date.now();
   const supabase = serviceClient();
   const expired = await expireTradeApprovals(supabase).catch(() => -1);

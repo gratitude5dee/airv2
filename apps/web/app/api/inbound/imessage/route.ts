@@ -8,6 +8,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { serviceClient } from "@/lib/supabase";
+import { log } from "@/lib/log";
 import {
   SpectrumWebhookError,
   parseInboundSpectrumMessage,
@@ -20,30 +21,23 @@ import {
   resolveInboundRoute,
 } from "@/lib/routing/inbound";
 import {
-  carryQuickAckMarker,
-  dropQuickAckMarker,
   enqueueInbound,
   flushAfterDebounce,
-  isBurstStart,
-  updateQuickAckMarker,
   type InboundMessage,
 } from "@/lib/orchestrator/flush";
-import {
-  initialResponse,
-  type InitialResponse,
-} from "@/lib/orchestrator/sharedBridge";
-import {
-  ACK_REACTION,
-  hasExplicitResponseLane,
-  INITIAL_REPLY_SLA_MS,
-  REACTION_SLA_MS,
-} from "@/lib/orchestrator/ttfk";
+import { initialResponse } from "@/lib/orchestrator/sharedBridge";
 import { prewarmBox } from "@/lib/orchestrator/boxes";
-import { createSpectrumSender } from "@/lib/spectrum/sender";
 import {
-  createFastReactionSender,
-  type FastReactionSender,
-} from "@/lib/spectrum/fast-reaction";
+  closeWarmSpectrumSender,
+  closeWarmSpectrumSenderAfter,
+  composeInboundBody,
+  sendImmediateReaction,
+  sendInitialReply,
+  sendLineReply,
+  warmSpectrumSender,
+  withWarmSenderCleanup,
+} from "@/lib/routing/imessage";
+import { createFastReactionSender } from "@/lib/spectrum/fast-reaction";
 import {
   handleOnboarding,
   signupSender,
@@ -72,200 +66,6 @@ export const maxDuration = 800;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Reply on the line: thread under the source message when the target
- * resolves, plain send otherwise.
- */
-async function sendLineReply(
-  spaceId: string,
-  phone: string,
-  messageId: string,
-  text: string,
-  senderPromise?: ReturnType<typeof warmSpectrumSender>,
-): Promise<void> {
-  const sender = await (senderPromise ?? warmSpectrumSender());
-  if (!sender) return;
-  try {
-    const threaded = await sender
-      .sendReply(spaceId, phone, messageId, text)
-      .catch(() => false);
-    if (!threaded) await sender.sendText(spaceId, phone, text);
-  } finally {
-    await sender.close().catch(() => undefined);
-  }
-}
-
-/**
- * Token minting and gRPC client construction are read-only, but account for a
- * material part of first-kindness latency. Start them as soon as a known user
- * route exists, while dedupe/onboarding/trust checks continue. No send occurs
- * until those gates pass, so tier-2 contacts still cause zero outbound work.
- */
-function warmSpectrumSender() {
-  return createSpectrumSender("webhook").catch(() => undefined);
-}
-
-async function closeWarmSpectrumSender(
-  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
-): Promise<void> {
-  const sender = await senderPromise;
-  await sender?.close().catch(() => undefined);
-}
-
-function closeWarmSpectrumSenderAfter(
-  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
-): void {
-  if (!senderPromise) return;
-  after(() => closeWarmSpectrumSender(senderPromise));
-}
-
-async function withWarmSenderCleanup<T>(
-  operation: Promise<T>,
-  senderPromise: ReturnType<typeof warmSpectrumSender> | undefined,
-): Promise<T> {
-  try {
-    return await operation;
-  } catch (error) {
-    closeWarmSpectrumSenderAfter(senderPromise);
-    throw error;
-  }
-}
-
-/**
- * Starts before the HTTP response is returned. The promise is awaited from
- * `after()` so serverless teardown cannot interrupt it, but establishing the
- * Spectrum connection and sending the tapback do not wait for debounce,
- * box wake, or a model request.
- */
-async function sendImmediateReaction(
-  fastSenderPromise: Promise<FastReactionSender | undefined> | undefined,
-  senderPromise: ReturnType<typeof warmSpectrumSender>,
-  message: InboundMessage,
-  receivedAtMs: number
-): Promise<void> {
-  let transport: "grpc-direct" | "spectrum-fallback" = "grpc-direct";
-  let fastSender: FastReactionSender | undefined;
-  let reacted = false;
-  try {
-    fastSender = await fastSenderPromise?.catch(() => undefined);
-    reacted = fastSender
-      ? await fastSender
-          .react(message.spaceId, message.messageId, ACK_REACTION)
-          .catch(() => false)
-      : false;
-  } finally {
-    await fastSender?.close().catch(() => undefined);
-  }
-  if (!reacted) {
-    transport = "spectrum-fallback";
-    const sender = await senderPromise;
-    reacted = sender
-      ? await sender
-          .react(
-            message.spaceId,
-            message.phone,
-            message.messageId,
-            ACK_REACTION,
-          )
-          .catch(() => false)
-      : false;
-  }
-  const elapsedMs = Date.now() - receivedAtMs;
-  console.info(
-    JSON.stringify({
-      msg: "imessage ttfk reaction",
-      user_id: message.userId,
-      space_id: message.spaceId,
-      delivered: reacted,
-      transport,
-      elapsed_ms: elapsedMs,
-      within_sla: elapsedMs <= REACTION_SLA_MS,
-    })
-  );
-}
-
-/**
- * A single first bubble per settled burst. The marker is present for normal
- * agent turns so the final model reply never repeats the acknowledgement.
- * Explicit commands own their deterministic response lane, so they receive
- * the visible line without introducing a marker into their command input.
- */
-async function sendInitialReply(
-  supabase: ReturnType<typeof serviceClient>,
-  sender: Awaited<ReturnType<typeof createSpectrumSender>> | undefined,
-  message: InboundMessage,
-  body: string,
-  response: InitialResponse,
-  receivedAtMs: number
-): Promise<boolean> {
-  if (!sender || !(await isBurstStart(supabase, message.spaceId))) return false;
-  const isCommand =
-    body.trimStart().startsWith("/") || hasExplicitResponseLane(body);
-  const markerId = isCommand || response.disposition === "final"
-    ? undefined
-    : await carryQuickAckMarker(supabase, message.userId, message.spaceId);
-  let sent = false;
-  try {
-    await sender.sendText(message.spaceId, message.phone, response.body);
-    sent = true;
-    if (markerId) {
-      await updateQuickAckMarker(
-        supabase,
-        message.spaceId,
-        markerId,
-        response.body
-      );
-    }
-    console.info(
-      JSON.stringify({
-        msg: "imessage ttfk initial reply",
-        user_id: message.userId,
-        space_id: message.spaceId,
-        elapsed_ms: Date.now() - receivedAtMs,
-        within_sla: Date.now() - receivedAtMs <= INITIAL_REPLY_SLA_MS,
-        kind: isCommand ? "command" : "agent",
-        disposition: response.disposition,
-        source: response.source,
-      })
-    );
-    return response.disposition === "final";
-  } finally {
-    if (markerId && !sent) {
-      await dropQuickAckMarker(supabase, message.spaceId, markerId);
-    }
-    // R-PERF-08: durable TTFK receipt on the agent_runs ledger — one row per
-    // burst-start send attempt so the fast-lane vs fixed-template decision
-    // can read a week of outcomes instead of ephemeral log lines.
-    // ttfk_met is delivered AND inside the SLA window; ttfk_lane is the
-    // initialResponse source ('acknowledgement' | 'arithmetic' | 'context' |
-    // 'gmi' | 'fallback').
-    const elapsedMs = Date.now() - receivedAtMs;
-    const { error: receiptError } = await supabase
-      .from("agent_runs")
-      .insert({
-        user_id: message.userId,
-        hermes_run_id: null,
-        trigger: "imessage",
-        started_at: new Date(receivedAtMs).toISOString(),
-        ended_at: new Date().toISOString(),
-        outcome: sent ? "first_bubble" : "first_bubble_failed",
-        ttfk_ms: elapsedMs,
-        ttfk_met: sent && elapsedMs <= INITIAL_REPLY_SLA_MS,
-        ttfk_lane: response.source,
-      });
-    if (receiptError) {
-      console.error(
-        JSON.stringify({
-          msg: "imessage ttfk receipt write failed",
-          user_id: message.userId,
-          space_id: message.spaceId,
-          error: receiptError.message,
-        })
-      );
-    }
-  }
-}
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Keep SLA accounting anchored to request receipt, rather than after the
   // routing/database work required to safely identify a trusted recipient.
@@ -282,10 +82,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error) {
     if (error instanceof SpectrumWebhookError) {
-      console.warn(
-        JSON.stringify({
-          msg: "spectrum webhook rejected",
-          status: error.status,
+      log.warn("spectrum webhook rejected", {status: error.status,
           reason: error.message,
           event: headers.event ?? null,
           has_signature: Boolean(headers.signature),
@@ -294,9 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             : headers.signature
               ? "bare"
               : "missing",
-          has_timestamp: Boolean(headers.timestamp),
-        }),
-      );
+          has_timestamp: Boolean(headers.timestamp),});
       return NextResponse.json(
         { error: error.message },
         { status: error.status },
@@ -356,26 +151,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
-  const marker =
-    inbound.attachmentIds.length > 0
-      ? `[attachment:${inbound.attachmentIds.join(",")}]`
-      : "";
-  // A private Find My share is persisted as a marker only — the
-  // coordinates never reach Postgres (§2.6, C4).
-  const body = inbound.locationSignal
-    ? ["[location shared]", inbound.text ?? ""].filter(Boolean).join("\n")
-    : [marker, inbound.text ?? ""].filter(Boolean).join("\n");
+  const body = composeInboundBody(inbound);
   if (!body) {
     // Identifiers only (C4): a conversational payload whose content parsed to
     // nothing would otherwise vanish without a trace.
-    console.error(
-      JSON.stringify({
-        msg: "imessage inbound empty body",
-        user_id: route?.userId ?? null,
+    log.error("imessage inbound empty body", {user_id: route?.userId ?? null,
         space_id: inbound.spaceId,
-        message_id: inbound.messageId,
-      }),
-    );
+        message_id: inbound.messageId,});
     closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
   }
@@ -425,14 +207,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     } else {
       // Unroutable line: recorded as an event, no work dispatched. Log the
       // line identifier (never content) so misrouted numbers are diagnosable.
-      console.error(
-        JSON.stringify({
-          msg: "imessage inbound unroutable",
-          line_phone: inbound.phone ?? null,
+      log.error("imessage inbound unroutable", {line_phone: inbound.phone ?? null,
           space_id: inbound.spaceId,
-          message_id: inbound.messageId,
-        }),
-      );
+          message_id: inbound.messageId,});
       return NextResponse.json({ ok: true }, { status: 200 });
     }
   }
@@ -473,13 +250,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (startCompute) {
         await provisionComputeWithWelcome(supabase, userId).catch(
           (error: unknown) => {
-            console.error(
-              JSON.stringify({
-                msg: "self-serve compute provision failed",
-                user_id: userId,
-                error: error instanceof Error ? error.message : String(error),
-              }),
-            );
+            log.error("self-serve compute provision failed", {user_id: userId,
+                error: error instanceof Error ? error.message : String(error),});
           },
         );
       }
@@ -510,13 +282,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ref: inbound.messageId,
       label: "Message from an unknown number",
     }).catch((error: unknown) => {
-      console.error(
-        JSON.stringify({
-          msg: "tier2 decision insert failed",
-          user_id: route.userId,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      log.error("tier2 decision insert failed", {user_id: route.userId,
+          error: error instanceof Error ? error.message : String(error),});
     });
     closeWarmSpectrumSenderAfter(warmSenderPromise);
     return NextResponse.json({ ok: true }, { status: 200 });
@@ -540,7 +307,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         userId,
         text: body,
         messageId,
-      }).catch(() => ({ handled: true, reply: "Muse is temporarily unavailable. Try again shortly." }));
+      }).catch((error: unknown) => {
+        log.error("muse inbound handling failed", {
+          user_id: userId,
+          box_id: null,
+          space_id: spaceId,
+          message_id: messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          handled: true,
+          reply: "Muse is temporarily unavailable. Try again shortly.",
+        };
+      });
       if (result.reply) {
         await sendLineReply(spaceId, phone, messageId, result.reply, warmSenderPromise);
       } else {
@@ -581,29 +360,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         try {
           result = await relayToOnairos(relayInput);
         } catch (error) {
-          console.error(
-            JSON.stringify({
-              msg: "onairos relay failed",
-              user_id: userId,
+          log.error("onairos relay failed", {user_id: userId,
               space_id: relayInput.sessionId,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+              error: error instanceof Error ? error.message : String(error),});
           await setSpectrumFlow(supabase, userId, "error").catch(
-            () => undefined,
+            (flowError: unknown) =>
+              log.error("spectrum flow error write failed", {
+                user_id: userId,
+                box_id: null,
+                space_id: relayInput.sessionId,
+                error:
+                  flowError instanceof Error
+                    ? flowError.message
+                    : String(flowError),
+              }),
           );
           return;
         }
         if (result.grants.length > 0) {
           await storeSpectrumGrants(supabase, userId, result.grants).catch(
             (error: unknown) => {
-              console.error(
-                JSON.stringify({
-                  msg: "onairos grant store failed",
-                  user_id: userId,
-                  error: error instanceof Error ? error.message : String(error),
-                }),
-              );
+              log.error("onairos grant store failed", {user_id: userId,
+                  error: error instanceof Error ? error.message : String(error),});
             },
           );
         } else {
@@ -611,7 +389,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             supabase,
             userId,
             result.shouldRouteNextMessage ? "pending" : "error",
-          ).catch(() => undefined);
+          ).catch((error: unknown) =>
+            log.error("spectrum flow state write failed", {
+              user_id: userId,
+              box_id: null,
+              space_id: relayInput.sessionId,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
         }
         if (result.reply && sender) {
           const threaded = await sender
@@ -708,14 +493,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           .eq("space_id", message.spaceId)
           .eq("message_id", message.messageId);
         if (error) {
-          console.error(
-            JSON.stringify({
-              msg: "imessage direct completion cleanup failed",
-              user_id: message.userId,
+          log.error("imessage direct completion cleanup failed", {user_id: message.userId,
               space_id: message.spaceId,
-              error: error.message,
-            })
-          );
+              error: error.message,});
         }
       }
     }
@@ -724,14 +504,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       // (R-PERF-04: one Spectrum init per turn); it is closed once below.
       await flushAfterDebounce(supabase, message, runAt, sender);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "imessage flush failed",
-          user_id: message.userId,
+      log.error("imessage flush failed", {user_id: message.userId,
           space_id: message.spaceId,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+          error: error instanceof Error ? error.message : String(error),});
     } finally {
       await sender?.close().catch(() => undefined);
     }

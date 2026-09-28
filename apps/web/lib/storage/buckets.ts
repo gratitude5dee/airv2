@@ -5,6 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MediaGuardError } from "./guard";
+import { log } from "../log";
 
 export interface UserBucket {
   user_id: string;
@@ -94,9 +95,7 @@ export async function releaseQuota(supabase: SupabaseClient, hold: QuotaHold): P
     p_bytes: hold.bytes,
   });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "quota release failed", bytes: hold.bytes, error: error.message })
-    );
+    log.error("quota release failed", {bytes: hold.bytes, error: error.message});
   }
 }
 

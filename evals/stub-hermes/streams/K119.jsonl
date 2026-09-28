@@ -1,0 +1,5 @@
+{"comment": "K119 \u2014 propose a purchase_review; no checkout submit"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://airline.example.com"}}
+{"call": {"method": "POST", "path": "/api/browser/purchase", "body": {"action": "propose", "host": "airline-$LANE.example.com", "item_id": "33333333-2222-3333-4444-555555555555", "summary": "JFK\u2192LAX red-eye Thursday, carry-on, window", "amount_usd": 189.0}}}
+{"sse": {"event": "message.delta", "delta": "Found a red-eye with a window seat \u2014 staged as a purchase review for your approval."}}
+{"sse": {"event": "run.completed"}}

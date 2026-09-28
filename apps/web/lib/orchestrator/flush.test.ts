@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   beforeDeadline,
   composeInput,
@@ -20,6 +19,7 @@ import {
 import {
   createRun,
   ensureSession,
+  loadConversationTranscript,
   runEvents,
   stopRun,
 } from "../hermes/client";
@@ -28,12 +28,15 @@ import { createSpectrumSender } from "../spectrum/sender";
 import { ensureBoxAwake } from "./boxes";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { sendMarkedCards } from "../miniapps/cards";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
+import { expectLog } from "../testing/expectLog";
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
   createRun: vi.fn(),
   ensureSession: vi.fn(),
+  loadConversationTranscript: vi.fn(),
   MAIN_SESSION: "air-main",
   MAIN_SESSION_TITLE: "Air",
   runEvents: vi.fn(),
@@ -103,20 +106,66 @@ describe("beforeDeadline", () => {
 });
 
 describe("composeInput", () => {
-  it("prepends carried messages as history", () => {
+  it("prepends carried messages as history, labelled per sender", () => {
     const carried = [{ id: "1", message_id: "m1", body: "earlier text" }];
     const fresh = [
       { id: "2", message_id: "m2", body: "hey" },
       { id: "3", message_id: "m3", body: "actually — the real question" },
     ];
     expect(composeInput(carried, fresh)).toBe(
-      "[Earlier message] earlier text\nhey\nactually — the real question"
+      "[Earlier message] [from unknown] earlier text\n" +
+        "[from unknown] hey\n" +
+        "[from unknown] actually — the real question"
     );
   });
 
-  it("is just the batch when nothing was carried", () => {
+  it("is just the labelled batch when nothing was carried", () => {
     expect(composeInput([], [{ id: "1", message_id: "m", body: "hi" }])).toBe(
-      "hi"
+      "[from unknown] hi"
+    );
+  });
+
+  it("labels each body with its sender across a mixed-sender burst", () => {
+    const fresh = [
+      {
+        id: "1",
+        message_id: "m1",
+        body: "can you ask him about dinner?",
+        sender_id: "+19998887777",
+        sender_tier: 1,
+      },
+      {
+        id: "2",
+        message_id: "m2",
+        body: "and get me an uber too",
+        sender_id: "+15550000000",
+        sender_tier: 0,
+      },
+    ];
+    expect(composeInput([], fresh)).toBe(
+      "[from +19998887777] can you ask him about dinner?\n" +
+        "[from owner] and get me an uber too"
+    );
+  });
+
+  it("keeps bridge markers unlabelled — they are the agent's own output", () => {
+    const carried = [
+      {
+        id: "1",
+        message_id: "bridge:ack-1",
+        body: "[You already sent a brief acknowledgment]",
+      },
+      {
+        id: "2",
+        message_id: "m1",
+        body: "earlier text",
+        sender_id: "+19998887777",
+        sender_tier: 1,
+      },
+    ];
+    expect(composeInput(carried, [])).toBe(
+      "[Earlier message] [You already sent a brief acknowledgment]\n" +
+        "[Earlier message] [from +19998887777] earlier text"
     );
   });
 
@@ -133,6 +182,8 @@ describe("composeInput", () => {
       { id: "3", message_id: "m-zap", body: "/zap make it rain" },
     ];
 
+    // Response lanes keep the raw bodies: command parsers anchor on the
+    // user's own lines, never on sender labels.
     expect(composeResponseLaneInput(carried, fresh)).toBe(
       "[Earlier message] [attachment:att-photo]\n/zap make it rain"
     );
@@ -195,62 +246,88 @@ describe("enqueueInbound scheduling", () => {
   };
 
   // Mirrors schedule_flush (migration 0082): the deadline is chosen under the
-  // row lock, so the fake serializes calls against one shared row.
+  // row lock, so the fake's rpc applies the same CAS to the real row.
   function fakeSupabase(
     existingRunAt: string | null,
     queuedBodies: readonly string[] = [],
   ) {
-    let current = existingRunAt ? Date.parse(existingRunAt) : null;
-    let cancelledAt: number | null = null;
-    const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
-    // Set to hold the next rpc until released, to reorder completions.
-    let gate: { held: Promise<void>; entered: () => void } | null = null;
-    const apply = (args: Record<string, unknown>) => {
+    const db = new FakeSupabase();
+    db.tables["flush_jobs"] = existingRunAt
+      ? [
+          {
+            space_id: "space-1",
+            user_id: "u1",
+            phone: "+15550001111",
+            sender_tier: 0,
+            run_at: existingRunAt,
+            cancelled_at: null,
+            chain_started_at: null,
+            attempts: 0,
+          },
+        ]
+      : [];
+    db.tables["batch_queue"] = queuedBodies.map((body, index) => ({
+      id: `queued-${index}`,
+      user_id: "u1",
+      space_id: "space-1",
+      sender_id: null,
+      message_id: `queued-${index}`,
+      body,
+      received_at: new Date(Date.now() - 1_000 + index).toISOString(),
+    }));
+    // PostgREST renders timestamptz with an offset, not a Z.
+    const render = (ms: number) =>
+      new Date(ms).toISOString().replace("Z", "+00:00");
+    db.rpcResults["schedule_flush"] = (args: Record<string, unknown>) => {
       const own = Date.parse(String(args["p_run_at"]));
       const windowEnd = Date.parse(String(args["p_window_end"]));
       const stamp = Date.parse(String(args["p_cancelled_at"]));
-      current =
+      const rows = db.rows("flush_jobs");
+      const row = rows.find((r) => r["space_id"] === args["p_space_id"]);
+      const current =
+        row?.["run_at"] != null ? Date.parse(String(row["run_at"])) : null;
+      const next =
         current !== null && current >= own && current <= windowEnd
           ? current + 1
           : own;
-      cancelledAt = cancelledAt === null ? stamp : Math.max(cancelledAt, stamp);
-      // PostgREST renders timestamptz with an offset, not a Z.
-      const rendered = new Date(current)
-        .toISOString()
-        .replace("Z", "+00:00");
-      return { data: rendered, error: null };
+      const cancelledAt =
+        row?.["cancelled_at"] != null
+          ? Math.max(Date.parse(String(row["cancelled_at"])), stamp)
+          : stamp;
+      if (row) {
+        row["run_at"] = render(next);
+        row["user_id"] = args["p_user_id"];
+        row["phone"] = args["p_phone"];
+        row["sender_tier"] = args["p_sender_tier"];
+        row["cancelled_at"] = render(cancelledAt);
+      } else {
+        rows.push({
+          space_id: args["p_space_id"],
+          user_id: args["p_user_id"],
+          phone: args["p_phone"],
+          sender_tier: args["p_sender_tier"],
+          run_at: render(next),
+          cancelled_at: render(cancelledAt),
+          chain_started_at: null,
+          attempts: 0,
+        });
+      }
+      return render(next);
     };
-    const supabase = {
-      from: (table: string) => {
-        const chain = {
-          insert: () => Promise.resolve({ error: null }),
-          upsert: () => Promise.resolve({ error: null }),
-          select: () => chain,
-          eq: () => chain,
-          order: () => chain,
-          limit: () => Promise.resolve({
-            data: table === "batch_queue"
-              ? queuedBodies.map((body) => ({ body }))
-              : [],
-            error: null,
-          }),
-        };
-        return chain;
-      },
-      rpc: (fn: string, args: Record<string, unknown>) => {
-        calls.push({ fn, args });
-        const held = gate;
-        gate = null;
-        if (!held) return Promise.resolve(apply(args));
-        held.entered();
-        return held.held.then(() => apply(args));
-      },
-    };
+    const supabase = db.client();
     return {
-      supabase: supabase as unknown as SupabaseClient,
-      calls,
-      rowRunAt: () => current,
-      rowCancelledAt: () => cancelledAt,
+      supabase,
+      calls: db.rpcCalls,
+      db,
+      rowRunAt: () => {
+        const runAt = db.rows("flush_jobs")[0]?.["run_at"];
+        return runAt == null ? null : Date.parse(String(runAt));
+      },
+      rowCancelledAt: () => {
+        const cancelled = db.rows("flush_jobs")[0]?.["cancelled_at"];
+        return cancelled == null ? null : Date.parse(String(cancelled));
+      },
+      // Hold the next rpc until released, to reorder completions.
       holdNextRpc: () => {
         let release = () => {};
         let entered = () => {};
@@ -260,7 +337,18 @@ describe("enqueueInbound scheduling", () => {
         const reached = new Promise<void>((resolve) => {
           entered = resolve;
         });
-        gate = { held, entered };
+        const client = supabase as unknown as {
+          rpc: (
+            fn: string,
+            args: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+        const original = client.rpc.bind(client);
+        client.rpc = (fn, args) => {
+          entered();
+          client.rpc = original;
+          return held.then(() => original(fn, args));
+        };
         return { reached, release };
       },
     };
@@ -347,17 +435,14 @@ describe("enqueueInbound scheduling", () => {
       senderTier: undefined,
       body: "hey",
     });
-    expect(calls[0]?.args["p_sender_tier"]).toBeNull();
+    expect(
+      (calls[0]?.args as Record<string, unknown>)["p_sender_tier"]
+    ).toBeNull();
   });
 
   it("fails loudly when the database does not return a deadline", async () => {
-    const supabase = {
-      from: () => ({
-        insert: () => Promise.resolve({ error: null }),
-        upsert: () => Promise.resolve({ error: null }),
-      }),
-      rpc: () => Promise.resolve({ data: null, error: null }),
-    } as unknown as SupabaseClient;
+    const { supabase, db } = fakeSupabase(null);
+    db.rpcResults["schedule_flush"] = () => undefined;
     await expect(
       enqueueInbound(supabase, { ...message, body: "hey" })
     ).rejects.toThrow(/schedule_flush/);
@@ -457,37 +542,17 @@ describe("runFlush history replay", () => {
     queueRows: Array<Record<string, unknown>>,
     options: { agentRunInsertError?: string } = {}
   ) {
-    return {
-      from: (table: string) => {
-        const mutationChain = {
-          eq: () => mutationChain,
-          in: () => Promise.resolve({ error: null }),
-          then: (resolve: (value: { error: null }) => void) =>
-            resolve({ error: null }),
-        };
-        return {
-          select: () => {
-            const rows = table === "batch_queue" ? queueRows : [];
-            const chain = {
-              eq: () => chain,
-              limit: () => chain,
-              order: () => Promise.resolve({ data: rows, error: null }),
-              maybeSingle: () => Promise.resolve({ data: null, error: null }),
-            };
-            return chain;
-          },
-          delete: () => mutationChain,
-          update: () => mutationChain,
-          insert: () =>
-            Promise.resolve({
-              error:
-                table === "agent_runs" && options.agentRunInsertError
-                  ? { message: options.agentRunInsertError }
-                  : null,
-            }),
-        };
-      },
-    } as unknown as SupabaseClient;
+    const db = new FakeSupabase();
+    db.tables["batch_queue"] = queueRows.map((row) => ({
+      space_id: "space-1",
+      ...row,
+    }));
+    if (options.agentRunInsertError) {
+      db.opErrors["agent_runs:insert"] = {
+        message: options.agentRunInsertError,
+      };
+    }
+    return db.client();
   }
 
   beforeEach(() => {
@@ -532,7 +597,7 @@ describe("runFlush history replay", () => {
     // Hermes hydrates the run from its own session transcript — the
     // control plane neither fetches nor replays it.
     expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
-      input: "94587",
+      input: "[from unknown] 94587",
       sessionId: "air-main",
     });
     expect(vi.mocked(createRun).mock.calls[0]?.[1]).not.toHaveProperty(
@@ -644,6 +709,7 @@ describe("runFlush history replay", () => {
       "I need a little more time. I’m continuing with the same request."
     );
     vi.useRealTimers();
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
   });
 
   it("notifies the user at the deadline without waiting for a slow Hermes stop", async () => {
@@ -697,6 +763,7 @@ describe("runFlush history replay", () => {
 
     expect(notifiedBeforeStopSettled).toBe(true);
     vi.useRealTimers();
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
   });
 
   it("logs receipt write failures without suppressing the delivered answer", async () => {
@@ -876,19 +943,157 @@ describe("runFlush history replay", () => {
       );
     });
   });
+
+  describe("sender trust (R-SEC-01, R-SEC-02)", () => {
+    it("stamps the burst's tier and sender ref on the owner's run", async () => {
+      vi.mocked(loadConversationTranscript).mockResolvedValue({
+        rows: 2,
+        history: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "hey" },
+        ],
+      });
+      await runFlush(
+        fakeSupabase([
+          {
+            id: "q1",
+            message_id: "m1",
+            body: "hello",
+            sender_id: "+15551234567",
+            sender_tier: 0,
+          },
+        ]),
+        job,
+        new Date().toISOString()
+      );
+      const request = vi.mocked(createRun).mock.calls[0]?.[1];
+      expect(request).toMatchObject({
+        sessionId: "air-main",
+        metadata: {
+          channel: "imessage",
+          sender_tier: "0",
+          sender_ref: "owner",
+        },
+      });
+      // Owner turns carry no turn-author override.
+      expect(request?.author).toBeUndefined();
+    });
+
+    it("runs a contact burst in its own session with no owner history", async () => {
+      // A first contact turn: the box has no contact:<id> session yet.
+      vi.mocked(ensureSession).mockResolvedValue({ created: true });
+      vi.mocked(loadConversationTranscript).mockResolvedValue({
+        rows: 0,
+        history: [],
+      });
+      await runFlush(
+        fakeSupabase([
+          {
+            id: "q1",
+            message_id: "m1",
+            body: "is he around?",
+            sender_id: "+19998887777",
+            sender_tier: 1,
+          },
+        ]),
+        { ...job, senderTier: 1 },
+        new Date().toISOString()
+      );
+      // air-main is never ensured or read: no owner history, no owner
+      // memory session — the turn runs in the contact's own.
+      for (const call of vi.mocked(ensureSession).mock.calls) {
+        expect(call[1]).not.toBe("air-main");
+      }
+      for (const call of vi.mocked(loadConversationTranscript).mock.calls) {
+        expect(call[1]).not.toBe("air-main");
+      }
+      expect(vi.mocked(ensureSession).mock.calls[0]?.slice(1)).toEqual([
+        "contact:+19998887777",
+        "contact:+19998887777",
+      ]);
+      const request = vi.mocked(createRun).mock.calls[0]?.[1];
+      expect(request).toMatchObject({
+        input: "[from +19998887777] is he around?",
+        sessionId: "contact:+19998887777",
+        metadata: {
+          channel: "imessage",
+          sender_tier: "1",
+          sender_ref: "contact:+19998887777",
+        },
+        author: {
+          id: "contact:+19998887777",
+          name: "+19998887777",
+          is_bot: false,
+        },
+      });
+    });
+
+    it("resolves a burst to its least-trusted sender when the owner's bubble lands last", async () => {
+      // R-SEC-02: contact first, owner second — the old code took the last
+      // message's tier (owner, 0) and ran the contact's text inside
+      // air-main. Even a stale job row still claiming tier 0 must not lift
+      // the burst: the rows decide.
+      vi.mocked(ensureSession).mockResolvedValue({ created: true });
+      vi.mocked(loadConversationTranscript).mockResolvedValue({
+        rows: 0,
+        history: [],
+      });
+      await runFlush(
+        fakeSupabase([
+          {
+            id: "q1",
+            message_id: "m1",
+            body: "can he come out tonight?",
+            sender_id: "+19998887777",
+            sender_tier: 1,
+          },
+          {
+            id: "q2",
+            message_id: "m2",
+            body: "yes tell him",
+            sender_id: "+15550000000",
+            sender_tier: 0,
+          },
+        ]),
+        { ...job, senderTier: 0 },
+        new Date().toISOString()
+      );
+      const request = vi.mocked(createRun).mock.calls[0]?.[1];
+      expect(request).toMatchObject({
+        input:
+          "[from +19998887777] can he come out tonight?\n" +
+          "[from owner] yes tell him",
+        sessionId: "contact:+19998887777",
+        metadata: {
+          sender_tier: "1",
+          sender_ref: "contact:+19998887777",
+        },
+      });
+      // conversationHistory is omitted, not emptied: the box hydrates the
+      // contact's own session transcript, which keeps contact threads
+      // coherent while never touching owner history.
+      expect(request).not.toHaveProperty("conversationHistory");
+    });
+  });
 });
 
 describe("dropQuickAckMarker", () => {
   it("deletes exactly the marker row for the space", async () => {
-    const del = { eq: vi.fn() };
-    del.eq.mockReturnValueOnce(del).mockResolvedValueOnce({ error: null });
-    const supabase = {
-      from: vi.fn(() => ({ delete: vi.fn(() => del) })),
-    } as unknown as SupabaseClient;
-    await dropQuickAckMarker(supabase, "space-1", "bridge:ack-123");
-    expect(vi.mocked(supabase.from)).toHaveBeenCalledWith("carried_messages");
-    expect(del.eq).toHaveBeenNthCalledWith(1, "space_id", "space-1");
-    expect(del.eq).toHaveBeenNthCalledWith(2, "message_id", "bridge:ack-123");
+    const db = new FakeSupabase();
+    db.tables["carried_messages"] = [
+      { space_id: "space-1", message_id: "bridge:ack-123" },
+      { space_id: "space-1", message_id: "m-other" },
+      { space_id: "space-2", message_id: "bridge:ack-123" },
+    ];
+    await dropQuickAckMarker(db.client(), "space-1", "bridge:ack-123");
+    db.expectQuery({
+      table: "carried_messages",
+      filters: { space_id: "space-1", message_id: "bridge:ack-123" },
+    });
+    expect(
+      db.rows("carried_messages").map((row) => row["message_id"])
+    ).toEqual(["m-other", "bridge:ack-123"]);
+    expect(db.rows("carried_messages")[1]?.["space_id"]).toBe("space-2");
   });
 });
 

@@ -15,16 +15,21 @@
  * set", so a stale flag cannot orphan a new chain.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { db } from "../db";
+import { log } from "../log";
 import { completeOperation } from "../migration/admission";
 import { command, writeFile } from "../box/client";
 import {
   createRun,
   ensureSession,
+  type HermesBoxTarget,
+  loadConversationTranscript,
   MAIN_SESSION,
   MAIN_SESSION_TITLE,
   runEvents,
   stopRun,
 } from "../hermes/client";
+import type { ConversationMessage } from "../hermes/history";
 import { isStateDatabaseError, logStateDatabaseHealth } from "../hermes/stateHealth";
 import { maybeRecoverStateDatabase } from "../hermes/stateRecovery";
 import { botTarget, BOT_CHAT_SESSION, BOT_CHAT_TITLE } from "../bots/client";
@@ -130,7 +135,26 @@ interface QueuedMessage {
   message_id: string;
   body: string;
   sender_id?: string | undefined;
+  /** The sender's resolved trust tier at enqueue (migration 0130). */
+  sender_tier?: number | null | undefined;
   received_at?: string | undefined;
+}
+
+/** A row whose tier was never recorded reads as least-trusted, never owner. */
+const UNKNOWN_SENDER_TIER = 2;
+
+/** Sender trust for a queued row: its own tier, else the job's scheduled one. */
+function burstRowTier(
+  row: QueuedMessage,
+  jobTier: number | null | undefined
+): number {
+  return row.sender_tier ?? jobTier ?? UNKNOWN_SENDER_TIER;
+}
+
+/** Who a queued row speaks for inside the composed input. */
+function senderLabel(row: QueuedMessage): string {
+  if (row.sender_tier === 0) return "owner";
+  return row.sender_id ?? "unknown";
 }
 
 const HAS_ATTACHMENT_MARKER = /\[attachment:[^\]]+\]/;
@@ -229,6 +253,7 @@ export async function enqueueInbound(
     space_id: message.spaceId,
     phone: message.phone,
     sender_id: message.senderId ?? null,
+    sender_tier: message.senderTier ?? null,
     message_id: message.messageId,
     body: message.body,
   });
@@ -253,13 +278,9 @@ export async function enqueueInbound(
         { onConflict: "user_id" }
       );
     if (destError) {
-      console.error(
-        JSON.stringify({
-          msg: "imessage_destinations upsert failed",
-          user_id: message.userId,
-          error: destError.message,
-        })
-      );
+      log.error("imessage_destinations upsert failed", {box_id: null,
+        user_id: message.userId,
+          error: destError.message,});
     }
   }
 
@@ -277,9 +298,15 @@ export async function enqueueInbound(
           (data ?? []).map((row) => String(row.body ?? ""))
         );
       }
-    } catch {
+    } catch (error) {
       // Scheduling remains correct (only slower) if this optional look-ahead
       // is unavailable during a rolling deployment.
+      log.warn("batch_queue lookahead failed", {
+        user_id: message.userId,
+        box_id: null,
+        space_id: message.spaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -348,7 +375,7 @@ async function drainTable(
 ): Promise<QueuedMessage[]> {
   const { data, error } = await supabase
     .from(table)
-    .select("id, message_id, body, sender_id, received_at")
+    .select("id, message_id, body, sender_id, sender_tier, received_at")
     .eq("space_id", spaceId)
     .order("received_at", { ascending: true });
   if (error) {
@@ -381,34 +408,52 @@ const drainCarried = (
 ): Promise<QueuedMessage[]> =>
   drainTable(supabase, "carried_messages", spaceId);
 
-/** Prior-chain remnants read as history, not fresh input. */
+/**
+ * Prior-chain remnants read as history, not fresh input. Every real body
+ * carries its sender (R-SEC-02): a mixed burst must never read as one
+ * undifferentiated voice — an owner bubble that lands after a contact's
+ * text stays labelled as the owner's, and vice versa. Synthetic bridge
+ * markers are the agent's own earlier output, not a sender, so they keep
+ * their marker shape unlabelled.
+ */
 export function composeInput(
   carried: QueuedMessage[],
   fresh: QueuedMessage[]
 ): string {
   const parts: string[] = [];
   for (const message of carried) {
-    parts.push(`[Earlier message] ${message.body}`);
+    parts.push(
+      isBridgeMarkerId(message.message_id)
+        ? `[Earlier message] ${message.body}`
+        : `[Earlier message] [from ${senderLabel(message)}] ${message.body}`
+    );
   }
   for (const message of fresh) {
-    parts.push(message.body);
+    parts.push(`[from ${senderLabel(message)}] ${message.body}`);
   }
   return parts.join("\n");
 }
 
 /**
  * Deterministic response lanes receive the user's burst, not acknowledgments
- * previously sent by the bridge. Real carried user rows keep their original
- * message ids, so they remain part of the command input.
+ * previously sent by the bridge — and not sender labels either: the lanes'
+ * command parsers are line-anchored on raw user text, so they keep seeing
+ * the unlabelled bodies the webhook wrote. Real carried user rows keep their
+ * original message ids, so they remain part of the command input.
  */
 export function composeResponseLaneInput(
   carried: QueuedMessage[],
   fresh: QueuedMessage[]
 ): string {
-  return composeInput(
-    carried.filter((message) => !isBridgeMarkerId(message.message_id)),
-    fresh
-  );
+  const parts: string[] = [];
+  for (const message of carried) {
+    if (isBridgeMarkerId(message.message_id)) continue;
+    parts.push(`[Earlier message] ${message.body}`);
+  }
+  for (const message of fresh) {
+    parts.push(message.body);
+  }
+  return parts.join("\n");
 }
 
 /** True when a cancellation stamped after this chain began. */
@@ -445,9 +490,11 @@ async function materializeAttachments(
 ): Promise<string> {
   const lines = await Promise.all(
     input.split("\n").map(async (line) => {
-      const match = ATTACHMENT_MARKER.exec(
-        line.replace(/^\[Earlier message\] /, "")
-      );
+      // Sender labels and the carried marker prefix the body (R-SEC-02);
+      // the marker match and the rewrite must skip both.
+      const prefix =
+        /^(?:\[Earlier message\] )?(?:\[from [^\]]*\] )?/.exec(line)?.[0] ?? "";
+      const match = ATTACHMENT_MARKER.exec(line.slice(prefix.length));
       if (!match?.[1]) return line;
       const parts: string[] = [];
       for (const id of match[1].split(",")) {
@@ -470,9 +517,7 @@ async function materializeAttachments(
           `[The user sent an attachment (${attachment.mimeType}); it is saved at /home/user/${path}]`
         );
       }
-      return line.startsWith("[Earlier message] ")
-        ? `[Earlier message] ${parts.join(" ")}`
-        : parts.join(" ");
+      return `${prefix}${parts.join(" ")}`;
     })
   );
   return lines.join("\n");
@@ -566,14 +611,19 @@ async function carryMessages(
   messages: QueuedMessage[]
 ): Promise<void> {
   if (messages.length === 0) return;
-  await supabase.from("carried_messages").insert(
-    messages.map((message) => ({
-      user_id: userId,
-      space_id: spaceId,
-      sender_id: message.sender_id ?? null,
-      message_id: message.message_id,
-      body: message.body,
-    }))
+  // Unchecked this insert can drop a whole carried burst (R-ARCH-05).
+  await db.write(
+    supabase.from("carried_messages").insert(
+      messages.map((message) => ({
+        user_id: userId,
+        space_id: spaceId,
+        sender_id: message.sender_id ?? null,
+        sender_tier: message.sender_tier ?? null,
+        message_id: message.message_id,
+        body: message.body,
+      }))
+    ),
+    { what: "carried_messages insert", user_id: userId }
   );
 }
 
@@ -585,15 +635,20 @@ async function requeueMessages(
   messages: QueuedMessage[]
 ): Promise<void> {
   if (messages.length === 0) return;
-  await supabase.from("batch_queue").insert(
-    messages.map((message) => ({
-      user_id: userId,
-      space_id: spaceId,
-      phone,
-      sender_id: message.sender_id ?? null,
-      message_id: message.message_id,
-      body: message.body,
-    }))
+  // Unchecked this insert can drop a whole requeued burst (R-ARCH-05).
+  await db.write(
+    supabase.from("batch_queue").insert(
+      messages.map((message) => ({
+        user_id: userId,
+        space_id: spaceId,
+        phone,
+        sender_id: message.sender_id ?? null,
+        sender_tier: message.sender_tier ?? null,
+        message_id: message.message_id,
+        body: message.body,
+      }))
+    ),
+    { what: "batch_queue requeue insert", user_id: userId }
   );
 }
 
@@ -625,15 +680,11 @@ async function retryUndeliveredStream(
 
   await carryMessages(supabase, job.userId, job.spaceId, drained);
   await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
-  console.error(
-    JSON.stringify({
-      msg: "imessage stream retry scheduled",
-      user_id: job.userId,
+  log.error("imessage stream retry scheduled", {box_id: null,
+        user_id: job.userId,
       space_id: job.spaceId,
       attempt: job.attempts + 1,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  );
+      error: error instanceof Error ? error.message : String(error),});
 
   // A single visible status avoids another silent failure while the durable
   // retry runs. Later retries stay quiet so an extended provider outage does
@@ -656,6 +707,72 @@ async function notifyFirstRetry(
     )
     .catch(() => undefined);
   return true;
+}
+
+/**
+ * Explicit, observable history replay for an iMessage turn.
+ *
+ * createRun replays the transcript itself when `conversationHistory` is
+ * omitted, but that load degrades to an empty history on any error — an
+ * unreachable box or an odd payload silently starts the turn blank and the
+ * agent re-asks for what the human already sent. Doing it here makes the
+ * degradation visible: the session is ensured first (so a first turn
+ * persists its transcript) and an empty replay against a session the box
+ * already had is logged as a dropped replay. Counts only — transcript
+ * content never enters control-plane logs (C4).
+ *
+ * Returns null when an existing session returns no transcript rows even
+ * after a retry — running that turn would answer with total amnesia, so the
+ * caller should hold the burst and try again rather than reply blank. A
+ * transcript whose rows sanitise to nothing replayable (user inputs with no
+ * assistant reply yet) is not amnesia: the store is hydrated, so the turn
+ * proceeds with an empty history.
+ */
+export async function replayHistory(
+  target: HermesBoxTarget,
+  sessionId: string,
+  context: {
+    userId: string;
+    spaceId: string;
+    title: string;
+    /** Set when the caller already ensured the session this turn. */
+    firstTurn?: boolean;
+  }
+): Promise<ConversationMessage[] | null> {
+  let firstTurn = context.firstTurn ?? false;
+  try {
+    if (context.firstTurn === undefined) {
+      firstTurn = (await ensureSession(target, sessionId, context.title))
+        .created;
+    }
+  } catch (error) {
+    log.error("session ensure failed before run", {box_id: null,
+        user_id: context.userId,
+        space_id: context.spaceId,
+        session_id: sessionId,
+        error: error instanceof Error ? error.message : String(error),});
+  }
+  let transcript = await loadConversationTranscript(target, sessionId);
+  if (transcript.rows === 0 && !firstTurn) {
+    // One immediate retry: the load is best-effort and a transient proxy
+    // hiccup or a box mid-resume often clears within a moment.
+    transcript = await loadConversationTranscript(target, sessionId);
+  }
+  if (transcript.rows === 0 && !firstTurn) {
+    log.error("history replay empty on existing session", {box_id: null,
+        user_id: context.userId,
+        space_id: context.spaceId,
+        session_id: sessionId,});
+    return null;
+  }
+  log.info("history replayed", {box_id: null,
+        user_id: context.userId,
+      space_id: context.spaceId,
+      session_id: sessionId,
+      rows: transcript.rows,
+      messages: transcript.history.length,
+      first_turn: firstTurn,});
+  return transcript.history;
 }
 
 /**
@@ -726,6 +843,29 @@ async function runFlushInner(
       await supabase.from("flush_jobs").delete().eq("space_id", job.spaceId);
       return;
     }
+    // R-SEC-02: the burst's trust is its least-trusted message — the highest
+    // tier number across every queued row — never the last message's. An
+    // owner bubble landing after a contact's text must not lift the burst
+    // back into the owner's session. Rows without a recorded tier (legacy
+    // rows, synthetic lane requeues) fall back to the job's scheduled tier,
+    // then to unknown.
+    const burstTier = drained.reduce(
+      (tier, row) => Math.max(tier, burstRowTier(row, job.senderTier)),
+      0
+    );
+    // The least-trusted sender still in the burst names the contact session.
+    const burstSenderId =
+      [...drained]
+        .reverse()
+        .find(
+          (row) =>
+            burstRowTier(row, job.senderTier) === burstTier && row.sender_id
+        )?.sender_id ??
+      [...drained].reverse().find((row) => row.sender_id)?.sender_id;
+    // R-SEC-01: run metadata carries the burst's tier and a sender ref —
+    // "owner" or contact:<sender_id>, the same ref that names the session.
+    const senderRef =
+      burstTier === 0 ? "owner" : `contact:${burstSenderId ?? "unknown"}`;
     let rawInput = composeInput(carried, fresh);
     const responseLaneInput = composeResponseLaneInput(carried, fresh);
     // Timed progress starts from the first fresh iMessage, not from when a
@@ -744,16 +884,12 @@ async function runFlushInner(
         generate: (stage) =>
           progressUpdateReply(supabase, job.userId, responseLaneInput, stage),
         onSent: (stage, elapsedMs, generated) => {
-          console.info(
-            JSON.stringify({
-              msg: "imessage ttfk progress",
-              user_id: job.userId,
+          log.info("imessage ttfk progress", {box_id: null,
+        user_id: job.userId,
               space_id: job.spaceId,
               stage,
               elapsed_ms: elapsedMs,
-              generated,
-            })
-          );
+              generated,});
         },
       });
     }
@@ -768,7 +904,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
         },
         responseLaneInput
       );
@@ -797,13 +933,9 @@ async function runFlushInner(
         }
         throw error;
       }
-      console.error(
-        JSON.stringify({
-          msg: "draw command failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("draw command failed", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(job.spaceId, job.phone, "couldn't open draw. try again?")
         .catch(() => undefined);
@@ -827,7 +959,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
         },
         responseLaneInput
       );
@@ -856,13 +988,9 @@ async function runFlushInner(
         }
         throw error;
       }
-      console.error(
-        JSON.stringify({
-          msg: "freeze command failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("freeze command failed", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(job.spaceId, job.phone, "couldn't open freeze. try again?")
         .catch(() => undefined);
@@ -882,7 +1010,7 @@ async function runFlushInner(
     const intake = await maybeOpenIntake(
       supabase,
       sender,
-      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: job.senderTier },
+      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: burstTier },
       responseLaneInput
     );
     if (intake?.kind === "non_owner") {
@@ -910,7 +1038,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
         },
         responseLaneInput
       );
@@ -939,13 +1067,9 @@ async function runFlushInner(
         }
         throw error;
       }
-      console.error(
-        JSON.stringify({
-          msg: "mini-app command failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("mini-app command failed", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(job.spaceId, job.phone, "couldn't open that mini-app. try again?")
         .catch(() => undefined);
@@ -962,7 +1086,9 @@ async function runFlushInner(
     // deterministically here — before any box wake. A bare `/trade` was
     // already carded by the mini-app branch above; freeform `/trade ...`
     // text falls through to the Hermes turn and the box-side trade skill.
-    const tradeCommand = parseTradeCommand(rawInput);
+    // Commands parse the unlabelled lane input, not the sender-labelled
+    // model input.
+    const tradeCommand = parseTradeCommand(responseLaneInput);
     if (tradeCommand) {
       try {
         const { handled } = await runTradeCommand(
@@ -972,7 +1098,7 @@ async function runFlushInner(
             spaceId: job.spaceId,
             userId: job.userId,
             phone: job.phone,
-            senderTier: job.senderTier,
+            senderTier: burstTier,
             sender,
           },
           tradeCommand
@@ -988,13 +1114,9 @@ async function runFlushInner(
           return;
         }
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "trade command failed",
-            user_id: job.userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("trade command failed", {box_id: null,
+        user_id: job.userId,
+            error: error instanceof Error ? error.message : String(error),});
         await sender
           .sendText(job.spaceId, job.phone, "couldn't reach trading. try again?")
           .catch(() => undefined);
@@ -1020,7 +1142,7 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
           ...(Number.isFinite(receivedAtMs) ? { receivedAtMs } : {}),
         },
         responseLaneInput
@@ -1036,13 +1158,9 @@ async function runFlushInner(
         return;
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "twin lane failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("twin lane failed", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(job.spaceId, job.phone, "that one didn't come out. try again?")
         .catch(() => undefined);
@@ -1083,13 +1201,9 @@ async function runFlushInner(
         return;
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "creative lane failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("creative lane failed", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       await sender
         .sendText(job.spaceId, job.phone, "that one didn't come out. try again?")
         .catch(() => undefined);
@@ -1118,10 +1232,12 @@ async function runFlushInner(
           spaceId: job.spaceId,
           userId: job.userId,
           phone: job.phone,
-          senderTier: job.senderTier,
+          senderTier: burstTier,
           senderId: drained.find((row) => row.sender_id)?.sender_id,
         },
-        rawInput,
+        // Lane input is unlabelled: the share marker and intent regexes
+        // anchor on raw user lines.
+        responseLaneInput,
         drained[0]?.message_id ?? String(Date.now())
       );
       if (located.handled) {
@@ -1138,13 +1254,9 @@ async function runFlushInner(
       // A captioned share with nothing pending: the caption is the turn.
       locationInput = located.inputOverride;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "location lane failed",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("location lane failed", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
       // Location is best-effort: a lane failure must never eat the burst —
       // fall through so Hermes answers the "near me" text itself.
     }
@@ -1185,8 +1297,14 @@ async function runFlushInner(
                   body: bridgeCarryMarker(bridged),
                 },
               ]);
-            } catch {
+            } catch (error) {
               // burst already carried above; retry owns the reply
+              log.warn("imessage bridged reply send failed", {
+                user_id: job.userId,
+                box_id: null,
+                space_id: job.spaceId,
+                error: error instanceof Error ? error.message : String(error),
+              });
             }
           } else {
             await sender
@@ -1195,7 +1313,15 @@ async function runFlushInner(
                 job.phone,
                 "Give me a few minutes — my computer is busy starting up. I'll reply as soon as it's ready."
               )
-              .catch(() => undefined);
+              .catch((error) =>
+                log.warn("imessage holding line send failed", {
+                  user_id: job.userId,
+                  box_id: null,
+                  space_id: job.spaceId,
+                  error:
+                    error instanceof Error ? error.message : String(error),
+                })
+              );
           }
         }
         await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
@@ -1216,13 +1342,20 @@ async function runFlushInner(
     // that bot's canonical chat; the reply streams back attributed
     // ('\u{1F916} <name>: \u2026'). Unknown @words stay ordinary text for the
     // default agent. Roster read failures degrade to the default agent.
+    // R-SEC-01: delegation is owner-only — a contact's text never enters a
+    // bot's persistent chat either.
     let runTarget = box.target;
-    let runSession = MAIN_SESSION;
+    // R-SEC-01: a non-owner burst never mounts the owner's air-main — it
+    // runs in the contact's own session, so no owner history is replayed
+    // and no owner memory is attached to the turn. Its own transcript is
+    // replayed instead, keeping contact threads coherent across bursts.
+    let runSession = burstTier === 0 ? MAIN_SESSION : senderRef;
     let runInput = input;
     let botPrefix = "";
     let botSessionCreated: boolean | undefined;
     try {
-      const roster = await listBots(supabase, job.userId);
+      const roster =
+        burstTier === 0 ? await listBots(supabase, job.userId) : [];
       const hit = parseMention(
         input,
         roster.filter((b) => b.status === "ready").map((b) => b.name)
@@ -1240,13 +1373,9 @@ async function runFlushInner(
         }
       }
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "bot delegation skipped",
-          user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("bot delegation skipped", {box_id: null,
+        user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
     }
 
     // No control-plane transcript replay: the run goes into a session
@@ -1256,29 +1385,126 @@ async function runFlushInner(
     // persist; the bot branch ensured its own session above.
     if (botSessionCreated === undefined) {
       try {
-        await ensureSession(runTarget, runSession, MAIN_SESSION_TITLE);
-      } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "session ensure failed before run",
-            user_id: job.userId,
-            space_id: job.spaceId,
-            session_id: runSession,
-            error: error instanceof Error ? error.message : String(error),
-          })
+        await ensureSession(
+          runTarget,
+          runSession,
+          runSession === MAIN_SESSION ? MAIN_SESSION_TITLE : senderRef
         );
+      } catch (error) {
+        log.error("session ensure failed before run", {box_id: null,
+          user_id: job.userId,
+          space_id: job.spaceId,
+          session_id: runSession,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
     const initialResponseDeadlineAt = Date.now() + INITIAL_RESPONSE_DEADLINE_MS;
     const finalResponseDeadlineAt = Date.now() + FINAL_RESPONSE_DEADLINE_MS;
+    // A retried attempt of this same burst may find the previous attempt's
+    // run still alive — a crash after createRun wrote its id to flush_jobs
+    // leaves it there (the row survives until a flush completes). Stop the
+    // stale run before starting a second so two side-effectful runs never
+    // overlap; a failed stop holds the burst for another retry instead
+    // (R-ARCH-06).
+    const { data: priorJob } = await supabase
+      .from("flush_jobs")
+      .select("hermes_run_id")
+      .eq("space_id", job.spaceId)
+      .maybeSingle();
+    const priorRunId = (priorJob?.hermes_run_id as string | null) ?? null;
+    if (priorRunId) {
+      const stopped = await stopRun(runTarget, priorRunId)
+        .then(() => true)
+        .catch((error: unknown) => {
+          log.error("imessage prior run stop failed", {
+            user_id: job.userId,
+            box_id: box.boxId,
+            space_id: job.spaceId,
+            hermes_run_id: priorRunId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        });
+      if (!stopped) {
+        // Mark the still-live run so a sweeper can finish it, and hold the
+        // burst — never start a second run over it.
+        await db
+          .write(
+            supabase
+              .from("agent_runs")
+              .update({
+                ended_at: new Date().toISOString(),
+                outcome: "stop_failed",
+              })
+              .eq("user_id", job.userId)
+              .eq("hermes_run_id", priorRunId),
+            {
+              what: "mark unstopped prior run",
+              user_id: job.userId,
+              box_id: box.boxId,
+            }
+          )
+          .catch((error: unknown) =>
+            log.error("imessage stop_failed receipt write failed", {
+              user_id: job.userId,
+              box_id: box.boxId,
+              space_id: job.spaceId,
+              hermes_run_id: priorRunId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          );
+        await carryMessages(supabase, job.userId, job.spaceId, drained);
+        await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+        return;
+      }
+      // Clear the stale id: a later retry must not hold the burst trying to
+      // stop a run that is already dead.
+      await db
+        .write(
+          supabase
+            .from("flush_jobs")
+            .update({ hermes_run_id: null })
+            .eq("space_id", job.spaceId),
+          {
+            what: "clear stopped hermes_run_id",
+            user_id: job.userId,
+            box_id: box.boxId,
+          }
+        )
+        .catch((error: unknown) =>
+          log.error("imessage hermes_run_id clear failed", {
+            user_id: job.userId,
+            box_id: box.boxId,
+            space_id: job.spaceId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+    }
     let run: Awaited<ReturnType<typeof createRun>>;
     try {
       run = await beforeDeadline(
         createRun(runTarget, {
           input: runInput,
           sessionId: runSession,
-          metadata: { channel: "imessage" },
+          // R-SEC-01: the run declares who wrote it — the burst's minimum
+          // trust and the sender ref — so Hermes can attribute the turn.
+          metadata: {
+            channel: "imessage",
+            sender_tier: String(burstTier),
+            sender_ref: senderRef,
+          },
+          ...(burstTier > 0
+            ? {
+                author: {
+                  id: senderRef,
+                  name: burstSenderId ?? "unknown",
+                  is_bot: false,
+                },
+              }
+            : {}),
+          idempotencyKey: `imessage-flush:${job.spaceId}:${drained[0]?.message_id ?? chainStartedAt}`,
         }),
         initialResponseDeadlineAt,
         "Hermes did not create the run before the initial-response deadline"
@@ -1310,14 +1536,10 @@ async function runFlushInner(
         started_at: startedAt,
       });
     if (openReceiptError) {
-      console.error(
-        JSON.stringify({
-          msg: "imessage agent run receipt open failed",
-          user_id: job.userId,
+      log.error("imessage agent run receipt open failed", {box_id: box.boxId,
+        user_id: job.userId,
           hermes_run_id: run.run_id,
-          error: openReceiptError.message,
-        })
-      );
+          error: openReceiptError.message,});
     }
     let cancelled = false;
     let lastCancelCheck = Date.now();
@@ -1349,7 +1571,46 @@ async function runFlushInner(
             lastCancelCheck = Date.now();
             if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
               cancelled = true;
-              await stopRun(runTarget, run.run_id).catch(() => undefined);
+              const stopped = await stopRun(runTarget, run.run_id)
+                .then(() => true)
+                .catch((error: unknown) => {
+                  log.error("imessage stop run after cancel failed", {
+                    user_id: job.userId,
+                    box_id: box.boxId,
+                    space_id: job.spaceId,
+                    hermes_run_id: run.run_id,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  });
+                  return false;
+                });
+              if (!stopped) {
+                // The run may still be alive and side-effecting — mark it so
+                // a sweeper can finish the kill (R-ARCH-06).
+                await db
+                  .write(
+                    supabase
+                      .from("agent_runs")
+                      .update({ outcome: "stop_failed" })
+                      .eq("user_id", job.userId)
+                      .eq("hermes_run_id", run.run_id),
+                    {
+                      what: "mark unstopped cancelled run",
+                      user_id: job.userId,
+                      box_id: box.boxId,
+                    }
+                  )
+                  .catch((error: unknown) =>
+                    log.error("imessage stop_failed receipt write failed", {
+                      user_id: job.userId,
+                      box_id: box.boxId,
+                      space_id: job.spaceId,
+                      hermes_run_id: run.run_id,
+                      error:
+                        error instanceof Error ? error.message : String(error),
+                    })
+                  );
+              }
               return;
             }
           }
@@ -1398,24 +1659,34 @@ async function runFlushInner(
       // stop endpoint. The durable retry is still scheduled only after the
       // stop attempt settles, which prevents overlapping side-effectful runs.
       const statusAttempted = await notifyFirstRetry(job, sender);
-      await stopRun(runTarget, run.run_id).catch(() => undefined);
+      let stopFailed = false;
+      await stopRun(runTarget, run.run_id).catch((error: unknown) => {
+        stopFailed = true;
+        log.error("imessage stop run before retry failed", {
+          user_id: job.userId,
+          box_id: box.boxId,
+          space_id: job.spaceId,
+          hermes_run_id: run.run_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
       const { error: failReceiptError } = await supabase
         .from("agent_runs")
         .update({
           ended_at: new Date().toISOString(),
-          outcome: "first_response_failed",
+          // The retry creates a second run; when the stop itself failed the
+          // first may still be alive — mark it so a sweeper can finish the
+          // kill rather than leaving two overlapping side-effectful runs
+          // (R-ARCH-06).
+          outcome: stopFailed ? "stop_failed" : "first_response_failed",
         })
         .eq("user_id", job.userId)
         .eq("hermes_run_id", run.run_id);
       if (failReceiptError) {
-        console.error(
-          JSON.stringify({
-            msg: "imessage agent run receipt failure close failed",
-            user_id: job.userId,
+        log.error("imessage agent run receipt failure close failed", {box_id: box.boxId,
+        user_id: job.userId,
             hermes_run_id: run.run_id,
-            error: failReceiptError.message,
-          })
-        );
+            error: failReceiptError.message,});
       }
       await retryUndeliveredStream(
         supabase,
@@ -1482,7 +1753,7 @@ async function runFlushInner(
     // minted into their thread. The reply text may still promise a card, so
     // the contact gets the same owner-only line as the explicit /<app> path.
     if (!cancelled && stripped.cards.length > 0) {
-      if (job.senderTier === 0) {
+      if (burstTier === 0) {
         await sendMarkedCards(
           supabase,
           { userId: job.userId, spaceId: job.spaceId, phone: job.phone },
@@ -1527,14 +1798,10 @@ async function runFlushInner(
       .limit(1)
       .maybeSingle();
     if (existingRunError) {
-      console.error(
-        JSON.stringify({
-          msg: "imessage agent run receipt lookup failed",
-          user_id: job.userId,
+      log.error("imessage agent run receipt lookup failed", {box_id: box.boxId,
+        user_id: job.userId,
           hermes_run_id: run.run_id,
-          error: existingRunError.message,
-        })
-      );
+          error: existingRunError.message,});
     } else if (existingRun) {
       const { error: updateReceiptError } = await supabase
         .from("agent_runs")
@@ -1547,14 +1814,10 @@ async function runFlushInner(
         })
         .eq("id", existingRun.id);
       if (updateReceiptError) {
-        console.error(
-          JSON.stringify({
-            msg: "imessage agent run receipt close failed",
-            user_id: job.userId,
+        log.error("imessage agent run receipt close failed", {box_id: box.boxId,
+        user_id: job.userId,
             hermes_run_id: run.run_id,
-            error: updateReceiptError.message,
-          })
-        );
+            error: updateReceiptError.message,});
       }
     } else {
       const { error: insertReceiptError } = await supabase
@@ -1568,14 +1831,10 @@ async function runFlushInner(
           outcome: "completed",
         });
       if (insertReceiptError) {
-        console.error(
-          JSON.stringify({
-            msg: "imessage agent run receipt insert failed",
-            user_id: job.userId,
+        log.error("imessage agent run receipt insert failed", {box_id: box.boxId,
+        user_id: job.userId,
             hermes_run_id: run.run_id,
-            error: insertReceiptError.message,
-          })
-        );
+            error: insertReceiptError.message,});
       }
     }
     // If a new inbound arrived while we streamed, its flush owns the job now.
@@ -1697,7 +1956,7 @@ export async function flushAfterDebounce(
   if (!claim) return; // a later message owns the flush now
   const { data } = await supabase
     .from("flush_jobs")
-    .select("attempts")
+    .select("attempts, sender_tier")
     .eq("space_id", message.spaceId)
     .maybeSingle();
   await runFlush(
@@ -1707,7 +1966,12 @@ export async function flushAfterDebounce(
       userId: message.userId,
       phone: message.phone,
       attempts: (data?.attempts as number | undefined) ?? 0,
-      senderTier: message.senderTier ?? null,
+      // The job row's folded minimum trust (schedule_flush, migration 0130),
+      // not this caller's own tier — that was the last-message bug.
+      senderTier:
+        (data?.sender_tier as number | null | undefined) ??
+        message.senderTier ??
+        null,
     },
     claim.chainStartedAt,
     sender

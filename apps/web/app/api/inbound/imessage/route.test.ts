@@ -3,18 +3,18 @@
  * (webhook_id, message_id), the dedupe release a failed signup performs so a
  * redelivery retries it, tier-2 "Needs you" for unknown senders, and the
  * tier-0 enqueue path. The signature is real HMAC over v0:{ts}:{rawBody};
- * Postgres is AdminFakeDb; dedupeInboundEvent is mocked but backed by the
+ * Postgres is FakeSupabase; dedupeInboundEvent is mocked but backed by the
  * fake inbound_events table so the route's own release delete is observable.
  */
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import type { DedupeKey } from "@/lib/routing/inbound";
 import type { InboundMessage } from "@/lib/orchestrator/flush";
 
 const db = vi.hoisted(() => ({
-  fake: null as unknown as AdminFakeDb,
+  fake: null as unknown as FakeSupabase,
   afterCbs: [] as (() => Promise<unknown>)[],
 }));
 
@@ -212,7 +212,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  db.fake = new AdminFakeDb();
+  db.fake = new FakeSupabase();
   db.afterCbs.length = 0;
   process.env["SPECTRUM_WEBHOOK_SECRET"] = SECRET;
   delete process.env["ONAIROS_API_KEY"];

@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureBoxAwake } from "../orchestrator/boxes";
+import { log } from "../log";
 
 // Renew after reads; the lease outlasts the bounded 60-second Box write.
 export const LEASE_TTL_MS = 90_000;
@@ -78,14 +79,9 @@ async function releaseLease(
     p_holder: holder,
   });
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "state lease release failed",
-        app,
+    log.error("state lease release failed", {app,
         resource,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }
 

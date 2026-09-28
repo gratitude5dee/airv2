@@ -19,6 +19,7 @@ import {
   parseCreateIntent,
 } from "../miniapps/imessageCommand";
 import { createConfig } from "./config";
+import { log } from "../log";
 
 /* ------------------------------------------------------------ vocabulary */
 
@@ -458,9 +459,7 @@ export async function openIntake(
     );
   }
   const row = parseIntakeRow(data);
-  console.log(
-    JSON.stringify({ msg: "create intake opened", user_id: userId, appname, source: input.source })
-  );
+  log.info("create intake opened", {user_id: userId, appname, source: input.source});
   return row;
 }
 
@@ -594,16 +593,11 @@ export async function advanceIntake(
   if (error) throw new IntakeError("could not advance the intake; try again", 503);
   if (!data) throw new IntakeError("the intake moved underneath you; reload", 409);
   const next = parseIntakeRow(data);
-  console.log(
-    JSON.stringify({
-      msg: "create intake advanced",
-      user_id: userId,
+  log.info("create intake advanced", {user_id: userId,
       appname: next.appname,
       from: row.stage,
       event,
-      stage: next.stage,
-    })
-  );
+      stage: next.stage,});
   return next;
 }
 
@@ -626,7 +620,7 @@ export async function abandonStale(
   if (error) throw new IntakeError("could not sweep stale intakes", 503);
   const count = data?.length ?? 0;
   if (count > 0) {
-    console.log(JSON.stringify({ msg: "create intakes abandoned", count, older_than_days: olderThanDays }));
+    log.info("create intakes abandoned", {count, older_than_days: olderThanDays});
   }
   return count;
 }
@@ -672,13 +666,8 @@ export async function recordAskingReply(
     if (!appname) return;
     await advanceIntake(supabase, userId, appname, "owner_reply");
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "create intake owner_reply failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("create intake owner_reply failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
@@ -718,13 +707,8 @@ export async function maybeOpenIntake(
       line: intakeHookInput(appname, createConfig.intakeMaxQuestions()),
     };
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "create intake open failed",
-        user_id: job.userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("create intake open failed", {user_id: job.userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return null;
   }
 }

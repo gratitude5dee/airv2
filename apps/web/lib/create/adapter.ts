@@ -18,6 +18,7 @@ import {
   verifyBridgeRequest,
 } from "./bridge";
 import { getJob, JobError, type JobRow } from "./job";
+import { log } from "../log";
 
 export class AdapterError extends Error {
   constructor(
@@ -48,9 +49,7 @@ export async function adapterBody<T = Record<string, unknown>>(
   );
   if (verdict === null) throw new AdapterError("create bridge unconfigured", 503);
   if (!verdict) {
-    console.log(
-      JSON.stringify({ msg: "create adapter bad signature", path: request.nextUrl.pathname })
-    );
+    log.info("create adapter bad signature", {path: request.nextUrl.pathname});
     throw new AdapterError("unauthorized", 401);
   }
   // R-SEC-04: a validly-signed request delivered twice is a replay. The

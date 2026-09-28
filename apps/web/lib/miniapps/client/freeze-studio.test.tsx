@@ -4,7 +4,7 @@
  * renders the source stage; "sketch + generate" swaps to the sketch pad.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import "@/lib/testing/jsdom";
 
 const fetchMock = vi.fn(async () => {
@@ -46,7 +46,9 @@ describe("freeze-studio", () => {
 
   it("switches to the sketch pad when 'sketch + generate' is tapped", async () => {
     const sketchButton = await screen.findByText("sketch + generate");
-    sketchButton.click();
+    await act(async () => {
+      sketchButton.click();
+    });
     await waitFor(() => {
       expect(screen.getByText("← back")).toBeTruthy();
     });

@@ -1,0 +1,5 @@
+{"comment": "K114 \u2014 propose a purchase_review; no checkout submit"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://grocer.example.com"}}
+{"call": {"method": "POST", "path": "/api/browser/purchase", "body": {"action": "propose", "host": "grocer-$LANE.example.com", "item_id": "33333333-2222-3333-4444-555555555555", "summary": "Olive oil in cart, coupon applied", "amount_usd": 18.4}}}
+{"sse": {"event": "message.delta", "delta": "Added the olive oil and applied the coupon \u2014 the checkout is staged as a purchase review."}}
+{"sse": {"event": "run.completed"}}

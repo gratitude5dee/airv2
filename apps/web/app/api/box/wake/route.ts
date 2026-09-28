@@ -12,6 +12,7 @@ import {
   armStopAfter,
   StartLimitError,
 } from "@/lib/orchestrator/boxes";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,13 +48,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({
-        msg: "box wake failed",
+    log.error("box wake failed", {box_id: null,
         user_id: session.userId,
-        error: message,
-      })
-    );
+        error: message,});
     return NextResponse.json({ error: "wake failed" }, { status: 502 });
   }
 }

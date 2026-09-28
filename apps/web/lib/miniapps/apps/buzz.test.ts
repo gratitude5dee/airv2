@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { normalizeBuzzDoc } from "@/lib/miniapps/buzz/state";
-import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   beginBuzzBinding,
   buzzHeartbeat,
@@ -48,7 +48,14 @@ const DOC_PATH = ".hermes/miniapps/buzz/default.json";
 const NSEC = "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzzz";
 const NPUB = "npub1exampleexampleexampleexample";
 
-let db = new FakeDb();
+function newDb(): FakeSupabase {
+  // Postgres column defaults the impl relies on: links pair as connected.
+  const db = new FakeSupabase();
+  db.defaults["buzz_links"] = { status: "connected" };
+  return db;
+}
+
+let db = newDb();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
@@ -73,7 +80,7 @@ beforeAll(() => {
 
 afterEach(() => {
   boxFiles.clear();
-  db = new FakeDb();
+  db = newDb();
 });
 
 describe("buzz mini-app", () => {

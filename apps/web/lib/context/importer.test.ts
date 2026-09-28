@@ -8,13 +8,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deepMemoryIndex } from "../memory/deep";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const boxFiles = new Map<string, string>();
 const createRunMock = vi.fn(
   async (_target: unknown, _request: unknown) => ({ run_id: "run-42" })
 );
-const insertMock = vi.fn(async () => ({ error: null }));
 
 vi.mock("../env", () => ({
   env: { miniappSigningKey: () => "test-signing-key" },
@@ -63,17 +62,16 @@ import {
   verifyImportTicket,
 } from "./importer";
 
-const supabase = {
-  from: vi.fn(() => ({ insert: insertMock })),
-} as unknown as SupabaseClient;
+const db = new FakeSupabase();
+const supabase = db.client();
 
 const STATUS_PATH = ".hermes/context/agent-import/status.json";
 
 beforeEach(() => {
+  db.reset();
   vi.mocked(deepMemoryIndex).mockClear();
   boxFiles.clear();
   createRunMock.mockClear();
-  insertMock.mockClear();
 });
 
 describe("import tickets", () => {
@@ -187,7 +185,7 @@ describe("storeImportChunk", () => {
     ).toBe("{}");
     expect(boxFiles.get(STATUS_PATH)).toContain('"files": 2');
     // no Postgres writes on the upload path
-    expect(insertMock).not.toHaveBeenCalled();
+    expect(db.inserts).toHaveLength(0);
   });
 
   it("accumulates across uploads and sources", async () => {
@@ -234,7 +232,13 @@ describe("startDictionaryRun", () => {
     expect(request.input).toContain("Dictionary.MD");
     // metadata is identifiers only — never content
     expect(Object.values(request.metadata).join(" ")).not.toContain("# style");
-    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(db.inserts).toHaveLength(1);
+    expect(db.inserts[0]?.table).toBe("agent_runs");
+    expect(db.inserts[0]?.row).toMatchObject({
+      user_id: "user-1",
+      hermes_run_id: "run-42",
+      trigger: "web",
+    });
   });
 
   it("does not enqueue the dictionary before the subagent has written it", async () => {

@@ -38,6 +38,7 @@ import {
 } from "@/lib/memory/deep";
 import { USER_PROFILE_CHAR_LIMIT, USER_PROFILE_PATH } from "@/lib/memory/files";
 import { ONAIROS_PROVIDER, ONAIROS_TOOLKIT } from "./ids";
+import { log } from "../log";
 
 const PROVIDER = ONAIROS_PROVIDER;
 const TOOLKIT = ONAIROS_TOOLKIT;
@@ -118,14 +119,9 @@ export async function fetchPersona(handoff: OnairosHandoff): Promise<unknown> {
     );
   }
   if (!response.ok) {
-    console.error(
-      JSON.stringify({
-        msg: "onairos persona fetch failed",
-        method,
+    log.error("onairos persona fetch failed", {method,
         path: personaPath(personaUrl(handoff.apiUrl)),
-        status: response.status,
-      })
-    );
+        status: response.status,});
     // Status code only: the body could carry grant or persona details.
     throw new OnairosError(`persona fetch failed (${response.status})`, 502);
   }

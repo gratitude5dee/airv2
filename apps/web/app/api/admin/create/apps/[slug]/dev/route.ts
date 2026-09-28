@@ -6,11 +6,12 @@
  * row (metadata only) plus the release receipt.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { ReleaseError, renewDev, revokeDev, type DevRelease } from "@/lib/create/release";
 import { getRegistryApp, type RegistryApp } from "@/lib/miniapps/registry";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,10 +35,9 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
-  const operator = adminAuthorized(request);
-  if (!operator) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const operator = auth.operator;
   const { slug } = await context.params;
   if (!SLUG_RE.test(slug)) {
     return NextResponse.json({ error: "invalid slug" }, { status: 400 });
@@ -70,16 +70,11 @@ export async function POST(
       operator,
       detail,
     });
-    console.log(
-      JSON.stringify({
-        msg: "admin dev action",
-        user_id: app.owner_user_id,
+    log.info("admin dev action", {user_id: app.owner_user_id,
         app: app.slug,
         operator,
         action,
-        version: detail["version"] ?? null,
-      })
-    );
+        version: detail["version"] ?? null,});
     const fresh = (await getRegistryApp(supabase, slug).catch(() => null)) ?? app;
     return NextResponse.json({ action, dev, app: appRow(fresh) });
   } catch (error) {
@@ -91,15 +86,10 @@ export async function POST(
         { status: error.status }
       );
     }
-    console.error(
-      JSON.stringify({
-        msg: "admin dev action failed",
-        user_id: app.owner_user_id,
+    log.error("admin dev action failed", {user_id: app.owner_user_id,
         app: app.slug,
         action,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "dev release action failed" }, { status: 502 });
   }
 }

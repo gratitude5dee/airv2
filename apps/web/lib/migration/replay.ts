@@ -13,6 +13,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { processInboundEmail } from "../email/inbound";
+import { log } from "../log";
 
 interface HeldReceipt {
   user_id: string;
@@ -32,13 +33,9 @@ export async function replayHeldReceipts(
     .eq("state", "held")
     .limit(50);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "held receipt load failed",
+    log.error("held receipt load failed", {box_id: null,
         user_id: userId,
-        error: error.message,
-      })
-    );
+        error: error.message,});
     return { replayed: 0, failed: 1 };
   }
   let replayed = 0;
@@ -80,15 +77,11 @@ export async function replayHeldReceipts(
       replayed += 1;
     } catch (error) {
       failed += 1;
-      console.error(
-        JSON.stringify({
-          msg: "held receipt replay failed",
-          user_id: userId,
+      log.error("held receipt replay failed", {box_id: null,
+        user_id: userId,
           kind: receipt.kind,
           stable_id: receipt.stable_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
   return { replayed, failed };
@@ -117,14 +110,10 @@ export async function holdReceipt(
     { onConflict: "user_id,kind,stable_id" }
   );
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "held receipt write failed",
+    log.error("held receipt write failed", {box_id: null,
         user_id: userId,
         kind,
         stable_id: stableId,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }

@@ -26,7 +26,7 @@ vi.mock("./spend", () => ({
 }));
 
 import { sendWalletTokens } from "../thirdweb/client";
-import { AdminFakeDb } from "../admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { MuseCapabilityError, runMuseCapability } from "./capabilities";
 
 const USER = "user-1";
@@ -34,14 +34,14 @@ const TO = "0x52908400098527886E0F7030069857D2E4169EE7";
 const GRANT = { user_id: USER, scopes: ["profile", "wallet:request"], revoked_at: null };
 
 const seededDb = () => {
-  const db = new AdminFakeDb();
+  const db = new FakeSupabase();
   db.rows("muse_grants").push({ ...GRANT });
   return db;
 };
 
-const walletInserts = (db: AdminFakeDb) =>
+const walletInserts = (db: FakeSupabase) =>
   db.inserts.filter((entry) => entry.table === "wallet_transfers");
-const decisionInserts = (db: AdminFakeDb) =>
+const decisionInserts = (db: FakeSupabase) =>
   db.inserts.filter((entry) => entry.table === "decisions");
 
 beforeEach(() => {
@@ -93,7 +93,7 @@ describe("runMuseCapability wallet-request", () => {
   });
 
   it("403s when the owner has no active Muse grant and writes nothing", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     await expect(
       runMuseCapability(db.client(), USER, "wallet-request", {
         to: TO,
@@ -105,7 +105,7 @@ describe("runMuseCapability wallet-request", () => {
   });
 
   it("403s when the grant lacks the wallet:request scope", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.rows("muse_grants").push({ user_id: USER, scopes: ["profile", "wallet:read"], revoked_at: null });
     await expect(
       runMuseCapability(db.client(), USER, "wallet-request", {
@@ -117,7 +117,7 @@ describe("runMuseCapability wallet-request", () => {
   });
 
   it("ignores revoked grants", async () => {
-    const db = new AdminFakeDb();
+    const db = new FakeSupabase();
     db.rows("muse_grants").push({ ...GRANT, revoked_at: "2026-01-01T00:00:00Z" });
     await expect(
       runMuseCapability(db.client(), USER, "wallet-request", {

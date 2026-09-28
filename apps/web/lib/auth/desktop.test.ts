@@ -1,5 +1,5 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   DEVICE_TOKEN_TTL_SECONDS,
   mintDeviceToken,
@@ -9,28 +9,19 @@ import {
   verifyPairingToken,
 } from "./desktop";
 
+const db = new FakeSupabase();
+
 beforeAll(() => {
   process.env["SESSION_SECRET"] = "test-session-secret";
   delete process.env["DESKTOP_SIGNING_KEY"];
 });
 
-/** Minimal insert-returning-single stub for desktop_devices. */
-function supabaseStub(
-  result: { data?: { id: string }; error?: { code: string; message: string } }
-): SupabaseClient {
-  return {
-    from: () => ({
-      insert: () => ({
-        select: () => ({
-          single: async () => ({
-            data: result.data ?? null,
-            error: result.error ?? null,
-          }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
-}
+beforeEach(() => {
+  db.reset();
+  // A pairing token redeems exactly once: the unique index on pairing_jti
+  // makes the replayed insert a 23505.
+  db.uniques["desktop_devices"] = ["pairing_jti"];
+});
 
 describe("desktop credentials", () => {
   it("round-trips a pairing token", () => {
@@ -81,26 +72,15 @@ describe("desktop credentials", () => {
 
   it("pairs a device once and rejects the replay", async () => {
     const { token } = mintPairingToken("user-1");
-    const paired = await pairDevice(
-      supabaseStub({ data: { id: "device-1" } }),
-      token,
-      "MacBook"
-    );
-    expect(paired).toEqual({ userId: "user-1", deviceId: "device-1" });
-    const replay = await pairDevice(
-      supabaseStub({ error: { code: "23505", message: "duplicate key" } }),
-      token,
-      "MacBook"
-    );
-    expect(replay).toBeUndefined();
+    const paired = await pairDevice(db.client(), token, "MacBook");
+    const deviceId = db.rows("desktop_devices")[0]?.["id"] as string;
+    expect(paired).toEqual({ userId: "user-1", deviceId });
+    expect(await pairDevice(db.client(), token, "MacBook")).toBeUndefined();
+    expect(db.rows("desktop_devices")).toHaveLength(1);
   });
 
   it("refuses to pair on an invalid token without touching the database", async () => {
-    const exploding = {
-      from: () => {
-        throw new Error("must not query");
-      },
-    } as unknown as SupabaseClient;
-    expect(await pairDevice(exploding, "bogus", undefined)).toBeUndefined();
+    expect(await pairDevice(db.client(), "bogus", undefined)).toBeUndefined();
+    expect(db.queries).toHaveLength(0);
   });
 });

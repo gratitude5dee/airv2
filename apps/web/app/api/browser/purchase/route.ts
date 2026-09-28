@@ -24,12 +24,15 @@ import {
   recordPurchaseOutcome,
   PurchaseError,
   PURCHASE_OUTCOMES,
-  type PurchaseOutcome,
 } from "@/lib/vault/purchase";
 import { MAX_TTL_MINUTES } from "@/lib/vault/tickets";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { mintApprovalUrl } from "@/lib/approvals/token";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
+import { parseBody } from "@/lib/http/body";
+import { z } from "zod";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,41 +41,36 @@ export const maxDuration = 60;
 const ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
 // The card-field groups `air-vault type` can deliver — a closed set, so a
 // report line can never smuggle a value into the audit trail (C18).
-const FIELD_GROUPS = new Set(["number", "expiry", "cvv", "zip"]);
+const FIELD_GROUP = z.enum(["number", "expiry", "cvv", "zip"]);
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string; boxId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id, provider_box_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return null;
-  return {
-    userId: box.user_id as string,
-    boxId: box.provider_box_id as string,
-  };
-}
+/** One action per call; the union keys on `action` so each variant types
+ * only the fields it consumes. */
+const Body = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("propose"),
+    host: z.string().min(1),
+    item_id: z.string().regex(ID_RE),
+    summary: z.string().trim().min(1).max(2000),
+    amount_usd: z.number(),
+  }),
+  z.object({
+    action: z.literal("report"),
+    item_id: z.string().regex(ID_RE),
+    host: z.string().min(1),
+    field_groups: z.array(FIELD_GROUP).min(1),
+  }),
+  z.object({
+    action: z.literal("outcome"),
+    outcome: z.enum(PURCHASE_OUTCOMES),
+  }),
+]);
 
-async function boxUserId(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<string | null> {
-  const box = await callingBox(supabase, request);
-  return box ? box.userId : null;
-}
+
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
   const userId = box.userId;
   const [
     { data: cards, error: cardsError },
@@ -96,13 +94,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // silently kills the offer-the-fill path.
   const queryError = cardsError ?? openError;
   if (queryError) {
-    console.error(
-      JSON.stringify({
-        msg: "purchase eligibility query failed",
-        user_id: userId,
-        error: queryError.message,
-      })
-    );
+    log.error("purchase eligibility query failed", {user_id: userId,
+        error: queryError.message,});
     return NextResponse.json(
       { error: "query_failed", message: queryError.message },
       { status: 502, headers: { "Cache-Control": "no-store" } }
@@ -123,13 +116,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     // The store, not the mirror, decides: a box that cannot be read must not
     // hand the agent a card it may be unable to fill.
-    console.error(
-      JSON.stringify({
-        msg: "purchase eligibility store read failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("purchase eligibility store read failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json(
       { error: "store_unavailable" },
       { status: 502, headers: { "Cache-Control": "no-store" } }
@@ -187,43 +175,23 @@ async function sendPurchaseCard(
     );
   } catch (error) {
     await claim?.release().catch(() => undefined);
-    console.error(
-      JSON.stringify({
-        msg: "purchase card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("purchase card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const body = (await request.json().catch(() => null)) as {
-    action?: unknown;
-    host?: unknown;
-    item_id?: unknown;
-    summary?: unknown;
-    amount_usd?: unknown;
-    field_groups?: unknown;
-    outcome?: unknown;
-  } | null;
-  const action = typeof body?.action === "string" ? body.action : "";
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
-  if (action === "propose") {
-    const host = typeof body?.host === "string" ? body.host : "";
-    const itemId = typeof body?.item_id === "string" ? body.item_id : "";
-    const summary =
-      typeof body?.summary === "string" ? body.summary.trim() : "";
-    const amountUsd =
-      typeof body?.amount_usd === "number" ? body.amount_usd : NaN;
-    if (!host || !ID_RE.test(itemId) || !summary || summary.length > 2000) {
-      return NextResponse.json({ error: "invalid request" }, { status: 400 });
-    }
+  if (body.action === "propose") {
+    const { host, summary, amount_usd: amountUsd } = body;
+    const itemId = body.item_id;
     try {
       const result = await proposePurchaseReview(supabase, userId, {
         host,
@@ -257,20 +225,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  if (action === "report") {
-    const itemId = typeof body?.item_id === "string" ? body.item_id : "";
-    const rawHost = typeof body?.host === "string" ? body.host : "";
-    const groups = Array.isArray(body?.field_groups)
-      ? body.field_groups.filter(
-          (g): g is string => typeof g === "string" && FIELD_GROUPS.has(g)
-        )
-      : [];
-    if (!ID_RE.test(itemId) || !rawHost || groups.length === 0) {
-      return NextResponse.json({ error: "invalid request" }, { status: 400 });
-    }
+  if (body.action === "report") {
+    const itemId = body.item_id;
+    const groups = body.field_groups;
     let host: string;
     try {
-      host = normalizeHost(rawHost);
+      host = normalizeHost(body.host);
     } catch {
       return NextResponse.json({ error: "invalid request" }, { status: 400 });
     }
@@ -321,12 +281,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true });
   }
 
-  if (action === "outcome") {
-    const outcome = typeof body?.outcome === "string" ? body.outcome : "";
-    if (!(PURCHASE_OUTCOMES as readonly string[]).includes(outcome)) {
-      return NextResponse.json({ error: "invalid request" }, { status: 400 });
-    }
-    await recordPurchaseOutcome(supabase, userId, outcome as PurchaseOutcome);
+  if (body.action === "outcome") {
+    await recordPurchaseOutcome(supabase, userId, body.outcome);
     return NextResponse.json({ ok: true });
   }
 

@@ -5,6 +5,7 @@
  */
 
 import { createConfig } from "../create/config";
+import { env } from "../env";
 
 export type SpeedTier = "fast" | "balanced" | "deep";
 
@@ -264,9 +265,9 @@ export function defaultGmiModelForTier(tier: SpeedTier): string {
  * still name a catalog slug so a typo can't route spend to anything else. */
 function gmiTierOverride(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["GMI_FAST_MODEL"],
-    balanced: process.env["GMI_BALANCED_MODEL"],
-    deep: process.env["GMI_DEEP_MODEL"],
+    fast: env.gmiFastModel(),
+    balanced: env.gmiBalancedModel(),
+    deep: env.gmiDeepModel(),
   };
   const value = byTier[tier];
   return value && isGmiModel(value) ? value : undefined;
@@ -276,7 +277,7 @@ function gmiTierOverride(tier: SpeedTier): string | undefined {
  * keeps child calls cheap. GMI_GLM_EFFORT overrides; "" omits the field. */
 export function gmiReasoningEffort(model: string): string | undefined {
   if (!model.startsWith("zai-org/")) return undefined;
-  const value = process.env["GMI_GLM_EFFORT"] ?? "low";
+  const value = env.gmiGlmEffort();
   return value && value.trim() ? value.trim() : undefined;
 }
 
@@ -346,9 +347,9 @@ export function isReasoningModel(model: string): boolean {
  * fleet's models without a deploy touching any box. */
 function tierOverride(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_FAST"],
-    balanced: process.env["MODEL_BALANCED"],
-    deep: process.env["MODEL_DEEP"],
+    fast: env.modelFast(),
+    balanced: env.modelBalanced(),
+    deep: env.modelDeep(),
   };
   return byTier[tier];
 }
@@ -364,9 +365,9 @@ function tierOverride(tier: SpeedTier): string | undefined {
  */
 export function reasoningForTier(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_REASONING_FAST"] ?? "xhigh",
-    balanced: process.env["MODEL_REASONING_BALANCED"],
-    deep: process.env["MODEL_REASONING_DEEP"],
+    fast: env.modelReasoningFast(),
+    balanced: env.modelReasoningBalanced(),
+    deep: env.modelReasoningDeep(),
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : undefined;
@@ -379,9 +380,9 @@ export function reasoningForTier(tier: SpeedTier): string | undefined {
  */
 export function serviceTierForTier(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_SERVICE_TIER_FAST"],
-    balanced: process.env["MODEL_SERVICE_TIER_BALANCED"],
-    deep: process.env["MODEL_SERVICE_TIER_DEEP"],
+    fast: env.modelServiceTierFast(),
+    balanced: env.modelServiceTierBalanced(),
+    deep: env.modelServiceTierDeep(),
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : undefined;
@@ -419,9 +420,9 @@ export function modelForTier(tier: SpeedTier): string {
  * MODEL_FAST/… so the two lanes can be re-pinned independently. */
 function createTierOverride(tier: SpeedTier): string | undefined {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_CREATE_FAST"],
-    balanced: process.env["MODEL_CREATE_BALANCED"],
-    deep: process.env["MODEL_CREATE_DEEP"],
+    fast: env.modelCreateFast(),
+    balanced: env.modelCreateBalanced(),
+    deep: env.modelCreateDeep(),
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : undefined;
@@ -560,9 +561,9 @@ export function modelLabelForFamily(
  */
 export function modelLabelForTier(tier: SpeedTier): string {
   const byTier: Record<SpeedTier, string | undefined> = {
-    fast: process.env["MODEL_LABEL_FAST"],
-    balanced: process.env["MODEL_LABEL_BALANCED"],
-    deep: process.env["MODEL_LABEL_DEEP"],
+    fast: env.modelLabelFast(),
+    balanced: env.modelLabelBalanced(),
+    deep: env.modelLabelDeep(),
   };
   const value = byTier[tier];
   return value && value.trim() ? value.trim() : modelForTier(tier);

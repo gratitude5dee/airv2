@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { command, writeFile } from "../box/client";
 import { serviceClient } from "../supabase";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { applyBatch, listItems, reveal, totp } from "./client";
 import {
   registerVaultValue,
@@ -35,15 +36,8 @@ function cliOk(stdout: string) {
   return { exitCode: 0, stdout, stderr: "" };
 }
 
-const fakeSupabase = {
-  from: () => ({
-    insert: () => Promise.resolve({ error: null }),
-    upsert: () => Promise.resolve({ error: null }),
-    update: () => ({
-      eq: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
-  }),
-};
+const db = new FakeSupabase();
+const supabase = db.client();
 
 describe("log-scrubber gate (V1 task 6)", () => {
   let fixture: string[];
@@ -51,9 +45,8 @@ describe("log-scrubber gate (V1 task 6)", () => {
   beforeEach(() => {
     fixture = [];
     resetRegisteredVaultValues();
-    vi.mocked(serviceClient).mockReturnValue(
-      fakeSupabase as unknown as ReturnType<typeof serviceClient>
-    );
+    db.reset();
+    vi.mocked(serviceClient).mockReturnValue(supabase);
     vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
       fixture.push(args.map(String).join(" "));
     });

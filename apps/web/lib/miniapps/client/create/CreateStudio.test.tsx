@@ -4,7 +4,7 @@
  * and accepts a typed app name.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@/lib/testing/jsdom";
 import { CreateStudio } from "./CreateStudio";
 
@@ -24,13 +24,17 @@ afterEach(cleanup);
 
 describe("CreateStudio", () => {
   it("renders the new-project chat shell", async () => {
-    render(<CreateStudio slug={null} />);
+    await act(async () => {
+      render(<CreateStudio slug={null} />);
+    });
     await screen.findByLabelText("App name");
     expect(screen.getByLabelText("Prompt")).toBeTruthy();
   });
 
   it("accepts a typed app name", async () => {
-    render(<CreateStudio slug={null} />);
+    await act(async () => {
+      render(<CreateStudio slug={null} />);
+    });
     const input = await screen.findByLabelText("App name");
     fireEvent.change(input, { target: { value: "countdown" } });
     await waitFor(() => {

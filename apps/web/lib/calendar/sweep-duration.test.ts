@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import { readFile } from "../box/client";
 import { createRun, runEvents } from "../hermes/client";
 import { ensureBoxAwake } from "../orchestrator/boxes";
@@ -19,6 +19,9 @@ vi.mock("../orchestrator/boxes", () => ({
 }));
 vi.mock("../orchestrator/flush", () => ({ hermesDeltas: vi.fn() }));
 
+const db = new FakeSupabase();
+
+beforeEach(() => db.reset());
 afterEach(() => vi.useRealTimers());
 
 describe("scheduled run duration", () => {
@@ -49,13 +52,7 @@ describe("scheduled run duration", () => {
       vi.setSystemTime(new Date("2026-09-10T10:01:47Z"));
       yield "completed";
     });
-    const insert = vi.fn().mockResolvedValue({ error: null });
-    const supabase = {
-      from: () => ({
-        insert,
-        update: () => ({ eq: vi.fn().mockResolvedValue({ error: null }) }),
-      }),
-    } as unknown as SupabaseClient;
+    const supabase = db.client();
     const schedule: AgentSchedule = {
       id: "schedule-test",
       user_id: "user-test",
@@ -74,12 +71,10 @@ describe("scheduled run duration", () => {
 
     await runSchedule(supabase, schedule);
 
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        started_at: "2026-09-10T10:01:37.000Z",
-        ended_at: "2026-09-10T10:01:47.000Z",
-        box_seconds: 10,
-      })
-    );
+    expect(db.inserts.find((i) => i.table === "agent_runs")?.row).toMatchObject({
+      started_at: "2026-09-10T10:01:37.000Z",
+      ended_at: "2026-09-10T10:01:47.000Z",
+      box_seconds: 10,
+    });
   });
 });

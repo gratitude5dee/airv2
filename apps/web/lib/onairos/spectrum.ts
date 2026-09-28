@@ -19,6 +19,7 @@ import { writeStatusMirror } from "@/lib/miniapps/onboardingMirror";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { markOnboardingStep } from "@/lib/miniapps/onboarding";
 import { OnairosError } from "./context";
+import { log } from "../log";
 
 const PROVIDER = "onairos";
 const TOOLKIT = "spectrum";
@@ -146,14 +147,9 @@ export async function setSpectrumFlow(
     { onConflict: "user_id,provider,toolkit" },
   );
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "onairos spectrum flow update failed",
-        user_id: userId,
+    log.error("onairos spectrum flow update failed", {user_id: userId,
         status,
-        error: error.message,
-      }),
-    );
+        error: error.message,});
   }
 }
 

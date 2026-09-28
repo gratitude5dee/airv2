@@ -1,0 +1,5 @@
+{"comment": "K145 \u2014 outward post staged through the social_post gate"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-social draft --platform x --target '#shows' --text 'Venue change for tomorrow'"}}
+{"call": {"method": "POST", "path": "/api/browser/social", "body": {"action": "propose", "platform": "x", "target": "#shows", "text": "Venue change for tomorrow's show \u2014 we're now at The Basement."}}}
+{"sse": {"event": "message.delta", "delta": "Staged the venue-change post for your approval \u2014 it stays staged until you approve it."}}
+{"sse": {"event": "run.completed"}}
