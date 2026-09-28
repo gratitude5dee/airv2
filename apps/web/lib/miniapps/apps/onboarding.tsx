@@ -1404,12 +1404,6 @@ function onairosBody(
   const status = connected
     ? `<div class="oa-status on"><span class="oa-dot"></span><span class="chip">Connected</span><p>Your imported context lives on your computer. Re-sync or disconnect any time from Settings.</p></div>`
     : `<div class="oa-status"><span class="oa-dot"></span><span class="chip">Not connected</span><p>Import your personal context from the platforms you already use. What you approve lives on your computer — never on the platform.</p></div>`;
-  // Google blocks OAuth inside embedded webviews (disallowed_useragent),
-  // so a card-opened Messages sheet offers a signed jump into the real
-  // browser where the Google path works.
-  const browserNote = browserSignin
-    ? `<p class="oa-note">Signing in with Google? Google blocks it inside Messages — <a href="${esc(browserSignin)}" target="_blank" rel="noopener">open this step in your browser</a>, finish there, then tap Refresh here.</p>`
-    : "";
   const refresh = browserSignin
     ? `<form method="post" class="inline"><input type="hidden" name="action" value="noop"><button class="ghost">Refresh</button></form>`
     : "";
@@ -1417,7 +1411,13 @@ function onairosBody(
   const hint = connected
     ? "Open Onairos again to connect other platforms — each new connection re-imports your context."
     : "The consent flow opens right here — approve what to share and your context imports in one step.";
-  const connect = `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">${hint}</p><div id="onairos-connect" class="oa-mount" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div>${browserNote}</div><script src="/creator-os/onairos-connect.js" type="module"></script>`;
+  const sdkMount = `<div id="onairos-connect" class="oa-mount" data-api-key="${esc(apiKey)}"${googleAttr}><p class="muted">Loading Onairos sign-in…</p></div><script src="/creator-os/onairos-connect.js" type="module"></script>`;
+  // Google refuses OAuth inside embedded webviews (disallowed_useragent),
+  // so inside Messages the sheet leads with a signed jump into the real
+  // browser and keeps the in-sheet SDK as an email-only fallback.
+  const connect = browserSignin
+    ? `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">Google sign-in can't run inside Messages — finish it in your browser, then tap Refresh here.</p><a href="${esc(browserSignin)}" target="_blank" rel="noopener" style="text-decoration:none"><button>Sign in in your browser</button></a></div><details><summary>Or sign in right here (email only)</summary><p class="muted">Email sign-in works inside Messages; the Google button here will be blocked by Google.</p><div class="oa-connect"><p class="muted">${hint}</p>${sdkMount}</div></details>`
+    : `<div class="oa-connect"><span class="chip">${label}</span><p class="muted">${hint}</p>${sdkMount}</div>`;
   const imessage = `<div class="oa-alt"><span class="chip">Or connect via iMessage</span><form method="post" class="inline"><input type="hidden" name="action" value="connect_onairos"><button class="oa-bubble"><span>Connect via iMessage</span>${IMESSAGE_ICON}${BUBBLE_TAIL}</button></form><p class="muted">Onairos asks for your account email, a verification code, and your YES right in your iMessage thread.</p></div>`;
   const primary = connected
     ? doneForm("onairos", "Continue")
