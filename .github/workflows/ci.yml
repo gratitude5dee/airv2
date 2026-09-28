@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -139,6 +139,65 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: imkbxdsxfgmkylbgaygv
         run: bash scripts/apply-migrations.sh
+  python:
+    # Box-template + scripts python suites (R-CI-01). The air-vault plugin
+    # tests import `agent.secret_sources` / `agent.redact` from Hermes, so the
+    # pinned Hermes revision is checked out and put on PYTHONPATH. Any skipped
+    # test fails the job — the suites are expected to run end to end.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 -m pip install pytest cryptography
+      - name: Resolve pinned Hermes ref
+        id: hermes
+        # Single source of truth: the HERMES_REF pinned by the box template.
+        run: |
+          ref=$(sed -n 's/^HERMES_REF="${HERMES_REF:-\([^"]*\)}"$/\1/p' infra/template/setup.sh | tr -d '[:space:]')
+          test -n "$ref" || { echo "::error::could not parse HERMES_REF from infra/template/setup.sh"; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Fetch Hermes at the pinned ref
+        run: |
+          dir="$RUNNER_TEMP/hermes-agent"
+          git init "$dir"
+          git -C "$dir" remote add origin https://github.com/NousResearch/hermes-agent.git
+          git -C "$dir" fetch --depth 1 origin "${{ steps.hermes.outputs.ref }}"
+          git -C "$dir" checkout --force FETCH_HEAD
+      - name: Run python suites (no skips allowed)
+        env:
+          PYTHONPATH: ${{ runner.temp }}/hermes-agent
+        run: |
+          set -o pipefail
+          python3 -m pytest infra/template scripts/tests -p no:cacheprovider --strict-markers -ra | tee pytest.log
+          if grep -Eq '[0-9]+ skipped' pytest.log; then
+            echo "::error::python suites reported skipped tests — see the -ra summary above"
+            exit 1
+          fi
+  coverage:
+    # Vitest coverage gate (R-CI-02). Floors live in apps/web/vitest.config.ts:
+    # global lines ratchet +2 points/week toward 65%, per-module floors at the
+    # measured baseline (85% target).
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Coverage report
+        working-directory: apps/web
+        run: npx vitest run --coverage
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage/
   audit:
     # Fail on new high/critical production advisories (R-P0-4).
     runs-on: ubuntu-latest
@@ -147,7 +206,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
@@ -195,8 +254,8 @@ jobs:
       - name: Run vendored skill tests (node:test)
         run: node --test ".agents/skills/**/*.test.mjs"
   evals:
-    # R-CI-08: the eval harnesses ship tsconfigs nothing ran. Typecheck all
-    # three: agent-suite, its create/ sub-suite, and model-bench.
+    # Scorer + harness checks: the evals run on a box, but the scorer itself
+    # is pure and its regression tests run here on every push.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -205,10 +264,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - name: Install workspace (@types for tsc)
-        run: npm ci --ignore-scripts
-      - name: Typecheck eval harnesses
-        run: |
-          npx --yes -p typescript@5 tsc -p evals/agent-suite/tsconfig.json --noEmit
-          npx --yes -p typescript@5 tsc -p evals/agent-suite/create/tsconfig.json --noEmit
-          npx --yes -p typescript@5 tsc -p evals/model-bench/tsconfig.json --noEmit
+      - run: npm ci
+      - run: npx tsc -p evals/agent-suite/tsconfig.json --noEmit
+      - run: npx tsc -p evals/agent-suite/create/tsconfig.json --noEmit
+      - run: npx tsc -p evals/model-bench/tsconfig.json --noEmit
+      - run: npx vitest run evals/agent-suite/score.test.ts
