@@ -2,11 +2,11 @@
  * BYO secret-manager control plane: env merges ride one-shot files through
  * the box files API (never argv), Postgres mirrors value-free summaries, and
  * a failed gateway restart flips the row to error without hiding it. Box I/O
- * is mocked at ../box/client; the vault_managers / vault_events tables use a
- * thenable chain stub.
+ * is mocked at ../box/client; vault_managers / vault_events run against the
+ * shared FakeSupabase.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "../testing/fakeSupabase";
 import {
   MANAGER_IDS,
   ManagerInputError,
@@ -28,41 +28,16 @@ vi.mock("../box/client", () => ({
   writeFile: box.writeFile,
 }));
 
-type Row = Record<string, unknown>;
-
-/** Minimal thenable supabase stub: records upserts/inserts per table and
- * answers selects with scripted rows. */
-function fakeSupabase(rows: Record<string, Row[]> = {}) {
-  const written: Record<string, Row[]> = {};
-  const upserts: Record<string, Row[]> = {};
-  function builder(table: string) {
-    const self: Record<string, unknown> = {};
-    const chain = () => self;
-    for (const m of ["select", "eq", "is", "not", "order", "limit", "update", "delete"]) {
-      self[m] = chain;
-    }
-    self["insert"] = (row: Row) => {
-      (written[table] ??= []).push(row);
-      return Promise.resolve({ data: row, error: null });
-    };
-    self["upsert"] = (row: Row) => {
-      (upserts[table] ??= []).push(row);
-      return Promise.resolve({ data: row, error: null });
-    };
-    self["then"] = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve({ data: rows[table] ?? [], error: null }).then(resolve);
-    return self;
-  }
-  return {
-    client: { from: (t: string) => builder(t) } as unknown as SupabaseClient,
-    written,
-    upserts,
-  };
-}
+const db = new FakeSupabase();
+const managerUpserts = () =>
+  db.upserts.filter((u) => u.table === "vault_managers").map((u) => u.row);
+const eventRows = () =>
+  db.inserts.filter((i) => i.table === "vault_events").map((i) => i.row);
 
 const OK = { exitCode: 0, stdout: "", stderr: "" };
 
 beforeEach(() => {
+  db.reset();
   box.command.mockReset().mockResolvedValue(OK);
   box.writeFile.mockReset().mockResolvedValue(undefined);
 });
@@ -120,19 +95,18 @@ describe("restartGateway", () => {
 
 describe("listManagers", () => {
   it("returns all three managers, off by default, row fields when present", async () => {
-    const { client } = fakeSupabase({
-      vault_managers: [
-        {
-          manager: "onepassword",
-          enabled: true,
-          status: "configured",
-          provenance_count: 7,
-          warnings: null,
-          last_synced_at: "2026-09-28T00:00:00Z",
-        },
-      ],
-    });
-    const list = await listManagers(client, "user-1");
+    db.tables["vault_managers"] = [
+      {
+        user_id: "user-1",
+        manager: "onepassword",
+        enabled: true,
+        status: "configured",
+        provenance_count: 7,
+        warnings: null,
+        last_synced_at: "2026-09-28T00:00:00Z",
+      },
+    ];
+    const list = await listManagers(db.client(), "user-1");
     expect(list.map((m) => m.manager)).toEqual(MANAGER_IDS);
     const op = list.find((m) => m.manager === "onepassword")!;
     expect(op).toMatchObject({
@@ -147,12 +121,11 @@ describe("listManagers", () => {
 
 describe("enableManager", () => {
   it("requires a token for bitwarden and validates its format", async () => {
-    const { client } = fakeSupabase();
     await expect(
-      enableManager(client, "user-1", "box-1", { manager: "bitwarden" })
+      enableManager(db.client(), "user-1", "box-1", { manager: "bitwarden" })
     ).rejects.toBeInstanceOf(ManagerInputError);
     await expect(
-      enableManager(client, "user-1", "box-1", {
+      enableManager(db.client(), "user-1", "box-1", {
         manager: "bitwarden",
         token: "short",
       })
@@ -160,12 +133,11 @@ describe("enableManager", () => {
   });
 
   it("requires a helper command for the command manager", async () => {
-    const { client } = fakeSupabase();
     await expect(
-      enableManager(client, "user-1", "box-1", { manager: "command" })
+      enableManager(db.client(), "user-1", "box-1", { manager: "command" })
     ).rejects.toBeInstanceOf(ManagerInputError);
     await expect(
-      enableManager(client, "user-1", "box-1", {
+      enableManager(db.client(), "user-1", "box-1", {
         manager: "command",
         helper_command: "x".repeat(1001),
       })
@@ -173,9 +145,8 @@ describe("enableManager", () => {
   });
 
   it("rejects mappings with invalid env var names", async () => {
-    const { client } = fakeSupabase();
     await expect(
-      enableManager(client, "user-1", "box-1", {
+      enableManager(db.client(), "user-1", "box-1", {
         manager: "onepassword",
         token: "valid-token-123",
         mappings: { "bad name": "op://x/y" },
@@ -184,9 +155,8 @@ describe("enableManager", () => {
   });
 
   it("merges env, patches config, mirrors a configured row, restarts", async () => {
-    const { client, upserts, written } = fakeSupabase();
     box.command.mockResolvedValue({ ...OK, stdout: "onepassword: 12 secrets loaded" });
-    const list = await enableManager(client, "user-1", "box-1", {
+    const list = await enableManager(db.client(), "user-1", "box-1", {
       manager: "onepassword",
       token: "service-token-12345",
       mappings: { TAVILY_API_KEY: "op://vault/tavily/key" },
@@ -196,11 +166,11 @@ describe("enableManager", () => {
     expect(cfgFile.some((c) => c.includes("TAVILY_API_KEY"))).toBe(true);
     // status mirrored configured with parsed provenance count
     expect(
-      upserts["vault_managers"]!.some(
+      managerUpserts().some(
         (r) => r["status"] === "configured" && r["provenance_count"] === 12
       )
     ).toBe(true);
-    expect(written["vault_events"]!.some((r) => r["action"] === "manager_enabled")).toBe(
+    expect(eventRows().some((r) => r["action"] === "manager_enabled")).toBe(
       true
     );
     expect(box.command.mock.calls.some((c) => String(c[1]).includes("systemctl restart"))).toBe(
@@ -210,7 +180,6 @@ describe("enableManager", () => {
   });
 
   it("marks the row error and rethrows when the gateway restart fails", async () => {
-    const { client, upserts } = fakeSupabase();
     box.command.mockImplementation((_b: string, cmd: string) =>
       Promise.resolve(
         cmd.includes("systemctl restart")
@@ -219,37 +188,35 @@ describe("enableManager", () => {
       )
     );
     await expect(
-      enableManager(client, "user-1", "box-1", {
+      enableManager(db.client(), "user-1", "box-1", {
         manager: "command",
         helper_command: "echo hi",
       })
     ).rejects.toThrow("gateway restart failed");
     expect(
-      upserts["vault_managers"]!.some((r) => r["status"] === "error")
+      managerUpserts().some((r) => r["status"] === "error")
     ).toBe(true);
   });
 });
 
 describe("disableManager", () => {
   it("patches config off, strips the env key, and mirrors an off row", async () => {
-    const { client, upserts, written } = fakeSupabase();
-    const list = await disableManager(client, "user-1", "box-1", "bitwarden");
+    const list = await disableManager(db.client(), "user-1", "box-1", "bitwarden");
     const cmds = box.command.mock.calls.map((c) => String(c[1]));
     expect(cmds.some((c) => c.includes("/^BWS_ACCESS_TOKEN=/d"))).toBe(true);
     expect(
-      upserts["vault_managers"]!.some(
+      managerUpserts().some(
         (r) => r["status"] === "off" && r["enabled"] === false
       )
     ).toBe(true);
     expect(
-      written["vault_events"]!.some((r) => r["action"] === "manager_disabled")
+      eventRows().some((r) => r["action"] === "manager_disabled")
     ).toBe(true);
     expect(list.every((m) => MANAGER_IDS.includes(m.manager))).toBe(true);
   });
 
   it("does not touch .env for the command manager", async () => {
-    const { client } = fakeSupabase();
-    await disableManager(client, "user-1", "box-1", "command");
+    await disableManager(db.client(), "user-1", "box-1", "command");
     const cmds = box.command.mock.calls.map((c) => String(c[1]));
     expect(cmds.some((c) => c.includes("sed -i"))).toBe(false);
   });
@@ -257,14 +224,13 @@ describe("disableManager", () => {
 
 describe("refreshManager", () => {
   it("parses the journal summary into the mirrored row", async () => {
-    const { client, upserts } = fakeSupabase();
     box.command.mockResolvedValue({
       exitCode: 0,
       stdout: "bitwarden: 4 secrets resolved\nbitwarden: conflict skipped",
       stderr: "",
     });
-    await refreshManager(client, "user-1", "box-1", "bitwarden");
-    const row = upserts["vault_managers"]!.at(-1)!;
+    await refreshManager(db.client(), "user-1", "box-1", "bitwarden");
+    const row = managerUpserts().at(-1)!;
     expect(row["provenance_count"]).toBe(4);
     expect(String(row["warnings"])).toContain("conflict skipped");
   });
