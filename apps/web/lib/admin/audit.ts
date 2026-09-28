@@ -1,6 +1,7 @@
 /**
- * V12 §12 — the operator audit row (`admin_audit`, migration 0120) written
- * by `POST /api/admin/create/apps/<slug>/{dev,suspend}`. Best-effort: an
+ * V12 §12 — the operator audit row (`admin_audit`, migration 0120, plus
+ * the `operator` column from migration 0131 for R-SEC-10) written by
+ * `POST /api/admin/create/apps/<slug>/{dev,suspend}`. Best-effort: an
  * audit insert that fails (an unapplied migration, a ledger outage) is
  * logged loudly but never undoes the action it records. Metadata only —
  * action names, ids, a version and an expiry; no text anyone typed.
@@ -16,6 +17,9 @@ export type AdminAuditDetail = Record<string, string | number | boolean | null>;
 export interface AdminAuditInput {
   action: AdminAuditAction;
   app: Pick<RegistryApp, "id" | "slug" | "owner_user_id">;
+  /** R-SEC-10: the X-Admin-Operator the request authenticated with —
+   * required by adminAuthorized, so every audit row names the human. */
+  operator: string;
   detail?: AdminAuditDetail;
 }
 
@@ -26,6 +30,7 @@ export interface AdminAuditRow {
   user_id: string | null;
   slug: string;
   detail: AdminAuditDetail;
+  operator: string;
 }
 
 export function adminAuditRow(input: AdminAuditInput): AdminAuditRow {
@@ -36,6 +41,7 @@ export function adminAuditRow(input: AdminAuditInput): AdminAuditRow {
     user_id: input.app.owner_user_id,
     slug: input.app.slug,
     detail: input.detail ?? {},
+    operator: input.operator,
   };
 }
 

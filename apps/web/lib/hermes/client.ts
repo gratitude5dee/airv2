@@ -6,7 +6,6 @@
  */
 import { z } from "zod";
 import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
-import { log } from "../log";
 import {
   parseRawMessages,
   sanitizeConversation,
@@ -41,8 +40,9 @@ export interface RunRequest {
   input: string;
   sessionId?: string;
   metadata?: Record<string, string>;
-  /** Explicit history replay; when omitted and sessionId is set, createRun
-   * loads the persisted session transcript itself. */
+  /** Explicit history replay. When omitted, Hermes loads the session's
+   * stored transcript itself — the normal case for every channel; only the
+   * web path replays one explicitly. */
   conversationHistory?: ConversationMessage[];
   /** Gateway model selection (`fast` | `create-<tier>:<project slug>`); the
    * Box only ever sees a tier name (plus the project it is charged to), the
@@ -51,6 +51,11 @@ export interface RunRequest {
   /** Extra system instructions for this run (Create injects the Kit's
    * system prompt + project context here, §9.2). */
   instructions?: string;
+  /** Turn-author attribution (`author` on /v1/runs → hermes turn_author):
+   * a memory-attribution label for who wrote the user side — set on
+   * non-owner turns so memory writes are never credited to the owner.
+   * It grants nothing; omit it on owner turns. */
+  author?: { id: string; name: string; is_bot: boolean };
   /** Stable dedup key for the unit of work the run answers: a retried
    * burst resends the same key so the run endpoint cannot start a second
    * run while the first is still alive (R-ARCH-06). */
@@ -76,10 +81,19 @@ function url(target: HermesBoxTarget, path: string): string {
 // The hosted proxy authenticates via the _port_auth cookie: passing `?_token`
 // only triggers a 302 that sets the cookie and strips the query, which
 // server-side fetch cannot follow. Send the cookie directly.
+export function hermesAuthHeaders(
+  target: HermesBoxTarget,
+  apiServerKey?: string
+): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiServerKey ?? target.apiServerKey}`,
+    Cookie: `_port_auth=${target.hostedToken}`,
+  };
+}
+
 function headers(target: HermesBoxTarget): HeadersInit {
   return {
-    Authorization: `Bearer ${target.apiServerKey}`,
-    Cookie: `_port_auth=${target.hostedToken}`,
+    ...hermesAuthHeaders(target),
     "Content-Type": "application/json",
   };
 }
@@ -111,44 +125,38 @@ async function hermesFetch<T>(
 }
 
 export interface ConversationTranscript {
-  /** Rows the box returned before sanitising; 0 when the load failed or the
-   * session has no transcript. Distinguishes "nothing stored" from "stored
-   * rows that are not replayable" (e.g. user inputs with no reply yet). */
+  /** Rows the box returned before sanitising; 0 only when the session has
+   * no transcript. Distinguishes "nothing stored" from "stored rows that
+   * are not replayable" (e.g. user inputs with no reply yet). */
   rows: number;
   history: ConversationMessage[];
 }
 
 /**
  * Load the persisted transcript for a session as replayable history.
- * Best-effort: a missing session (first turn), an unreachable box, or an
- * unexpected payload all degrade to an empty transcript rather than failing
- * the turn.
+ * A missing session or transcript (404, e.g. a first turn before anything
+ * was stored) is the only empty case: every other failure — an unreachable
+ * box, a non-OK status, a malformed payload — throws, so a transcript-load
+ * outage can never silently degrade to a blank-context replay.
  */
 export async function loadConversationTranscript(
   target: HermesBoxTarget,
   sessionId: string
 ): Promise<ConversationTranscript> {
-  try {
-    const response = await fetch(
-      url(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`),
-      {
-        signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
-        headers: headers(target),
-      }
-    );
-    if (!response.ok) return { rows: 0, history: [] };
-    const raw = parseRawMessages(await response.json());
-    return { rows: raw.length, history: sanitizeConversation(raw) };
-  } catch (error) {
-    // An empty history here is silent amnesia for the turn — log it so the
-    // amnesia shows up in the control plane (R-ARCH-06).
-    log.error("conversation transcript load failed", {
-      box_id: null,
-      session_id: sessionId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { rows: 0, history: [] };
+  const response = await fetch(
+    url(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`),
+    {
+      signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
+      headers: headers(target),
+    }
+  );
+  if (response.status === 404) return { rows: 0, history: [] };
+  if (!response.ok) {
+    const body = await response.text();
+    throw new HermesApiError(response.status, body.slice(0, 500));
   }
+  const raw = parseRawMessages(await response.json());
+  return { rows: raw.length, history: sanitizeConversation(raw) };
 }
 
 export async function loadConversationHistory(
@@ -162,14 +170,10 @@ export async function createRun(
   target: HermesBoxTarget,
   request: RunRequest
 ): Promise<RunResponse> {
-  // The runs endpoint persists into `session_id` but does NOT load its
-  // transcript into the model context — continuity requires replaying the
-  // stored history as `conversation_history` (see lib/hermes/history.ts).
-  const history =
-    request.conversationHistory ??
-    (request.sessionId
-      ? await loadConversationHistory(target, request.sessionId)
-      : []);
+  // Hermes loads the session's stored transcript itself when the key is
+  // omitted; replaying our 60-message window over it only truncated the
+  // context the box already had and cost a transcript fetch per turn.
+  const history = request.conversationHistory ?? [];
   // api_server expects snake_case `session_id`; a camelCase key is silently
   // ignored and every run lands in its own throwaway session.
   return hermesFetch(target, "/v1/runs", RunResponseSchema, {
@@ -179,6 +183,7 @@ export async function createRun(
       ...(request.sessionId ? { session_id: request.sessionId } : {}),
       ...(history.length > 0 ? { conversation_history: history } : {}),
       ...(request.metadata ? { metadata: request.metadata } : {}),
+      ...(request.author ? { author: request.author } : {}),
       ...(request.model ? { model: request.model } : {}),
       ...(request.instructions ? { instructions: request.instructions } : {}),
       ...(request.idempotencyKey

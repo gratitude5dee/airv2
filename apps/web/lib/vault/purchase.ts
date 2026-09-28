@@ -14,10 +14,13 @@
  * carry item ids, masked tails, hosts, and amount bands only (C18/C19).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { command, writeFile } from "../box/client";
 import { db } from "../db";
-import { approveRun, type HermesBoxTarget } from "../hermes/client";
-import { log } from "../log";
+import { command, writeFile } from "../box/client";
+import {
+  approveRun,
+  HermesApiError,
+  type HermesBoxTarget,
+} from "../hermes/client";
 import { hostSupportsLink } from "../payments/link";
 import { appendVaultEvent, VaultCliError } from "./client";
 import {
@@ -26,6 +29,7 @@ import {
   redeemFillTicket,
   type FillTicketClaims,
 } from "./tickets";
+import { env } from "../env";
 
 export const PURCHASE_OUTCOMES = [
   "purchase_completed",
@@ -94,7 +98,7 @@ export async function resolveActiveTurn(
 ): Promise<{ runId: string | null; ownerInitiated: boolean }> {
   const { data: openRun, error: runError } = await supabase
     .from("agent_runs")
-    .select("hermes_run_id, started_at")
+    .select("hermes_run_id, started_at, sender_tier")
     .eq("user_id", userId)
     .is("ended_at", null)
     .not("hermes_run_id", "is", null)
@@ -128,7 +132,12 @@ export async function resolveActiveTurn(
     };
   }
   if (openRun) {
-    return { runId: openRun.hermes_run_id as string, ownerInitiated: true };
+    // Unknown tier (legacy rows, bots, schedules) is NOT owner — the same
+    // fail-closed rule the flush branch already applies.
+    return {
+      runId: openRun.hermes_run_id as string,
+      ownerInitiated: openRun.sender_tier === 0,
+    };
   }
   return { runId: null, ownerInitiated: false };
 }
@@ -281,64 +290,167 @@ async function deliverTicket(
 
 /** Optional control-plane allowlist of staging store hosts (§8). */
 export function dryRunHosts(): string[] {
-  return (process.env["SHOPPING_DRY_RUN_HOSTS"] ?? "")
+  return env.shoppingDryRunHosts()
     .split(",")
     .map((h) => h.trim().toLowerCase().replace(/^www\./, ""))
     .filter((h) => h.length > 0);
 }
 
 /**
- * Resume the run that parked on this decision. When the relay itself fails
- * the run stays paused with no visible failure — log it, then mark the
- * decision's payload so a sweeper can finish the job (R-ARCH-06). The
- * marker rides `payload` (free jsonb) rather than `status`, whose CHECK
- * constraint predates this failure state. Note: parallel finding R-SEC-05
- * lands the sweeper for this marker; if it merges first its resume path
- * supersedes this relay.
+ * R-SEC-05 — an approve/dismiss that fails to reach the paused run must
+ * not be swallowed: mark the decision relay_failed (the sweeper retries
+ * via retryFailedApprovalRelays) and log it with user_id + box_id. The
+ * local receipts (fill_denied / fill_approved + the ticket ledger) are
+ * already durable at this point, so the retry only resumes the run.
+ * Status flips only from "pending" — a resolver that lost its race never
+ * clobbers the receipt another path already wrote (CA-23).
  */
 async function relayApproval(
   supabase: SupabaseClient,
   userId: string,
+  box: { boxId: string; target: HermesBoxTarget },
   decision: { id: string; ref: string | null; payload: unknown },
-  approved: boolean,
-  box: { boxId: string; target: HermesBoxTarget } | null
+  approved: boolean
 ): Promise<void> {
-  if (!decision.ref || !box) return;
+  if (!decision.ref) return;
   try {
     await approveRun(box.target, decision.ref, approved);
-    return;
   } catch (error) {
-    log.error("purchase approval relay failed", {
-      user_id: userId,
-      box_id: box.boxId,
-      decision_id: decision.id,
-      approved,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-  const payload =
-    typeof decision.payload === "object" && decision.payload !== null
-      ? (decision.payload as Record<string, unknown>)
-      : {};
-  await db
-    .write(
-      supabase
-        .from("decisions")
-        .update({
-          payload: {
-            ...payload,
-            relay_approved: approved,
-            relay_failed_at: new Date().toISOString(),
-          },
-        })
-        .eq("id", decision.id),
-      {
-        what: "mark purchase approval relay failure",
+    console.error(
+      JSON.stringify({
+        msg: "purchase_review approval relay failed",
         user_id: userId,
         box_id: box.boxId,
+        decision_id: decision.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    const { error: updateError } = await supabase
+      .from("decisions")
+      .update({
+        status: "relay_failed",
+        payload: {
+          ...((decision.payload ?? {}) as Record<string, unknown>),
+          relay_approved: approved,
+        },
+      })
+      .eq("id", decision.id)
+      .eq("user_id", userId)
+      .eq("status", "pending");
+    if (updateError) {
+      console.error(
+        JSON.stringify({
+          msg: "purchase_review relay_failed mark failed",
+          user_id: userId,
+          decision_id: decision.id,
+          error: updateError.message,
+        })
+      );
+    }
+  }
+}
+
+/**
+ * The cron half of R-SEC-05: resume the run every relay_failed decision is
+ * still holding. The run the relay lost may be gone entirely (404/410) —
+ * the local receipts already landed, so close the decision rather than
+ * retry forever. Returns the count of decisions closed this tick.
+ */
+export async function retryFailedApprovalRelays(
+  supabase: SupabaseClient,
+  wake: (userId: string) => Promise<{
+    boxId: string;
+    target: HermesBoxTarget;
+  } | null>,
+  rearm: (userId: string) => Promise<void>
+): Promise<{ retried: number; closed: number }> {
+  const { data: stuck, error } = await supabase
+    .from("decisions")
+    .select("id, user_id, ref, payload")
+    .eq("kind", "purchase_review")
+    .eq("status", "relay_failed");
+  if (error || !stuck) return { retried: 0, closed: 0 };
+
+  let retried = 0;
+  let closed = 0;
+  for (const row of stuck as {
+    id: string;
+    user_id: string;
+    ref: string | null;
+    payload: unknown;
+  }[]) {
+    try {
+      if (!row.ref) {
+        // Nothing to resume — close the decision.
+        await db.write(
+          supabase
+            .from("decisions")
+            .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+            .eq("id", row.id)
+            .eq("status", "relay_failed"),
+          { what: "close ref-less relay decision", user_id: row.user_id }
+        );
+        closed += 1;
+        continue;
       }
-    )
-    .catch(() => undefined); // already logged inside db.write
+      const approved =
+        (row.payload as { relay_approved?: unknown } | null)?.relay_approved ===
+        true;
+      const box = await wake(row.user_id).catch(() => null);
+      if (!box) continue;
+      try {
+        await approveRun(box.target, row.ref, approved);
+      } catch (relayError) {
+        // A paused run that no longer exists cannot be resumed — the
+        // receipts already landed, so close the decision out.
+        if (
+          relayError instanceof HermesApiError &&
+          [404, 409, 410].includes(relayError.status)
+        ) {
+          await db.write(
+            supabase
+              .from("decisions")
+              .update({
+                status: approved ? "approved" : "dismissed",
+                resolved_at: new Date().toISOString(),
+              })
+              .eq("id", row.id)
+              .eq("status", "relay_failed"),
+            { what: "close lost relay decision", user_id: row.user_id }
+          );
+          closed += 1;
+        } else {
+          throw relayError;
+        }
+        continue;
+      } finally {
+        await rearm(row.user_id).catch(() => undefined);
+      }
+      await db.write(
+        supabase
+          .from("decisions")
+          .update({
+            status: approved ? "approved" : "dismissed",
+            resolved_at: new Date().toISOString(),
+          })
+          .eq("id", row.id)
+          .eq("status", "relay_failed"),
+        { what: "resolve relay decision", user_id: row.user_id }
+      );
+      retried += 1;
+      closed += 1;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          msg: "sweeper approval relay retry failed",
+          user_id: row.user_id,
+          decision_id: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    }
+  }
+  return { retried, closed };
 }
 
 /**
@@ -380,7 +492,9 @@ export async function resolvePurchaseReview(
       itemId || null,
       host ? `${host}:link_selected` : "link_selected"
     );
-    await relayApproval(supabase, userId, decision, false, box);
+    if (box) {
+      await relayApproval(supabase, userId, box, decision, false);
+    }
     return;
   }
 
@@ -392,7 +506,9 @@ export async function resolvePurchaseReview(
       itemId || null,
       host ? `${host}:owner_denied` : "owner_denied"
     );
-    await relayApproval(supabase, userId, decision, false, box);
+    if (box) {
+      await relayApproval(supabase, userId, box, decision, false);
+    }
     return;
   }
 
@@ -443,7 +559,7 @@ export async function resolvePurchaseReview(
     itemId,
     `${claims.host}:${band}`
   );
-  await relayApproval(supabase, userId, decision, true, box);
+  await relayApproval(supabase, userId, box, decision, true);
 }
 
 /**
@@ -460,26 +576,35 @@ export async function recordPurchaseOutcome(
 ): Promise<void> {
   const turn = await resolveActiveTurn(supabase, userId);
   if (turn.runId) {
-    const { data: updated } = await supabase
-      .from("agent_runs")
-      .update({ outcome })
-      .eq("user_id", userId)
-      .eq("hermes_run_id", turn.runId)
-      .select("id");
+    const updated = await db.write(
+      supabase
+        .from("agent_runs")
+        .update({ outcome })
+        .eq("user_id", userId)
+        .eq("hermes_run_id", turn.runId)
+        .select("id"),
+      { what: "record purchase outcome", user_id: userId }
+    );
     if (updated && updated.length > 0) return;
-    await supabase.from("agent_runs").insert({
-      user_id: userId,
-      hermes_run_id: turn.runId,
-      trigger: "imessage",
-      outcome,
-    });
+    await db.write(
+      supabase.from("agent_runs").insert({
+        user_id: userId,
+        hermes_run_id: turn.runId,
+        trigger: "imessage",
+        outcome,
+      }),
+      { what: "record purchase outcome", user_id: userId }
+    );
     return;
   }
   // No resolvable run (e.g. the run closed between fill and confirmation):
   // still keep the receipt as its own value-free row.
-  await supabase.from("agent_runs").insert({
-    user_id: userId,
-    ended_at: new Date().toISOString(),
-    outcome,
-  });
+  await db.write(
+    supabase.from("agent_runs").insert({
+      user_id: userId,
+      ended_at: new Date().toISOString(),
+      outcome,
+    }),
+    { what: "record purchase outcome", user_id: userId }
+  );
 }

@@ -14,7 +14,10 @@ export const maxDuration = 300;
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
-    const { body } = await adapterBody<{ now?: unknown }>(request);
+    const { body } = await adapterBody<{ now?: unknown }>(
+      serviceClient(),
+      request
+    );
     let now = new Date();
     if (body.now !== undefined) {
       if (typeof body.now !== "string" || !Number.isFinite(Date.parse(body.now))) {

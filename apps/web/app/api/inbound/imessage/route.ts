@@ -49,7 +49,7 @@ import {
   handleOnboarding,
   signupSender,
 } from "@/lib/provisioning/onboarding";
-import { ensureComputeProvisioned } from "@/lib/provisioning/provision";
+import { provisionComputeWithWelcome } from "@/lib/provisioning/welcome";
 import {
   createDecision,
   normalizeAddress,
@@ -111,7 +111,7 @@ async function sendLineReply(
  * until those gates pass, so tier-2 contacts still cause zero outbound work.
  */
 function warmSpectrumSender() {
-  return createSpectrumSender().catch(() => undefined);
+  return createSpectrumSender("webhook").catch(() => undefined);
 }
 
 async function closeWarmSpectrumSender(
@@ -450,7 +450,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         warmSenderPromise,
       );
       if (startCompute) {
-        await ensureComputeProvisioned(supabase, userId).catch(
+        await provisionComputeWithWelcome(supabase, userId).catch(
           (error: unknown) => {
             console.error(
               JSON.stringify({
@@ -727,7 +727,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
     try {
-      await flushAfterDebounce(supabase, message, runAt);
+      // The turn's warm sender drives the flush's lanes/cards too
+      // (R-PERF-04: one Spectrum init per turn); it is closed once below.
+      await flushAfterDebounce(supabase, message, runAt, sender);
     } catch (error) {
       console.error(
         JSON.stringify({

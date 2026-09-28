@@ -72,7 +72,7 @@ const userId = "11111111-1111-4111-8111-111111111111";
 const base = `https://air.test/api/admin/health?user_id=${userId}`;
 const authed = (url = base) =>
   new NextRequest(url, {
-    headers: { authorization: "Bearer admin-key" },
+    headers: { authorization: "Bearer admin-key", "x-admin-operator": "carol" },
   });
 
 beforeEach(() => {

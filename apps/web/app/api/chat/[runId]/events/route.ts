@@ -15,7 +15,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ runId: string }> }
 ): Promise<Response> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
