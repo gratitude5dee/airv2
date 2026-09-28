@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import {
   SESSION_COOKIE,
-  createSessionToken,
+  issueSessionToken,
   verifySignupToken,
 } from "@/lib/auth/session";
 import { provisionUser } from "@/lib/provisioning/provision";
@@ -73,8 +73,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .update({ state: "claimed", updated_at: new Date().toISOString() })
     .eq("user_id", userId);
 
+  const token = await issueSessionToken(supabase, userId);
+  if (!token) {
+    return NextResponse.json(
+      { error: "session unavailable — retry" },
+      { status: 503 }
+    );
+  }
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE, createSessionToken(userId), {
+  response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

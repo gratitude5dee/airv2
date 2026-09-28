@@ -9,7 +9,12 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
-import { createRun, MAIN_SESSION, runEvents } from "../hermes/client";
+import {
+  createRun,
+  loadConversationHistory,
+  MAIN_SESSION,
+  runEvents,
+} from "../hermes/client";
 import { createTerminalScanner } from "../hermes/terminal";
 import { routeTurn, routingInstructions } from "../jev/router";
 
@@ -44,7 +49,25 @@ export async function startChatRun(
   const route = routeTurn(input);
   const box = await ensureBoxAwake(supabase, userId);
   try {
+    // The web path is the one replay site left: every other channel lets
+    // Hermes hydrate the run from its own session transcript. A load
+    // failure is loud but not fatal — with the key omitted Hermes reads
+    // the same transcript itself, so the turn proceeds on the box's view.
+    const historyLoad = loadConversationHistory(box.target, sessionId).catch(
+      (error: unknown) => {
+        console.error(
+          JSON.stringify({
+            msg: "chat history replay load failed",
+            user_id: userId,
+            session_id: sessionId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        );
+        return null;
+      }
+    );
     const instructions = routingInstructions(await route);
+    const conversationHistory = await historyLoad;
     const run = await createRun(box.target, {
       // The routing hint rides the turn text itself: in-session GLM weights
       // user-adjacent context over system-prompt directives, so the same note
@@ -53,6 +76,9 @@ export async function startChatRun(
       sessionId,
       metadata: { channel },
       ...(instructions ? { instructions } : {}),
+      ...(conversationHistory && conversationHistory.length > 0
+        ? { conversationHistory }
+        : {}),
     });
     await supabase.from("agent_runs").insert({
       user_id: userId,

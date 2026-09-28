@@ -9,7 +9,7 @@
  * empty state, never an error page.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { command } from "@/lib/box/client";
+import { command, type CommandResult } from "@/lib/box/client";
 import { asRecord } from "@/lib/records";
 
 export interface CortexRecentItem {
@@ -147,8 +147,19 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-export async function cortexOverview(boxId: string): Promise<CortexOverview> {
-  const result = await command(boxId, CORTEX_PROBE, 60).catch(() => null);
+/** The box command runner the probe executes through — injectable so the
+ * query/parsing path is testable without a live box (R-TQ-10). */
+export type CortexRunner = (
+  boxId: string,
+  script: string,
+  timeoutSeconds: number
+) => Promise<CommandResult>;
+
+export async function cortexOverview(
+  boxId: string,
+  runner: CortexRunner = command
+): Promise<CortexOverview> {
+  const result = await runner(boxId, CORTEX_PROBE, 60).catch(() => null);
   const doc =
     result && result.exitCode === 0
       ? (() => {

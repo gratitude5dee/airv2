@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 const CACHE_HEADERS = { "Cache-Control": "no-store" };
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
