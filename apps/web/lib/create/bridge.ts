@@ -12,6 +12,7 @@
  * the request path only (`/v1/jobs/<id>/events`), never the origin.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 
 export const BRIDGE_TS_HEADER = "x-air-ts";
@@ -62,6 +63,45 @@ export function verifyBridgeRequest(
   if (Math.abs(now / 1000 - tsNum) > BRIDGE_TOLERANCE_S) return false;
   const expected = bridgeSign(secret, bridgePayload(ts, method, path, body));
   return hexEqual(expected, sig);
+}
+
+/** A nonce lives twice the signature window, so a signature old enough to
+ * replay is already out of tolerance and safe to evict. */
+const NONCE_TTL_MS = 2 * BRIDGE_TOLERANCE_S * 1000;
+
+export type NonceClaim = "claimed" | "replay" | "unavailable";
+
+/**
+ * R-SEC-04: claim a verified signature in the nonce table
+ * (`create_bridge_nonces`, migration 0132) with insert-on-conflict-do-
+ * nothing. The same request arriving twice inside the tolerance window is
+ * a replay — the caller answers 409. The signature itself is the nonce:
+ * HMAC over ts.METHOD.path.sha256(body), so a replay is byte-identical.
+ * Rows past 2x the window are deleted on each claim.
+ */
+export async function claimBridgeNonce(
+  supabase: SupabaseClient,
+  sig: string
+): Promise<NonceClaim> {
+  const cutoff = new Date(Date.now() - NONCE_TTL_MS).toISOString();
+  await supabase
+    .from("create_bridge_nonces")
+    .delete()
+    .lt("created_at", cutoff);
+  const { data, error } = await supabase
+    .from("create_bridge_nonces")
+    .upsert({ sig }, { onConflict: "sig", ignoreDuplicates: true })
+    .select("sig");
+  if (error) {
+    console.error(
+      JSON.stringify({
+        msg: "create bridge nonce claim failed",
+        error: error.message,
+      })
+    );
+    return "unavailable";
+  }
+  return (data?.length ?? 0) > 0 ? "claimed" : "replay";
 }
 
 export class BridgeError extends Error {
