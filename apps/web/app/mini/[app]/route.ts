@@ -56,6 +56,7 @@ import {
   type MiniStyle,
 } from "@/lib/miniapps/themeContext";
 import type { MiniSession } from "@/lib/miniapps/gates";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,30 +105,25 @@ function truncateUa(ua: string | null): string | null {
 }
 
 function logLoad(
-  log: LoadLog,
+  entry: LoadLog,
   outcome: string,
   status: number
 ): void {
-  console.log(
-    JSON.stringify({
-      msg: "miniapp load",
-      app: log.slug,
-      method: log.method,
-      lane: log.lane,
+  log.info("miniapp load", {app: entry.slug,
+      method: entry.method,
+      lane: entry.lane,
       outcome,
       status,
-      ms: elapsedMs(log.start),
-      gate_ms: log.gate?.totalMs ?? null,
-      gate_visibility_ms: log.gate?.visibilityMs ?? null,
-      gate_password_ms: log.gate?.passwordMs ?? null,
-      gate_x402_ms: log.gate?.x402Ms ?? null,
-      gate_session_ms: log.gate?.sessionMs ?? null,
-      render_ms: log.renderMs ?? null,
-      origin_via: log.originVia ?? null,
-      via: log.via ?? null,
-      ua: log.ua ?? null,
-    })
-  );
+      ms: elapsedMs(entry.start),
+      gate_ms: entry.gate?.totalMs ?? null,
+      gate_visibility_ms: entry.gate?.visibilityMs ?? null,
+      gate_password_ms: entry.gate?.passwordMs ?? null,
+      gate_x402_ms: entry.gate?.x402Ms ?? null,
+      gate_session_ms: entry.gate?.sessionMs ?? null,
+      render_ms: entry.renderMs ?? null,
+      origin_via: entry.originVia ?? null,
+      via: entry.via ?? null,
+      ua: entry.ua ?? null,});
 }
 
 /**
@@ -360,7 +356,7 @@ async function handleGet(
 ): Promise<NextResponse> {
   const start = performance.now();
   const { app: slug } = await context.params;
-  const log: LoadLog = {
+  const entry: LoadLog = {
     slug,
     method: "GET",
     start,
@@ -374,55 +370,53 @@ async function handleGet(
   const prefetched = prefetchStyle(request, supabase, slug);
   const app = await getRegistryApp(supabase, slug);
   if (!app) {
-    log.lane = "unknown_app";
-    logLoad(log, "unknown slug", 404);
+    entry.lane = "unknown_app";
+    logLoad(entry, "unknown slug", 404);
     return notFound();
   }
   const appModule = resolveModule(app);
   if (!appModule) {
-    log.lane = "unknown_app";
-    logLoad(log, "no module", 404);
+    entry.lane = "unknown_app";
+    logLoad(entry, "no module", 404);
     return notFound();
   }
   const basePath = basePathFor(request, slug);
 
   const token = request.nextUrl.searchParams.get("t");
   if (token) {
-    log.lane = "token_exchange";
+    entry.lane = "token_exchange";
     // token.app === path.app — the path is a routing hint, never authz. The
     // exchange still respects visibility/status: a suspended app cannot be
     // entered even with a fresh token.
     const blocked = visibilityGate(app);
     if (blocked) {
-      logLoad(log, "visibility blocked", blocked.status);
+      logLoad(entry, "visibility blocked", blocked.status);
       return blocked;
     }
     if (isPrefetch(request)) {
-      log.lane = "prefetch";
-      logLoad(log, "prefetch placeholder", 200);
+      entry.lane = "prefetch";
+      logLoad(entry, "prefetch placeholder", 200);
       return html(
         page(app.name, `<h1>${esc(app.name)}</h1><div class="card">Tap to open.</div>`)
       );
     }
     const claims = verifyToken(token, slug);
     if (!claims) {
-      logLoad(log, "invalid token", 403);
+      logLoad(entry, "invalid token", 403);
       return sessionExpired("This signed link is invalid or has expired.");
     }
     if (!(await recordRedemption(supabase, claims))) {
-      logLoad(log, "token already redeemed", 403);
+      logLoad(entry, "token already redeemed", 403);
       return sessionExpired("This signed link is no longer valid.");
     }
-    console.log(
-      JSON.stringify({ msg: "miniapp opened", user_id: claims.userId, app: slug })
-    );
+    log.info("miniapp opened", {user_id: claims.userId, app: slug});
     await logGateEvent(supabase, app.id, claims.userId, "app_opened", "token");
     const response = withBaseHeaders(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
     const via = resolveVia(claims.via, request.headers.get("user-agent"));
-    log.originVia = claims.via;
-    log.via = via;
+    entry.originVia = claims.via;
+    entry.via = via;
     response.cookies.set(
       cookieName(slug, via),
       mintToken(claims.userId, slug, claims.resourceId, 15, {
@@ -441,24 +435,24 @@ async function handleGet(
         maxAge: 15 * 60,
       }
     );
-    logLoad(log, "token exchanged", 303);
+    logLoad(entry, "token exchanged", 303);
     return response;
   }
 
   const grantId = request.nextUrl.searchParams.get("g");
   if (grantId) {
-    log.lane = "grant";
+    entry.lane = "grant";
     // MA4: a share URL redeems into a guest session for exactly this app +
     // resource. Replay against another slug fails the app_id match; the
     // session it mints cannot mint anything broader.
     const blocked = visibilityGate(app);
     if (blocked) {
-      logLoad(log, "visibility blocked", blocked.status);
+      logLoad(entry, "visibility blocked", blocked.status);
       return blocked;
     }
     if (isPrefetch(request)) {
-      log.lane = "prefetch";
-      logLoad(log, "prefetch placeholder", 200);
+      entry.lane = "prefetch";
+      logLoad(entry, "prefetch placeholder", 200);
       return html(
         page(app.name, `<h1>${esc(app.name)}</h1><div class="card">Tap to open.</div>`)
       );
@@ -466,19 +460,19 @@ async function handleGet(
     // Guest grants only exist for multiplayer apps — owner-only apps never
     // redeem, even if a grant row exists for them.
     if (app.access !== "multiplayer") {
-      logLoad(log, "not shareable", 403);
+      logLoad(entry, "not shareable", 403);
       return forbidden("this app is not shareable");
     }
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
       "unknown";
     if (guestRateLimited(grantId, ip)) {
-      logLoad(log, "guest rate limited", 429);
+      logLoad(entry, "guest rate limited", 429);
       return new NextResponse("too many requests", { status: 429 });
     }
     const grant = await redeemGuestGrant(supabase, grantId, app.id);
     if (!grant) {
-      logLoad(log, "invalid grant", 403);
+      logLoad(entry, "invalid grant", 403);
       return forbidden("this invite is no longer valid");
     }
     await logGateEvent(supabase, app.id, grant.created_by, "app_opened", "guest");
@@ -500,20 +494,20 @@ async function handleGet(
         maxAge: 15 * 60,
       }
     );
-    logLoad(log, "grant redeemed", 303);
+    logLoad(entry, "grant redeemed", 303);
     return response;
   }
 
   const gate = appModule.publicAccess
     ? await runPublicGateChain(request, supabase, app, basePath)
     : await runGateChain(request, supabase, app, basePath);
-  log.gate = gate.timings;
+  entry.gate = gate.timings;
   if (!gate.ok) {
-    logLoad(log, "gate blocked", gate.response.status);
+    logLoad(entry, "gate blocked", gate.response.status);
     return gate.response;
   }
-  log.via = gate.session.via;
-  log.originVia = gate.session.originVia;
+  entry.via = gate.session.via;
+  entry.originVia = gate.session.originVia;
 
   const renderStart = performance.now();
   const style = await styleFor(supabase, gate.session, prefetched);
@@ -528,8 +522,8 @@ async function handleGet(
         basePath,
       })
   );
-  log.renderMs = elapsedMs(renderStart);
-  logLoad(log, "rendered", response.status);
+  entry.renderMs = elapsedMs(renderStart);
+  logLoad(entry, "rendered", response.status);
   return refreshCookie(response, gate.session, slug, basePath);
 }
 
@@ -539,7 +533,7 @@ async function handlePost(
 ): Promise<NextResponse> {
   const start = performance.now();
   const { app: slug } = await context.params;
-  const log: LoadLog = {
+  const entry: LoadLog = {
     slug,
     method: "POST",
     start,
@@ -549,14 +543,14 @@ async function handlePost(
   const supabase = serviceClient();
   const app = await getRegistryApp(supabase, slug);
   if (!app) {
-    log.lane = "unknown_app";
-    logLoad(log, "unknown slug", 404);
+    entry.lane = "unknown_app";
+    logLoad(entry, "unknown slug", 404);
     return notFound();
   }
   const appModule = resolveModule(app);
   if (!appModule) {
-    log.lane = "unknown_app";
-    logLoad(log, "no module", 404);
+    entry.lane = "unknown_app";
+    logLoad(entry, "no module", 404);
     return notFound();
   }
   const basePath = basePathFor(request, slug);
@@ -573,23 +567,23 @@ async function handlePost(
   const gate = appModule.publicAccess
     ? await runPublicGateChain(request, supabase, app, basePath, submittedPassword)
     : await runGateChain(request, supabase, app, basePath, submittedPassword);
-  log.gate = gate.timings;
+  entry.gate = gate.timings;
   if (!gate.ok) {
-    logLoad(log, "gate blocked", gate.response.status);
+    logLoad(entry, "gate blocked", gate.response.status);
     return gate.response;
   }
-  log.via = gate.session.via;
-  log.originVia = gate.session.originVia;
+  entry.via = gate.session.via;
+  entry.originVia = gate.session.originVia;
   if (action === "__password") {
     // Already unlocked — just reload the view.
-    logLoad(log, "password settled", 303);
+    logLoad(entry, "password settled", 303);
     return withBaseHeaders(
       NextResponse.redirect(new URL(basePath, externalOrigin(request)), 303)
     );
   }
 
   if (!appModule.action) {
-    logLoad(log, "no action handler", 404);
+    logLoad(entry, "no action handler", 404);
     return notFound();
   }
 
@@ -597,7 +591,7 @@ async function handlePost(
     gate.session.role === "guest" &&
     !(appModule.guestActions ?? []).includes(action)
   ) {
-    logLoad(log, "guest action refused", 403);
+    logLoad(entry, "guest action refused", 403);
     return forbidden("guests can't do that here");
   }
 
@@ -611,7 +605,7 @@ async function handlePost(
         form
       )
   );
-  log.renderMs = elapsedMs(renderStart);
-  logLoad(log, "action handled", response.status);
+  entry.renderMs = elapsedMs(renderStart);
+  logLoad(entry, "action handled", response.status);
   return refreshCookie(response, gate.session, slug, basePath);
 }

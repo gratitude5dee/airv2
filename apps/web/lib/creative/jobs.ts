@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import type { CreativeMode } from "./parse";
+import { log } from "../log";
 
 export type CreativeChannel = "web" | "imessage";
 /** Router modes plus box-side timeline assembly (MA7 'video_render'), the
@@ -160,13 +161,8 @@ export async function updateCreativeJob(
     .update(patch)
     .eq("id", jobId);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "creative job update failed",
-        job_id: jobId,
-        error: error.message,
-      })
-    );
+    log.error("creative job update failed", {job_id: jobId,
+        error: error.message,});
   }
 }
 
@@ -236,13 +232,8 @@ export async function insertRenderCostEvent(
     ref: `creative:${jobId}`,
   });
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "render cost event insert failed",
-        user_id: userId,
+    log.error("render cost event insert failed", {user_id: userId,
         job_id: jobId,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }

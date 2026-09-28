@@ -19,6 +19,7 @@ import { writeArchiveFile } from "./archiveWrite";
 import { archivePartition } from "./archive";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { env } from "../env";
+import { log } from "../log";
 
 export const IMESSAGE_INGEST_USE = "imessage_ingest";
 /** Long enough to run the extractor, short enough to bound exposure. */
@@ -53,13 +54,8 @@ export function mintIngestTicket(userId: string): string {
     exp: Math.floor(Date.now() / 1000) + INGEST_TTL_MINUTES * 60,
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  console.log(
-    JSON.stringify({
-      msg: "imessage ingest ticket minted",
-      user_id: userId,
-      jti: claims.jti,
-    })
-  );
+  log.info("imessage ingest ticket minted", {user_id: userId,
+      jti: claims.jti,});
   return `${payload}.${sign(payload)}`;
 }
 

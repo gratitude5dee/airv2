@@ -67,6 +67,7 @@ import {
 } from "@/lib/gateway/responses";
 import { fetchWithHeaderTimeout } from "@/lib/http/timeout";
 import { guardResponse, requireBox } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -247,25 +248,20 @@ async function meter(
     ...(trace?.label ? { label: trace.label } : {}),
   });
   if (runError) {
-    console.error(JSON.stringify({ msg: "agent_runs insert failed", user_id: userId, error: runError.message }));
+    log.error("agent_runs insert failed", {user_id: userId, error: runError.message});
   }
   if (trace && trace.requestedFamily !== family) {
-    console.warn(
-      JSON.stringify({
-        msg: "gateway provider fallback",
-        user_id: userId,
+    log.warn("gateway provider fallback", {user_id: userId,
         requested_family: trace.requestedFamily,
         served_family: family,
-        served_model: model ?? null,
-      })
-    );
+        served_model: model ?? null,});
   }
   const { error: spendError } = await supabase.rpc("add_spend", {
     p_user_id: userId,
     p_cost_usd: cost,
   });
   if (spendError) {
-    console.error(JSON.stringify({ msg: "add_spend failed", user_id: userId, error: spendError.message }));
+    log.error("add_spend failed", {user_id: userId, error: spendError.message});
   }
   if (trace?.app) await settleAppSpend(supabase, trace.app.hold, cost);
 }
@@ -805,14 +801,9 @@ export async function POST(
       !upstream.ok &&
       [400, 404, 405, 422].includes(upstream.status)
     ) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway responses unsupported, using chat/completions",
-          user_id: userId,
+      log.warn("gateway responses unsupported, using chat/completions", {user_id: userId,
           model: servedModel,
-          status: upstream.status,
-        })
-      );
+          status: upstream.status,});
       await upstream.body?.cancel().catch(() => undefined);
       return dispatchOnce(toFamily, false);
     }
@@ -850,15 +841,10 @@ export async function POST(
         isTimeoutError(error) &&
         Date.now() < gmiDeadlineMs
       ) {
-        console.warn(
-          JSON.stringify({
-            msg: "gateway gmi astra latency fallback",
-            user_id: userId,
+        log.warn("gateway gmi astra latency fallback", {user_id: userId,
             from_model: GMI_ASTRA_MODEL,
             to_model: GMI_RECOVERY_MODEL,
-            elapsed_ms: Date.now() - requestStartedMs,
-          })
-        );
+            elapsed_ms: Date.now() - requestStartedMs,});
         gmiRecoveryModel = GMI_RECOVERY_MODEL;
         return dispatch(servedFamily);
       }
@@ -872,16 +858,11 @@ export async function POST(
         [400, 422].includes(response.status) &&
         Date.now() < gmiDeadlineMs
       ) {
-        console.warn(
-          JSON.stringify({
-            msg: "gateway gmi astra compatibility fallback",
-            user_id: userId,
+        log.warn("gateway gmi astra compatibility fallback", {user_id: userId,
             from_model: GMI_ASTRA_MODEL,
             to_model: GMI_RECOVERY_MODEL,
             status: response.status,
-            elapsed_ms: Date.now() - requestStartedMs,
-          })
-        );
+            elapsed_ms: Date.now() - requestStartedMs,});
         await response.body?.cancel().catch(() => undefined);
         gmiRecoveryModel = GMI_RECOVERY_MODEL;
         return dispatch(servedFamily);
@@ -925,15 +906,10 @@ export async function POST(
       nonOpenAiProvider &&
       [429, 500, 502, 503, 504].includes(upstream.status)
     ) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway upstream retry",
-          user_id: userId,
+      log.warn("gateway upstream retry", {user_id: userId,
           family,
           model: servedModel,
-          status: upstream.status,
-        })
-      );
+          status: upstream.status,});
       await upstream.body?.cancel().catch(() => undefined);
       if (RETRY_DELAY_MS > 0) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
@@ -941,16 +917,11 @@ export async function POST(
       upstream = await dispatch(servedFamily);
     }
     if (canFallBack && (!upstream.ok || !upstream.body)) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway upstream rejected",
-          user_id: userId,
+      log.warn("gateway upstream rejected", {user_id: userId,
           family,
           model: servedModel,
           status: upstream.status,
-          detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),
-        })
-      );
+          detail: (await upstream.clone().text().catch(() => "")).slice(0, 400),});
       servedFamily = "openai";
       upstream = await dispatch(servedFamily);
     } else if (nonOpenAiProvider && upstream.ok && !streaming) {
@@ -1307,15 +1278,10 @@ export async function POST(
     return await proxy();
   } catch (error) {
     if (isTimeoutError(error)) {
-      console.warn(
-        JSON.stringify({
-          msg: "gateway provider deadline exceeded",
-          user_id: userId,
+      log.warn("gateway provider deadline exceeded", {user_id: userId,
           family,
           model: servedModel || null,
-          elapsed_ms: Date.now() - requestStartedMs,
-        })
-      );
+          elapsed_ms: Date.now() - requestStartedMs,});
       return NextResponse.json(
         {
           error: {

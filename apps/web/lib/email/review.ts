@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createDecision } from "../routing/trust";
 import { sendMiniAppCard } from "../miniapps/cards";
 import { claimCardSend } from "../miniapps/cardSends";
+import { log } from "../log";
 
 export async function queueEmailDraftReview(
   supabase: SupabaseClient,
@@ -35,13 +36,8 @@ export async function queueEmailDraftReview(
   // Inline review card — best-effort: a failed card must not fail the
   // escalation; the decision already exists and Needs-you shows it.
   await sendEmailReviewCard(supabase, userId, draft).catch((error) => {
-    console.error(
-      JSON.stringify({
-        msg: "email review card send failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("email review card send failed", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
   });
 }
 

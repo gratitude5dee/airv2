@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { renameBox } from "@/lib/box/client";
 import { serviceClient } from "@/lib/supabase";
 import { guardResponse, requireAdmin } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,14 +88,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             : String(renameError);
         report.failed += 1;
         report.failures.push({ provider_box_id: providerBoxId, error: message });
-        console.error(
-          JSON.stringify({
-            msg: "box rename failed",
-            user_id: row.user_id,
+        log.error("box rename failed", {user_id: row.user_id,
             box_id: providerBoxId,
-            error: message,
-          }),
-        );
+            error: message,});
       }
     }
     if (rows.length < PAGE) break;

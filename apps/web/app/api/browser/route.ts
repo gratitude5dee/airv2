@@ -36,6 +36,7 @@ import {
   RULE_PLATFORMS,
   RULE_PLAYBOOKS,
 } from "@/lib/browser/rules";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -333,14 +334,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof StartLimitError) {
       return NextResponse.json({ error: "start_limit_reached" }, { status: 429 });
     }
-    console.error(
-      JSON.stringify({
-        msg: "browser action failed",
-        user_id: userId,
+    log.error("browser action failed", {user_id: userId,
         action,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "browser action failed" }, { status: 502 });
   }
 }

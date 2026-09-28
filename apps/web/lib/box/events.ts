@@ -4,6 +4,7 @@
  * tab's history sparkline. Best-effort — power flow never fails on telemetry.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "../log";
 
 export type BoxStateEvent = "ready" | "stopped";
 
@@ -21,13 +22,9 @@ export async function recordKeepAwakeFire(
     .from("box_state_events")
     .insert({ user_id: userId, state: "keepawake" });
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "keepawake fire event insert failed",
+    log.error("keepawake fire event insert failed", {box_id: null,
         user_id: userId,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }
 
@@ -40,14 +37,10 @@ export async function recordBoxStateEvent(
     .from("box_state_events")
     .insert({ user_id: userId, state });
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "box state event insert failed",
+    log.error("box state event insert failed", {box_id: null,
         user_id: userId,
         state,
-        error: error.message,
-      })
-    );
+        error: error.message,});
   }
 }
 

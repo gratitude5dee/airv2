@@ -33,6 +33,7 @@ import {
   WAVE_TABLES_WITHOUT_USER_ID,
 } from "@/lib/security/c18";
 import { guardResponse, requireAdmin } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -467,8 +468,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         : `ORPHANED ${v9Orphaned.join(", ")}`;
   }
 
-  console.log(
-    JSON.stringify({ msg: "user deleted", user_id: userId, steps })
-  );
+  log.info("user deleted", {user_id: userId, steps});
   return NextResponse.json({ ok: !deleteError, steps });
 }

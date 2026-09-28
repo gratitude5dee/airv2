@@ -10,6 +10,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeAddress } from "../routing/trust";
 import { completeSmsAuth, initiateSmsAuth } from "../thirdweb/client";
+import { log } from "../log";
 
 export type OnboardingAction =
   | { kind: "ignore" }
@@ -170,13 +171,9 @@ export async function handleOnboarding(
         text: "Hey! I'm your agent. To secure your account I just sent a 6-digit code to this number by SMS — reply with it here.",
       };
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "thirdweb initiate failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("thirdweb initiate failed", {box_id: null,
+        user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
       // Wallet setup unavailable: activate without it so the agent works;
       // the wallet can be attached later from settings.
       const activated = await activate(supabase, userId, row.bound_phone, null);

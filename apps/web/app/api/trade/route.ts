@@ -25,6 +25,7 @@ import {
 import { deliverTradeApproval } from "@/lib/trade/imessage";
 import { TradeVenueError } from "@/lib/trade/venue";
 import { guardResponse, requireBoxOrOwner } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,12 +39,7 @@ function toErrorResponse(error: unknown): NextResponse {
       { status: error.status },
     );
   }
-  console.error(
-    JSON.stringify({
-      msg: "trade api failed",
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  log.error("trade api failed", {error: error instanceof Error ? error.message : String(error),});
   return NextResponse.json({ error: "trade failed" }, { status: 502 });
 }
 

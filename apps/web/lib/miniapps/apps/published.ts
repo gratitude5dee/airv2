@@ -23,6 +23,7 @@ import { withBaseHeaders } from "../html";
 import { mintToken } from "../tokens";
 import type { RegistryApp } from "../registry";
 import type { MiniAppContext, MiniAppModule } from "./types";
+import { log } from "../../log";
 
 export function publisherCsp(): string {
   return (
@@ -61,14 +62,9 @@ async function render(ctx: MiniAppContext): Promise<NextResponse> {
   if (await servedOnAppOrigin(ctx.supabase, ctx.app)) {
     const target = handoffUrl(ctx.app, ctx.session);
     if (target) {
-      console.log(
-        JSON.stringify({
-          msg: "miniapp handoff",
-          app: ctx.app.slug,
+      log.info("miniapp handoff", {app: ctx.app.slug,
           version,
-          role: ctx.session.role,
-        })
-      );
+          role: ctx.session.role,});
       return withBaseHeaders(NextResponse.redirect(target, 303));
     }
     return new NextResponse("forbidden", { status: 403 });

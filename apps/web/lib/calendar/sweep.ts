@@ -27,6 +27,7 @@ import {
   SCHEDULE_COLUMNS,
   type AgentSchedule,
 } from "./schedule";
+import { log } from "../log";
 
 const MAX_FAILURES = 5;
 const SWEEP_BATCH = 10;
@@ -70,22 +71,12 @@ async function recordDelivery(
       excerpt,
     });
     if (error) {
-      console.warn(
-        JSON.stringify({
-          msg: "schedule delivery ledger write failed",
-          schedule_id: schedule.id,
-          error: error.message,
-        })
-      );
+      log.warn("schedule delivery ledger write failed", {schedule_id: schedule.id,
+          error: error.message,});
     }
   } catch (error) {
-    console.warn(
-      JSON.stringify({
-        msg: "schedule delivery ledger write failed",
-        schedule_id: schedule.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.warn("schedule delivery ledger write failed", {schedule_id: schedule.id,
+        error: error instanceof Error ? error.message : String(error),});
   }
 }
 
@@ -259,15 +250,10 @@ async function recordFailure(
       label: `Schedule "${schedule.name}" paused after ${MAX_FAILURES} consecutive failures`,
     }).catch(() => undefined);
   }
-  console.error(
-    JSON.stringify({
-      msg: "schedule run failed",
-      schedule_id: schedule.id,
+  log.error("schedule run failed", {schedule_id: schedule.id,
       user_id: schedule.user_id,
       failure_count: failures,
-      error: message,
-    })
-  );
+      error: message,});
 }
 
 /** Run one claimed schedule end to end. */

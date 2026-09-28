@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listDrafts } from "../mail/client";
 import { queueEmailDraftReview } from "./review";
+import { log } from "../log";
 
 /** Only users whose box was active recently are swept, bounding API calls. */
 const ACTIVE_WINDOW_MS = 30 * 60_000;
@@ -82,13 +83,8 @@ export async function sweepUnfiledDrafts(
     try {
       drafts = await listDrafts(inboxId);
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "draft sweep list failed",
-          user_id: userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.error("draft sweep list failed", {user_id: userId,
+          error: error instanceof Error ? error.message : String(error),});
       continue;
     }
     const candidates = drafts.filter((draft) =>
@@ -126,13 +122,8 @@ export async function sweepUnfiledDrafts(
         });
         filed += 1;
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "draft sweep filing failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("draft sweep filing failed", {user_id: userId,
+            error: error instanceof Error ? error.message : String(error),});
       }
     }
   }
