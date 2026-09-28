@@ -70,6 +70,7 @@ vi.mock("@/lib/env", async (importOriginal) => {
 import { NextRequest } from "next/server";
 import { GET, POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 function completionRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest("https://air.test/api/gateway/v1/chat/completions", {
     method: "POST",
@@ -221,6 +222,7 @@ describe("gateway reasoning_effort gating (P1-7)", () => {
       String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)
     ) as Record<string, unknown>;
     expect(secondBody["reasoning_effort"]).toBe("none");
+    expectLog(/gateway\ responses\ unsupported,\ using\ chat\/completions/, { level: "warn" });
   });
 
   it("round-trips reasoning items so tool turns resume the model's thought", async () => {
@@ -620,6 +622,7 @@ describe("gateway model families", () => {
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
   });
 
   it("retries GMI when a streamed turn contains reasoning but no user-visible answer", async () => {
@@ -657,6 +660,7 @@ describe("gateway model families", () => {
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
     expect(text).toContain("Here is the answer.");
+    expectLog(/gateway\ response\ missing\ user\-visible\ work/, { level: "warn" });
   });
 
   it("falls back from a timed-out GMI Astra turn to GLM on the same GMI key", async () => {
@@ -697,6 +701,7 @@ describe("gateway model families", () => {
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
+    expectLog(/gateway\ gmi\ astra\ latency\ fallback/, { level: "warn" });
   });
 
   it("falls back from an Astra compatibility 400 to GLM on the same GMI key", async () => {
@@ -743,6 +748,7 @@ describe("gateway model families", () => {
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
+    expectLog(/gateway\ gmi\ astra\ compatibility\ fallback/, { level: "warn" });
   });
 
   it("falls back to GLM when Astra times out after opening its stream", async () => {
@@ -785,6 +791,7 @@ describe("gateway model families", () => {
       "zai-org/GLM-5.3-Flash",
     ]);
     expect(text).toContain("Recovered answer");
+    expectLog(/gateway\ gmi\ astra\ latency\ fallback/, { level: "warn" });
   });
 
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
@@ -852,6 +859,7 @@ describe("gateway model families", () => {
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect((await response.json()).choices[0].message.content).toBe("hi");
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
   });
 
   it("falls back to OpenAI after a retryable GMI error repeats", async () => {
@@ -892,6 +900,8 @@ describe("gateway model families", () => {
       "https://upstream.test/v1/responses"
     );
     expect((await response.json()).choices[0].message.content).toBe("hi");
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
   });
 
   it("resolves the gmi family per tier on chat/completions", async () => {
@@ -1097,6 +1107,8 @@ describe("gateway model families", () => {
     expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
       "https://upstream.test/v1/responses"
     );
+    expectLog(/gateway\ upstream\ retry/, { level: "warn" });
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
   });
 
   it("falls back to the OpenAI tier model when OpenRouter answers empty", async () => {
@@ -1187,6 +1199,9 @@ describe("gateway model families", () => {
     expect(row["completion_tokens"]).toBe(5);
     // OpenAI tier rates, not the family's — the cost follows what served.
     expect(row["cost_usd"]).toBeCloseTo((3 * 0.4 + 5 * 2.4) / 1_000_000, 12);
+    expectLog(/gateway\ upstream\ rejected/, { level: "warn" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expectLog(/gateway\ provider\ fallback/, { level: "warn" });
   });
 
   it("leaves fallback_from null when the requested family serves", async () => {
@@ -1251,6 +1266,9 @@ describe("gateway model families", () => {
     const text = await (response as Response).text();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(text).toContain('"content":"hi"');
+    expectLog(/gateway\ response\ missing\ user\-visible\ work/, { level: "warn" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expectLog(/gateway\ provider\ fallback/, { level: "warn" });
   });
 
   it("replays a streamed OpenRouter answer that has content", async () => {

@@ -26,6 +26,7 @@ vi.mock("@/lib/functions/deploy", () => ({ suspendOnAppOrigin: deploy.suspendOnA
 
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 const base = "https://air.test/api/admin/create/apps";
 const post = (slug: string, key = "admin-key") =>
   POST(
@@ -200,5 +201,6 @@ describe("mirror removal (§10.2)", () => {
     expect(fake.rows("mini_apps")[0]).toMatchObject({ status: "suspended" });
     delete process.env["CREATE_MIRROR_ENABLED"];
     delete process.env["WZRD_CREATE_INSTALLATION_ID"];
+    expectLog(/mirror\ removal\ failed/, { level: "warn" });
   });
 });

@@ -42,6 +42,7 @@ import {
 } from "@/lib/security/c18";
 import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
+import { expectLog } from "../testing/expectLog";
 /* ------------------------------------------------- bundle CSP escapes */
 
 describe("publisher CSP blocks escape hatches (MA11)", () => {
@@ -124,6 +125,7 @@ describe("durable ops-ledger rate limits (MA11)", () => {
   it("fails open on a ledger read error — a counter outage never bricks the store", async () => {
     db.opErrors["ops_events:select"] = { message: "boom" };
     expect(await launchRateLimited(supabase, "user-1")).toBe(false);
+    expectLog(/ops\ event\ count\ failed/, { level: "error" });
   });
 
   it("marks a blocked user once per window — hammering a limited endpoint can't grow the ledger", async () => {
@@ -230,6 +232,7 @@ describe("durable ops-ledger rate limits (MA11)", () => {
     expect(
       await pairExchangeRateLimited(supabase, pairAttemptSource(headers({})))
     ).toBe(false);
+    expectLog(/ops\ event\ count\ failed/, { level: "error" });
   });
 
   it("throttles anonymous store_open writes — a hammered store home can't spam inserts", async () => {

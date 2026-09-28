@@ -30,6 +30,7 @@ export default defineConfig({
     },
   },
   test: {
+    setupFiles: ["./lib/testing/vitest.setup.ts"],
     pool: "threads",
     projects: [
       {

@@ -164,6 +164,7 @@ import { POST as actionsPost } from "./actions/route";
 import { POST as mediaPost } from "./media/route";
 import { guardMediaUpload } from "@/lib/storage/guard";
 
+import { expectLog } from "@/lib/testing/expectLog";
 function req(
   url: string,
   init: { method?: string; bearer?: string; role?: string; app?: string; version?: string; body?: string | Buffer; type?: string } = {}
@@ -459,6 +460,7 @@ describe("/api/functions/media", () => {
     const retry = await upload();
     expect(retry.status).toBe(200);
     expect(quota.bytes_used).toBe(stored);
+    expectLog(/functions\ runtime\ route\ failed/, { level: "error" });
   });
 
   it("a failed upload racing a live one gives its bytes back to the live one's successor", async () => {
@@ -476,5 +478,6 @@ describe("/api/functions/media", () => {
     expect(third.status).toBe(200);
     expect(quota.bytes_used).toBe(stored * 2);
     expect(uploaded).toHaveLength(2);
+    expectLog(/functions\ runtime\ route\ failed/, { level: "error" });
   });
 });

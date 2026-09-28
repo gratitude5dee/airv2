@@ -11,6 +11,7 @@ import { sendMiniAppCard } from "../miniapps/cards";
 import { claimCardSend } from "../miniapps/cardSends";
 import { queueEmailDraftReview } from "./review";
 
+import { expectLog } from "../testing/expectLog";
 vi.mock("../routing/trust", () => ({ createDecision: vi.fn() }));
 vi.mock("../miniapps/cards", () => ({ sendMiniAppCard: vi.fn() }));
 vi.mock("../miniapps/cardSends", () => ({ claimCardSend: vi.fn() }));
@@ -112,5 +113,6 @@ describe("queueEmailDraftReview", () => {
       queueEmailDraftReview(supabase, "user-1", { draftId: "draft-1" })
     ).resolves.toBeUndefined();
     expect(release).toHaveBeenCalled();
+    expectLog(/email\ review\ card\ send\ failed/, { level: "error" });
   });
 });

@@ -31,6 +31,7 @@ import { AIR_TRANSFER_SCRIPT_B64, AIR_TRANSFER_SCRIPT_SHA256 } from "./airTransf
 import type { ComputeMigration, MigrationTarget, TargetRole } from "./types";
 import type { TargetCredentials } from "./credentials";
 
+import { expectLog } from "../testing/expectLog";
 // ─── supabase stubs ─────────────────────────────────────────────────────────
 
 interface StubOptions {
@@ -107,6 +108,7 @@ describe("admission", () => {
     await expect(
       assertAdmissionOpen(client, "u1")
     ).resolves.toBeUndefined();
+    expectLog(/admission\ check\ failed\ open/, { level: "error" });
   });
 
   it("migrationBusyResponse maps only MigrationBusyError to 503+Retry-After", () => {

@@ -10,6 +10,7 @@ import { makeApp } from "@/app/mini/loader-test-utils";
 import type { RegistryApp } from "../miniapps/registry";
 import type { VersionRow } from "./versions";
 
+import { expectLog } from "../testing/expectLog";
 const deploy = vi.hoisted(() => ({
   appOriginLaneReady: vi.fn(() => true),
   deployStaticVersion: vi.fn(async (_s: unknown, _i: { target: string }) => ({
@@ -335,6 +336,7 @@ describe("expireDevReleases", () => {
     cloudflare.deleteDispatchScript.mockRejectedValueOnce(new Error("cf 502"));
     const result = await expireDevReleases(fakeSupabase(), NOW);
     expect(result).toEqual({ revoked: 1 });
+    expectLog(/dev\ release\ expiry\ failed/, { level: "error" });
   });
 });
 

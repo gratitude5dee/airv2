@@ -20,6 +20,7 @@ import { ensureBoxAwake } from "./boxes";
 import { sharedBridgeReply } from "./sharedBridge";
 import { FakeSupabase } from "../testing/fakeSupabase";
 
+import { expectLog } from "../testing/expectLog";
 vi.mock("../spectrum/sender", () => ({ createSpectrumSender: vi.fn() }));
 vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
@@ -193,5 +194,6 @@ describe("runFlush during a Spectrum outage", () => {
       "+15551234567",
       "I need a little more time. I’m continuing with the same request."
     );
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
   });
 });

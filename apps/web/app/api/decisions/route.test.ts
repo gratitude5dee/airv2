@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 type Row = Record<string, unknown>;
 
 let decisions: Row[] = [];
@@ -225,6 +226,7 @@ describe("POST /api/decisions — miniapp_publish (V12 §9.3)", () => {
       error: expect.stringContaining("upload a bundle"),
     });
     expect(finalize.onPublishDecision).not.toHaveBeenCalled();
+    expectLog(/miniapp_publish\ approval\ failed/, { level: "error" });
   });
 });
 

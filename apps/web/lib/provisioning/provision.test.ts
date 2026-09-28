@@ -230,6 +230,7 @@ import {
 import { MigrationBusyError } from "../migration/types";
 import * as boxClient from "../box/client";
 
+import { expectLog } from "../testing/expectLog";
 /** A channel pointing at a release, by default the one the fake fork's template is stamped with. */
 function pointChannelAtCurrentRelease(
   channel: "dev" | "prod",
@@ -315,6 +316,7 @@ describe("provisionUser environments", () => {
       provider: "tenki",
       provider_box_id: "tk_sess-1",
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("platform_settings box_default_provider=tenki provisions tenki when a template is set", async () => {
@@ -332,6 +334,7 @@ describe("provisionUser environments", () => {
       provider: "tenki",
       provider_box_id: "tk_sess-2",
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it.each([null, "snap-123"])(
@@ -351,6 +354,8 @@ describe("provisionUser environments", () => {
       } finally {
         tenkiTemplate = "tenki:snap-1";
       }
+    expectLog(/box_default_provider=tenki\ but\ TENKI_TEMPLATE_ID\ is\ not\ a\ tenki\ snapshot\ ref;\ provisioning\ on\ ascii/, { level: "error", optional: true });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error", optional: true });
     }
   );
 
@@ -364,6 +369,7 @@ describe("provisionUser environments", () => {
       expect.objectContaining({ templateId: "template-ubuntu" })
     );
     expect(upsertsFor("boxes")?.[0]).toMatchObject({ provider: "ascii" });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it.each([null, "snap-123", "tk_session", "tenki:", "tenki:   "])(
@@ -404,6 +410,7 @@ describe("provisionUser environments", () => {
     const memory = commands.indexOf("ovctl ensure");
     expect(merge).toBeGreaterThanOrEqual(0);
     expect(memory).toBeGreaterThan(merge);
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("explicit ubuntu behaves exactly like the default", async () => {
@@ -412,6 +419,7 @@ describe("provisionUser environments", () => {
     expect(fork).toHaveBeenCalledWith(
       expect.objectContaining({ templateId: "template-ubuntu" })
     );
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("omarchy forks the registered omarchy template box", async () => {
@@ -429,6 +437,7 @@ describe("provisionUser environments", () => {
       provider: "ascii",
     });
     expect(installComposioMcp).toHaveBeenCalled();
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("provider tenki forks the Tenki snapshot and records the tenki provider", async () => {
@@ -449,6 +458,7 @@ describe("provisionUser environments", () => {
       baseline_version: null,
     });
     expect(boxCommand).toHaveBeenCalledWith("tk_sess-1", "ovctl ensure", 180);
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("provider tenki without TENKI_TEMPLATE_ID fails before forking", async () => {
@@ -501,6 +511,7 @@ describe("provisionUser environments", () => {
     });
     expect(upsertsFor("boxes")?.[0]?.["control_token"]).toEqual(expect.any(String));
     expect(installComposioMcp).toHaveBeenCalled();
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 });
 
@@ -538,6 +549,7 @@ describe("switchEnvironment", () => {
       "user-1",
       "box-new",
     );
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a setup failure after the row moved still retires the old box and names the new one", async () => {
@@ -585,6 +597,7 @@ describe("switchEnvironment", () => {
       "tk_new",
     );
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("keeps the current provider when no target provider is supplied", async () => {
@@ -597,6 +610,7 @@ describe("switchEnvironment", () => {
       expect.objectContaining({ templateId: "tenki:snap-1" }),
     );
     expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("moves a Tenki box to ascii when switching to Omarchy", async () => {
@@ -621,6 +635,7 @@ describe("switchEnvironment", () => {
       provider: "ascii",
     });
     expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("moves a Tenki box to Namespace when switching to macOS", async () => {
@@ -643,6 +658,7 @@ describe("switchEnvironment", () => {
       provider: "namespace",
     });
     expect(boxClient.deleteBox).toHaveBeenCalledWith("tk_old");
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 });
 
@@ -656,6 +672,7 @@ describe("fleet position of a fresh fork", () => {
       baseline_synced_at: null,
       template_version: "sha-1",
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a fork stamped with the channel's release and every base skill skips the hub installs and records the baseline", async () => {
@@ -671,6 +688,7 @@ describe("fleet position of a fresh fork", () => {
       baseline_version: "2026.09.05-prod",
       baseline_synced_at: expect.any(String),
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a verified fork still installs the base skills the template failed to bake", async () => {
@@ -687,6 +705,7 @@ describe("fleet position of a fresh fork", () => {
     expect(upsertsFor("boxes")?.[0]).toMatchObject({
       baseline_version: "2026.09.05-prod",
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a matching Hermes ref alone never claims a release: an unstamped template takes the full setup", async () => {
@@ -698,6 +717,7 @@ describe("fleet position of a fresh fork", () => {
       baseline_version: null,
       baseline_synced_at: null,
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a template stamped with a different release than the channel points at is not claimed", async () => {
@@ -705,6 +725,7 @@ describe("fleet position of a fresh fork", () => {
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upsertsFor("boxes")?.[0]).toMatchObject({ baseline_version: null });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a stamp whose git sha disagrees with the release row is not claimed", async () => {
@@ -712,6 +733,7 @@ describe("fleet position of a fresh fork", () => {
     await provisionUser({ provider: "ascii" });
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upsertsFor("boxes")?.[0]).toMatchObject({ baseline_version: null });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a release whose Hermes ref the template does not carry is not claimed", async () => {
@@ -722,6 +744,7 @@ describe("fleet position of a fresh fork", () => {
       baseline_version: null,
       baseline_synced_at: null,
     });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a channel with no release yet behaves like unknown provenance", async () => {
@@ -734,6 +757,7 @@ describe("fleet position of a fresh fork", () => {
     );
     expect(installBaseSkills).toHaveBeenCalledTimes(1);
     expect(upsertsFor("boxes")?.[0]).toMatchObject({ baseline_version: null });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 });
 
@@ -759,6 +783,7 @@ describe("switchEnvironment keeps the box's channel", () => {
       baseline_version: "2026.09.05-dev",
     });
     expect(installBaseSkills).not.toHaveBeenCalled();
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a row without a channel falls back to prod", async () => {
@@ -771,6 +796,7 @@ describe("switchEnvironment keeps the box's channel", () => {
       expect.objectContaining({ templateId: "tpl-prod" })
     );
     expect(upsertsFor("boxes")?.[0]).toMatchObject({ channel: "prod" });
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 });
 
@@ -812,6 +838,7 @@ describe("replaceBox", () => {
     );
     expect(boxRow()["replace_claimed_at"]).toBeNull();
     expect(boxClient.deleteBox).toHaveBeenCalledWith("box-old");
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("passes an explicit target provider through the replacement lease", async () => {
@@ -828,6 +855,7 @@ describe("replaceBox", () => {
       expect.objectContaining({ templateId: "tenki:snap-1" }),
     );
     expect(boxRow()["replace_claimed_at"]).toBeNull();
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("a live migration refuses the replacement with MigrationBusyError", async () => {
@@ -872,6 +900,7 @@ describe("replaceBox", () => {
     expect(result.boxId).toBe("box-new");
     expect(fork).toHaveBeenCalledTimes(1);
     expect(boxRow()["replace_claimed_at"]).toBeNull();
+    expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
   it("naming a box the row has moved on from forks nothing", async () => {
