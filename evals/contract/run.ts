@@ -82,7 +82,11 @@ if (!config.webhookSecret) throw new Error("SPECTRUM_WEBHOOK_SECRET is required"
 function sessionCookie(userId: string): string {
   const b64 = (value: string) => Buffer.from(value).toString("base64url");
   const payload = `${b64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64(
-    JSON.stringify({ sub: userId, exp: Math.floor(Date.now() / 1000) + 3600 })
+    JSON.stringify({
+      sub: userId,
+      sid: "00000000-0000-4000-8000-000000000007",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    })
   )}`;
   const sig = createHmac("sha256", config.sessionSecret)
     .update(payload)

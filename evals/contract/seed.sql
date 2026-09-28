@@ -25,6 +25,10 @@ values ('+15555550100', 'personal', 'dedicated', :'uid', now());
 
 insert into entitlements (user_id) values (:'uid');
 
+-- R-SEC-07: the web lane's air_session cookie names this live row.
+insert into sessions (id, user_id)
+values ('00000000-0000-4000-8000-000000000007', :'uid');
+
 insert into boxes (
   user_id, provider, provider_box_id, state,
   hosted_url, hosted_token, api_server_key, gateway_token
