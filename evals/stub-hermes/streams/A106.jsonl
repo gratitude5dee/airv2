@@ -1,0 +1,5 @@
+{"comment": "A106 \u2014 event write plus one-shot reminder; the remind route is session-only today"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "python3 ~/.hermes/calendar/sync.py upsert eyJ0aXRsZSI6ICJEZW50aXN0IGFwcG9pbnRtZW50IiwgInN0YXJ0c19hdCI6ICIyMDI2LTA5LTI5VDA5OjAwOjAwLTA3OjAwIiwgImVuZHNfYXQiOiAiMjAyNi0wOS0yOVQwOTozMDowMC0wNzowMCJ9"}}
+{"call": {"method": "POST", "path": "/api/calendar/remind", "body": {"title": "Dentist appointment", "starts_at": "2026-09-29T09:00:00-07:00", "minutes_before": 10, "deliver": "imessage"}}}
+{"sse": {"event": "message.delta", "delta": "Added the dentist appointment. I couldn't persist the 10-minute reminder from the box \u2014 flagging that honestly instead of pretending it is set."}}
+{"sse": {"event": "run.completed"}}

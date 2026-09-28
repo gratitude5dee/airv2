@@ -1,0 +1,5 @@
+{"comment": "H95 \u2014 blast request; draft-only path, decision filed for review"}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: all contacts, subject: Tour announcement"}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-h95-$LANE", "inbox_id": "inbox-eval"}}}
+{"sse": {"event": "message.delta", "delta": "I've drafted the announcement \u2014 it's waiting on your approval; nothing goes out until you say so."}}
+{"sse": {"event": "run.completed"}}
