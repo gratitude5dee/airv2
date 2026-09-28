@@ -347,13 +347,18 @@ def _read_exact(stream, n: int) -> bytes:
 def cmd_import(args: argparse.Namespace) -> int:
     key = _key(args.keyfile)
     token = _token(args.tokenfile)
+    # The hosted URL carries its ?_token= credential — read it from the
+    # 0600 --urlfile (never argv, where ps and shell history expose it).
+    url = _token(args.urlfile) if args.urlfile else args.url
+    if not url:
+        raise SystemExit("import needs --urlfile")
     dest = Path(args.dest)
     dest.mkdir(parents=True, exist_ok=True)
     AESGCM = _aesgcm()
     cipher = AESGCM(key)
 
     req = urllib.request.Request(
-        args.url, headers={"authorization": f"Bearer {token}"}
+        url, headers={"authorization": f"Bearer {token}"}
     )
     with urllib.request.urlopen(req, timeout=args.timeout) as resp:
         magic = _read_exact(resp, len(MAGIC))
@@ -524,7 +529,8 @@ def main() -> int:
     p.set_defaults(fn=cmd_serve)
 
     p = sub.add_parser("import")
-    p.add_argument("--url", required=True)
+    p.add_argument("--url")
+    p.add_argument("--urlfile")
     p.add_argument("--tokenfile", required=True)
     p.add_argument("--keyfile", required=True)
     p.add_argument("--dest", required=True)

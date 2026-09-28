@@ -33,7 +33,7 @@ const ToolkitBody = z.object({
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 /** Sync statuses from Composio; install the MCP endpoint on first active. */
 export async function PUT(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -94,7 +94,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
 
 /** Disconnect: revoke the account with Composio, then mark the mirror. */
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
