@@ -24,19 +24,22 @@ describe("session tokens", () => {
   });
 
   it("round-trips a token it issued", () => {
-    const issued = createSessionToken("user-1");
-    expect(verifySessionToken(issued)).toBe("user-1");
+    const issued = createSessionToken("user-1", "sess-1");
+    expect(verifySessionToken(issued)).toStrictEqual({
+      userId: "user-1",
+      sessionId: "sess-1",
+    });
   });
 
   it("rejects a token after it expires", () => {
-    const issued = createSessionToken("user-1");
+    const issued = createSessionToken("user-1", "sess-1");
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 31 * 86_400_000);
     expect(verifySessionToken(issued)).toBeUndefined();
   });
 
   it("rejects a tampered signature", () => {
-    const issued = createSessionToken("user-1");
+    const issued = createSessionToken("user-1", "sess-1");
     const forged = token(
       { alg: "HS256", typ: "JWT" },
       { sub: "user-9", exp },
