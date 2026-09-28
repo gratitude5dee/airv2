@@ -26,7 +26,10 @@ import { sweepVersions } from "@/lib/create/versions";
 import { reconcileAppOriginMarks, reconcileAppOrigins } from "@/lib/functions/deploy";
 import { reconcileMigrations } from "@/lib/migration/sweep";
 import { resolveDueLocationRequests } from "@/lib/location/resolve";
+import { retryFailedApprovalRelays } from "@/lib/vault/purchase";
+import { armStopAfter, peekUserBox } from "@/lib/orchestrator/boxes";
 import { guardResponse, requireCron } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +39,7 @@ export const maxDuration = 800;
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireCron(request).catch(guardResponse);
   if (auth instanceof NextResponse) return auth;
+  const startedAtMs = Date.now();
   const supabase = serviceClient();
   const now = new Date();
   const nowIso = now.toISOString();
@@ -71,14 +75,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .eq("provider_box_id", box.provider_box_id);
       reconciled += 1;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "sweeper reconcile failed",
-          box_id: box.provider_box_id,
+      log.error("sweeper reconcile failed", {box_id: box.provider_box_id,
           user_id: box.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
 
@@ -90,12 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     orphanedCarried = await recoverOrphanedCarriedJobs(supabase, now);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper carried recovery failed",
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    log.error("sweeper carried recovery failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Flush jobs overdue by more than a debounce window: their after() task
@@ -119,14 +113,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
       flushed += 1;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "sweeper flush failed",
-          space_id: job.space_id,
+      log.error("sweeper flush failed", {space_id: job.space_id,
           user_id: job.user_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
 
@@ -134,12 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     uploadsReleased = await sweepAbandonedUploads(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper upload release failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper upload release failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Fleet sync: one wave of the active release-sync job per sweep tick,
@@ -148,12 +132,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     fleet = await runSyncJobs(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper fleet sync failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper fleet sync failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // C10 backstop: file an email_draft review for any recent box-created
@@ -162,48 +141,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     draftsFiled = await sweepUnfiledDrafts(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper draft review failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper draft review failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   let versionsRetired = 0;
   try {
     versionsRetired = await sweepVersions(supabase);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper version retention failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper version retention failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   let originsMarked = 0;
   try {
     originsMarked = (await reconcileAppOriginMarks(supabase)).marked;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper app origin mark reconcile failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper app origin mark reconcile failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   let originsRepaired = 0;
   try {
     originsRepaired = (await reconcileAppOrigins(supabase)).repaired;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper app origin reconcile failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper app origin reconcile failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
   // Migrations whose deferred work is due (or whose driver died mid-phase).
@@ -211,9 +170,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     migrationsDriven = (await reconcileMigrations(supabase, now)).driven;
   } catch (error) {
+    log.error("sweeper migration reconcile failed", {error: error instanceof Error ? error.message : String(error),});
+  }
+
+  // R-SEC-05 (CA-23): retry approval relays whose first attempt never
+  // reached the paused run. peekUserBox only returns an already-ready
+  // box, so the retry never pays a resume just to relay an answer; the
+  // arm restores the stop_after the decision's own resolve cleared.
+  let approvalRelays = { retried: 0, closed: 0 };
+  try {
+    approvalRelays = await retryFailedApprovalRelays(
+      supabase,
+      (userId) => peekUserBox(supabase, userId),
+      (userId) => armStopAfter(supabase, userId)
+    );
+  } catch (error) {
     console.error(
       JSON.stringify({
-        msg: "sweeper migration reconcile failed",
+        msg: "sweeper approval relay sweep failed",
         error: error instanceof Error ? error.message : String(error),
       })
     );
@@ -228,26 +202,71 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     locationsResolved = outcome.resolved;
     locationsExpired = outcome.expired;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "sweeper location resolve failed",
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("sweeper location resolve failed", {error: error instanceof Error ? error.message : String(error),});
   }
 
+  // Rows-touched counts for the TTL pass (R-PERF-06): count: "exact"
+  // returns the deleted row count without changing what is deleted.
   const ttlCutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
-  await supabase.from("inbound_events").delete().lt("received_at", ttlCutoff);
-  await supabase.from("batch_queue").delete().lt("received_at", ttlCutoff);
-  await supabase
-    .from("carried_messages")
-    .delete()
-    .lt("received_at", ttlCutoff);
-  await supabase.from("github_deliveries").delete().lt("received_at", ttlCutoff);
-  await supabase
+  const [{ count: inboundEventsDeleted }, { count: batchQueueDeleted }] =
+    await Promise.all([
+      supabase
+        .from("inbound_events")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+      supabase
+        .from("batch_queue")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+    ]);
+  const [{ count: carriedMessagesDeleted }, { count: githubDeliveriesDeleted }] =
+    await Promise.all([
+      supabase
+        .from("carried_messages")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+      supabase
+        .from("github_deliveries")
+        .delete({ count: "exact" })
+        .lt("received_at", ttlCutoff),
+    ]);
+  const { count: slugHoldsExpired } = await supabase
     .from("miniapp_slug_holds")
-    .delete()
+    .delete({ count: "exact" })
     .lt("held_until", new Date().toISOString());
+  const ttlRows = {
+    inbound_events: inboundEventsDeleted ?? 0,
+    batch_queue: batchQueueDeleted ?? 0,
+    carried_messages: carriedMessagesDeleted ?? 0,
+    github_deliveries: githubDeliveriesDeleted ?? 0,
+    miniapp_slug_holds: slugHoldsExpired ?? 0,
+  };
+
+  // R-PERF-06: one duration + rows-touched line per run. A week of these
+  // feeds the decision on whether this every-minute cron should keep its
+  // schedule, stretch, or move to a queue trigger.
+  console.info(
+    JSON.stringify({
+      msg: "cron sweep",
+      duration_ms: Date.now() - startedAtMs,
+      stopped,
+      indexingDeferred,
+      indexing,
+      reconciled,
+      orphanedCarried,
+      flushed,
+      uploadsReleased,
+      fleet,
+      draftsFiled,
+      versionsRetired,
+      originsMarked,
+      originsRepaired,
+      migrationsDriven,
+      locationsResolved,
+      locationsExpired,
+      ttl_rows: ttlRows,
+    })
+  );
 
   return NextResponse.json({
     ok: true,
@@ -264,7 +283,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     originsMarked,
     originsRepaired,
     migrationsDriven,
+    approvalRelays,
     locationsResolved,
     locationsExpired,
+    ttl_rows: ttlRows,
   });
 }

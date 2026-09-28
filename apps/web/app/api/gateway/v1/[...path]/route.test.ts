@@ -657,11 +657,14 @@ describe("gateway model families", () => {
       { params: Promise.resolve({ path: ["chat", "completions"] }) }
     );
     expect(response.status).toBe(200);
+    // The same-family retry splices into the still-open stream after the
+    // first body drains — reading it out is what settles the dispatch.
+    const text = await response.text();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.every((call) =>
       String(call[0]).startsWith("https://gmi.test/")
     )).toBe(true);
-    expect(await response.text()).toContain("Here is the answer.");
+    expect(text).toContain("Here is the answer.");
   });
 
   it("falls back from a timed-out GMI Astra turn to GLM on the same GMI key", async () => {
@@ -784,11 +787,12 @@ describe("gateway model families", () => {
     );
 
     expect(response.status).toBe(200);
+    const text = await response.text();
     expect(models).toEqual([
       "openai/gpt-6-astra",
       "zai-org/GLM-5.3-Flash",
     ]);
-    expect(await response.text()).toContain("Recovered answer");
+    expect(text).toContain("Recovered answer");
   });
 
   it("keeps the OpenAI-only service_tier off OpenRouter requests", async () => {
@@ -1252,8 +1256,9 @@ describe("gateway model families", () => {
       { params: Promise.resolve({ path: ["chat", "completions"] }) }
     );
     expect(response.status).toBe(200);
+    const text = await (response as Response).text();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(await (response as Response).text()).toContain('"content":"hi"');
+    expect(text).toContain('"content":"hi"');
   });
 
   it("replays a streamed OpenRouter answer that has content", async () => {
@@ -1275,6 +1280,177 @@ describe("gateway model families", () => {
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(await (response as Response).text()).toContain('"content":"ox"');
+  });
+
+  it("forwards streamed deltas as they arrive instead of buffering the body", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
+    // The upstream emits one delta and then stays open; if the gateway
+    // still buffered, nothing would reach the client until the whole body
+    // arrived.
+    const encoder = new TextEncoder();
+    let closeUpstream!: () => void;
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"ox"}}]}\n\n')
+        );
+        closeUpstream = () => {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        };
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(upstream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+      )
+    );
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    const reader = (response as Response).body!.getReader();
+    const decoder = new TextDecoder();
+    const first = await reader.read();
+    // The first delta reached the client while the upstream was still
+    // open — nothing waited for the body to complete.
+    expect(decoder.decode(first.value)).toContain('"content":"ox"');
+    closeUpstream();
+    let rest = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      rest += decoder.decode(value, { stream: true });
+    }
+    reader.releaseLock();
+    expect(rest).toContain("[DONE]");
+  });
+
+  it("treats a tool-call delta as work and does not splice a retry", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
+    const toolSse =
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]}}]}\n\ndata: [DONE]\n\n';
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(toolSse, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    const text = await (response as Response).text();
+    expect(text).toContain('"name":"lookup"');
+    // Only the original dispatch — the stream carried work, so no retry.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(text.match(/\[DONE\]/g)).toHaveLength(1);
+  });
+
+  it("splices the OpenAI retry into the open stream when a non-OpenAI answer ends empty", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
+    meteredRows.length = 0;
+    const reasoningOnly =
+      'data: {"choices":[{"delta":{"reasoning":"thinking"}}]}\n\ndata: [DONE]\n\n';
+    const answersSse =
+      'data: {"type":"response.output_text.delta","delta":"hi"}\n\ndata: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}\n\ndata: [DONE]\n\n';
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) =>
+      new Response(String(url).includes("openrouter") ? reasoningOnly : answersSse, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      completionRequest({ messages: [], stream: true }),
+      { params: Promise.resolve({ path: ["chat", "completions"] }) }
+    );
+    expect(response.status).toBe(200);
+    const text = await (response as Response).text();
+    // The splice hits the OpenAI /responses lane after the empty body ends.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "https://upstream.test/v1/responses"
+    );
+    // The upstream's own [DONE] was withheld so a strict SSE client still
+    // reads the spliced answer; exactly one sentinel closes the stream.
+    expect(text).toContain('"reasoning":"thinking"');
+    expect(text).toContain('"content":"hi"');
+    expect(text.match(/\[DONE\]/g)).toHaveLength(1);
+    // Headers were committed before the splice — the swap lands on the
+    // metered row's fallback_from instead.
+    expect(response.headers.get("X-Air-Served-Family")).toBe("openrouter");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const row = meteredRows[0]!;
+    expect(row["model_family"]).toBe("openai");
+    expect(row["fallback_from"]).toBe("openrouter");
+  });
+
+  it("reports the served family and model on every gateway response", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Air-Served-Family")).toBe("openrouter");
+    expect(response.headers.get("X-Air-Served-Model")).toBe(
+      "google/gemini-2.5-flash"
+    );
+    expect(response.headers.get("X-Air-Fallback")).toBeNull();
+  });
+
+  it("marks a provider fallback with X-Air-Fallback on the served response", async () => {
+    setEntitlement({ speed_tier: "fast", model_family: "openrouter" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) =>
+        String(url).includes("openrouter")
+          ? new Response("no endpoints found", { status: 404 })
+          : new Response(
+              JSON.stringify({
+                id: "resp_1",
+                object: "response",
+                model: "gpt-5.6-luna",
+                status: "completed",
+                output: [
+                  {
+                    type: "message",
+                    role: "assistant",
+                    content: [{ type: "output_text", text: "hi" }],
+                  },
+                ],
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } }
+            )
+      )
+    );
+    const response = await POST(completionRequest({ messages: [] }), {
+      params: Promise.resolve({ path: ["chat", "completions"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Air-Served-Family")).toBe("openai");
+    expect(response.headers.get("X-Air-Served-Model")).toBe("gpt-5.6-luna");
+    expect(response.headers.get("X-Air-Fallback")).toBe("1");
   });
 
   it("never falls back for the openai family", async () => {

@@ -24,6 +24,7 @@ import {
 import { serviceClient } from "@/lib/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { guardResponse, requireAdmin } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,7 @@ export async function POST(
 ): Promise<NextResponse> {
   const auth = await requireAdmin(request).catch(guardResponse);
   if (auth instanceof NextResponse) return auth;
+  const operator = auth.operator;
   const { slug } = await context.params;
   if (!SLUG_RE.test(slug)) {
     return NextResponse.json({ error: "invalid slug" }, { status: 400 });
@@ -108,34 +110,26 @@ export async function POST(
     const mirrored = await wasMirrored(supabase, current);
     if (mirrored && createConfig.mirrorEnabled() && createConfig.mirrorInstallationId()) {
       await removeMirror(supabase, fresh).catch((error: unknown) => {
-        console.warn(
-          JSON.stringify({
-            msg: "mirror removal failed",
-            app: current.slug,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+        log.warn("mirror removal failed", {app: current.slug,
+            error: error instanceof Error ? error.message : "unknown",});
         return null;
       });
     }
     await recordAdminAudit(supabase, {
       action: "suspend",
       app,
+      operator,
       detail: {
         previous_status: app.status,
         live_version: app.status === "published" ? app.bundle_version : null,
         dev_version: devVersion,
       },
     });
-    console.log(
-      JSON.stringify({
-        msg: "admin suspended app",
-        user_id: app.owner_user_id,
+    log.info("admin suspended app", {user_id: app.owner_user_id,
         app: app.slug,
+        operator,
         previous_status: app.status,
-        dev_revoked: devVersion !== null,
-      })
-    );
+        dev_revoked: devVersion !== null,});
     return NextResponse.json({ suspended: true, already: false, app: appRow(fresh) });
   } catch (error) {
     if (error instanceof ReleaseError) {
@@ -144,14 +138,9 @@ export async function POST(
     if (error instanceof Error && error.name === "AppOriginRefusedError") {
       return NextResponse.json({ error: "app is being deleted" }, { status: 409 });
     }
-    console.error(
-      JSON.stringify({
-        msg: "admin suspend failed",
-        user_id: app.owner_user_id,
+    log.error("admin suspend failed", {user_id: app.owner_user_id,
         app: app.slug,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return NextResponse.json({ error: "suspend failed" }, { status: 502 });
   }
 }

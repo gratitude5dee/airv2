@@ -261,9 +261,28 @@ export async function peekUserBox(
   };
 }
 
+/** One in-process waiter per box id (R-PERF-05): concurrent wakes share the
+ * same resume → health loop → hosted-token refresh instead of racing it,
+ * so a second caller never double-resumes or observes the mid-refresh
+ * token rotation. Exposed for the waiter-map unit tests. */
+export const wakeWaiters = new Map<string, Promise<UserBox>>();
+
+/** Exponential health-probe spacing: 1 s, 2 s, 4 s, then 8 s capped
+ * (R-PERF-05). A box already healthy answers on the first probe before any
+ * delay; a box still booting its gateway re-probes quickly at first and
+ * cheaply later, so the 180 s deadline is spent on ~30 probes instead of
+ * fixed 5 s sleeps that leave an extra ~4 s on every healthy second probe. */
+export function wakeProbeDelayMs(attempt: number): number {
+  return Math.min(1_000 * 2 ** Math.max(0, attempt - 1), 8_000);
+}
+
 /**
  * Resolve the user's box and make sure Hermes answers, resuming if needed.
  * Clears stop_after for the duration of the run (the caller re-arms it).
+ * The resume/health/refresh work runs once per box id — callers in this
+ * process share `wakeWaiters` — while admission, the stop_after clear, and
+ * the row read stay per-caller so a waiter arriving late still cannot stop
+ * the box underneath the caller that just claimed a turn.
  */
 export async function ensureBoxAwake(
   supabase: SupabaseClient,
@@ -296,6 +315,30 @@ export async function ensureBoxAwake(
     .update({ stop_after: null, last_active_at: new Date().toISOString() })
     .eq("user_id", userId);
 
+  const inFlight = wakeWaiters.get(boxId);
+  if (inFlight) return inFlight;
+  const waiter = wakeBox(supabase, userId, row).finally(() => {
+    // Only the entry that is still this waiter may be cleared — a wake that
+    // finished and a new one started for the same box must not be deleted
+    // out from under the newer caller.
+    if (wakeWaiters.get(boxId) === waiter) wakeWaiters.delete(boxId);
+  });
+  wakeWaiters.set(boxId, waiter);
+  return waiter;
+}
+
+/**
+ * The shared half of ensureBoxAwake — every provider call and state write a
+ * wake needs, run once per box id under `wakeWaiters`. Error cleanup (stop_
+ * after re-arm, provider-state restore) lives here so it also runs once:
+ * each waiter still gets the rejection and lets its own caller path retry.
+ */
+async function wakeBox(
+  supabase: SupabaseClient,
+  userId: string,
+  row: BoxRow
+): Promise<UserBox> {
+  const boxId = row.provider_box_id;
   let wroteStarting = false;
   try {
   const box = await getBox(boxId);
@@ -355,6 +398,7 @@ export async function ensureBoxAwake(
   const deadline = started + 180_000;
   let refreshed = false;
   let restarted = false;
+  let probe = 0;
   while (!(await health(target))) {
     if (Date.now() > deadline) {
       throw new Error(`hermes on ${boxId} not healthy after resume`);
@@ -395,7 +439,8 @@ export async function ensureBoxAwake(
         })
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    probe += 1;
+    await new Promise((resolve) => setTimeout(resolve, wakeProbeDelayMs(probe)));
   }
 
   // The dashboard token rotated too; refresh it in the background so the

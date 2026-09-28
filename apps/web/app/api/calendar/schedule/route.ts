@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // The owner's session or the box itself (watch_for files watches the
   // same way — the persistent check is a schedule, not a promise).
   const box = await tryBoxPrincipal(supabase, request);
-  const userId = sessionUserId(request) ?? box?.userId;
+  const userId = (await sessionUserId(request)) ?? box?.userId;
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
