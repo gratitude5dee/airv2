@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/auth/user";
+import { tryBoxPrincipal } from "@/lib/auth/guard";
 import { serviceClient } from "@/lib/supabase";
 import { command, writeFile } from "@/lib/box/client";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
@@ -44,7 +45,11 @@ function localParts(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = await sessionUserId(request);
+  const supabase = serviceClient();
+  // Box principal first: the calendar agent on the box schedules reminders
+  // for the owner itself (A106); the owner's web session is the fallback.
+  const boxAuth = await tryBoxPrincipal(supabase, request);
+  const userId = boxAuth?.userId ?? (await sessionUserId(request));
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -79,7 +84,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const supabase = serviceClient();
   const id = randomUUID();
   const promptRef = `.hermes/schedules/${id}.md`;
   const title = (body.title ?? "your event").slice(0, 200);

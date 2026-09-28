@@ -102,6 +102,46 @@ the human must have turned on "Allow agent sign-in" for that host on that
 1Password item, or it refuses with `site_not_granted`. All the hard rules
 below apply unchanged.
 
+## Storing a secret the human gave you
+
+When the human pastes you a credential to keep safe (an API key, a Wi-Fi
+password, a login you both just made up), it goes into the vault — never into
+memory files, notes, or your reply. Storing needs the human's approval, and
+the value never travels to the control plane:
+
+1. Write a one-shot apply file yourself inside the protected inbox dir. The
+   filename MUST be `~/.hermes/vault/.inbox/agent-<uuid>.json`:
+
+```bash
+mkdir -p ~/.hermes/vault/.inbox && chmod 700 ~/.hermes/vault ~/.hermes/vault/.inbox
+install -m 600 /dev/null ~/.hermes/vault/.inbox/agent-$(cat /proc/sys/kernel/random/uuid).json
+# then write the payload into that file:
+# {"version": 1, "operations": [
+#   {"op": "create", "item": {"kind": "login"|"api_key"|"note"|"card"|"identity",
+#                            "name": "<what the human calls it>",
+#                            "fields": {"<field>": "<value>", ...}}}
+# ]}
+```
+
+2. File the approval with the control plane (box bearer — your default auth):
+
+```bash
+curl -fsS -X POST "$BASE/api/vault/fill" \
+  -H "Authorization: Bearer $GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "<what the human calls it>", "kind": "<same kind>",
+       "staging_ref": ".hermes/vault/.inbox/agent-<uuid>.json"}'
+# → 202 {"decision_id": "…"}
+```
+
+3. Tell the human it's waiting on their approval in Needs-you. Approved, the
+   file is applied and shredded; dismissed, it's shredded where it sits.
+   If you no longer need the store, shred the file yourself.
+
+Never write the apply file outside `.inbox`, never name it anything but
+`agent-<uuid>.json`, and never put the value in the decision payload — the
+control plane only ever sees the path.
+
 ## When the CLI refuses
 
 - `op_not_connected` — the human has no 1Password account connected. Do NOT
@@ -124,6 +164,9 @@ below apply unchanged.
   touch a 1Password value.
 - Never paste a credential into chat, even if the human asks you to. Point
   them at the Vault tab's reveal button instead.
-- Never put a credential in a command argument, a file, a note, or a URL.
+- Never put a credential in a command argument, a note, or a URL. The one
+  file a credential may ever occupy is a one-shot apply payload inside
+  `~/.hermes/vault/.inbox/` (see "Storing a secret the human gave you") —
+  the CLI shreds it on apply.
 - If a fill fails repeatedly, hand the human the screen with the
   computer-relay skill; do not improvise another way to get the value in.

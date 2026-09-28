@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeSupabase } from "../testing/fakeSupabase";
+
+vi.mock("../vault/client", () => ({
+  applyStagedFile: vi.fn(async () => []),
+}));
+vi.mock("../box/client", () => ({
+  command: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
+}));
+vi.mock("../orchestrator/boxes", () => ({
+  ensureBoxAwake: vi.fn(async () => ({ boxId: "box-awake" })),
+  armStopAfter: vi.fn(async () => undefined),
+}));
+
+import { applyStagedFile } from "../vault/client";
+import { command } from "../box/client";
+import { ensureBoxAwake } from "../orchestrator/boxes";
 import { resolveDecision, type PendingDecisionRow } from "./resolve";
 
 /**
@@ -104,5 +119,70 @@ describe("resolveDecision", () => {
       "approve",
     );
     expect(res.status).toBe(500);
+  });
+
+  describe("vault_fill (K196)", () => {
+    const staging = ".hermes/vault/.inbox/agent-3f9a1c2e-8b7d-4e5f-9a6b-0c1d2e3f4a5b.json";
+    const vaultDecision = (payload: unknown) =>
+      decision({ kind: "vault_fill", ref: staging, payload });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("approve applies the staged inbox file on the filing box", async () => {
+      const { supabase } = fakeDecisions({ updated: [{ id: "d1" }] });
+      const res = await resolveDecision(
+        supabase,
+        "user-1",
+        vaultDecision({ name: "passport", kind: "identity", box_id: "box-7" }),
+        "approve",
+      );
+      expect(res.status).toBe(200);
+      expect(vi.mocked(applyStagedFile)).toHaveBeenCalledWith(
+        "box-7",
+        "user-1",
+        staging,
+      );
+      // The filing box is named in the payload — no wake fallback.
+      expect(vi.mocked(ensureBoxAwake)).not.toHaveBeenCalled();
+      expect(vi.mocked(command)).not.toHaveBeenCalled();
+    });
+
+    it("dismiss shreds the staged file and never applies it", async () => {
+      const { supabase } = fakeDecisions({ updated: [{ id: "d1" }] });
+      const res = await resolveDecision(
+        supabase,
+        "user-1",
+        vaultDecision({ name: "passport", kind: "identity", box_id: "box-7" }),
+        "dismiss",
+      );
+      expect(res.status).toBe(200);
+      expect(vi.mocked(applyStagedFile)).not.toHaveBeenCalled();
+      const shred = vi.mocked(command).mock.calls[0];
+      expect(shred?.[0]).toBe("box-7");
+      expect(shred?.[1]).toContain("shred -u");
+      expect(shred?.[1]).toContain(staging);
+    });
+
+    it("wakes the owner's box when the payload names no box_id", async () => {
+      const { supabase } = fakeDecisions({ updated: [{ id: "d1" }] });
+      const res = await resolveDecision(
+        supabase,
+        "user-1",
+        vaultDecision({ name: "passport", kind: "identity" }),
+        "approve",
+      );
+      expect(res.status).toBe(200);
+      expect(vi.mocked(ensureBoxAwake)).toHaveBeenCalledWith(
+        expect.anything(),
+        "user-1",
+      );
+      expect(vi.mocked(applyStagedFile)).toHaveBeenCalledWith(
+        "box-awake",
+        "user-1",
+        staging,
+      );
+    });
   });
 });
