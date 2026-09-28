@@ -18,7 +18,7 @@ export interface AdminAuditInput {
   action: AdminAuditAction;
   app: Pick<RegistryApp, "id" | "slug" | "owner_user_id">;
   /** R-SEC-10: the X-Admin-Operator the request authenticated with —
-   * required by adminAuthorized, so every audit row names the human. */
+   * required by requireAdmin's x-admin-operator check, so every audit row names the human. */
   operator: string;
   detail?: AdminAuditDetail;
 }

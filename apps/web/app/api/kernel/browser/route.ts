@@ -11,7 +11,6 @@
  * an empty success the agent could misread as "no sessions".
  */
 import { NextRequest, NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { env } from "@/lib/env";
 import {
@@ -27,29 +26,12 @@ import {
   type CreateKernelSessionInput,
 } from "@/lib/kernel/browsers";
 import { ensureKernelVault } from "@/lib/kernel/vaults";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string; boxId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id, provider_box_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return null;
-  return {
-    userId: box.user_id as string,
-    boxId: box.provider_box_id as string,
-  };
-}
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
 
@@ -70,9 +52,8 @@ function kernelStatus(
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const params = request.nextUrl.searchParams;
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const params = request.nextUrl.searchParams;
 
   // Guard poll: is any Kernel session of this user under owner control?
   // With session_id it's scoped; without it the lease guard fails closed on
@@ -118,9 +99,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const body = (await request.json().catch(() => null)) as {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const body = (await request.json().catch(() => null)) as {
     action?: unknown;
     purpose?: unknown;
     task_id?: unknown;

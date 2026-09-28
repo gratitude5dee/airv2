@@ -3,9 +3,9 @@
  * Guarded by ADMIN_API_KEY; never exposed to end users.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import type { BoxProviderKind } from "@/lib/box/client";
 import { provisionUser } from "@/lib/provisioning/provision";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +15,10 @@ function isBoxProvider(value: string): value is BoxProviderKind {
   return value === "ascii" || value === "tenki";
 }
 
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const operator = adminAuthorized(request);
-  if (!operator) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   try {
     const body = (await request.json().catch(() => ({}))) as {
       display_name?: string;

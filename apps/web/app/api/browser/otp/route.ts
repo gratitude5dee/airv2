@@ -1,5 +1,5 @@
 /**
- * Live sign-in code lane (box-auth, gateway_token bearer like
+ * Live sign-in code lane (box-auth, GATEWAY_TOKEN bearer like
  * /api/browser/purchase). When a site sends a one-time code to the owner's
  * phone/email instead of using a TOTP seed, the box files a request, texts
  * the owner a vault miniapp card, then polls until the owner pastes the
@@ -17,6 +17,7 @@ import { serviceClient } from "@/lib/supabase";
 import { registerVaultValue } from "@/lib/vault/scrub";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { sendMiniAppCard } from "@/lib/miniapps/cards";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,20 +34,6 @@ function json(body: unknown, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-async function callingBox(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<{ userId: string } | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  return box ? { userId: box.user_id as string } : null;
-}
 
 async function sendOtpCard(
   supabase: SupabaseClient,
@@ -213,9 +200,8 @@ function validRequestId(raw: unknown): string | null {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const requestId = validRequestId(
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const requestId = validRequestId(
     request.nextUrl.searchParams.get("request_id")
   );
   if (!requestId) return json({ error: "invalid request" }, 400);
@@ -225,9 +211,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const box = await callingBox(supabase, request);
-  if (!box) return json({ error: "unauthorized" }, 401);
-  const body = (await request.json().catch(() => null)) as {
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;const body = (await request.json().catch(() => null)) as {
     action?: unknown;
     host?: unknown;
     run_id?: unknown;

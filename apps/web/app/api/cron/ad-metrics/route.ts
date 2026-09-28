@@ -5,18 +5,18 @@
  * ad_metrics_daily.fetched_at). Counters only in the response.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/cron/auth";
 import { serviceClient } from "@/lib/supabase";
 import { enqueueMetaReporting, ingestOpenAiMetrics } from "@/lib/ads/metrics";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!cronAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const openai = await ingestOpenAiMetrics(supabase);
   const meta = await enqueueMetaReporting(supabase);

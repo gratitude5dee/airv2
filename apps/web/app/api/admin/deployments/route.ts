@@ -9,7 +9,6 @@
  * hashes and timestamps — never bundle contents, prompts or owner text.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { hard, latestBuild, type BuildState } from "@/lib/create/build";
 import { kitVersion, restrictedConfig } from "@/lib/create/kit";
 import { listVersions, type VersionRow } from "@/lib/create/versions";
@@ -27,6 +26,7 @@ import {
 } from "@/lib/miniapps/registry";
 import { serviceClient } from "@/lib/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -163,9 +163,8 @@ async function rowFor(supabase: SupabaseClient, app: RegistryApp): Promise<Deplo
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const channel = channelParam(request);
   if (channel === undefined) {
     return NextResponse.json({ error: "channel must be dev or prod" }, { status: 400 });

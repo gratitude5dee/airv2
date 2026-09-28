@@ -10,26 +10,20 @@ import {
 } from "@/lib/checkout/handoffs";
 import { refreshCheckoutCard } from "@/lib/miniapps/cards";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Read only the state Hermes needs before touching the shared browser. */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const auth = request.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
   if (request.nextUrl.searchParams.get("active_human_control") === "1") {
     const active = await findActiveCheckoutHumanControl(
       supabase,
-      String(box.user_id),
+      String(box.userId),
     );
     return NextResponse.json({
       active: active !== null,
@@ -40,7 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!isCheckoutHandoffId(id)) {
     return NextResponse.json({ error: "valid handoff_id is required" }, { status: 400 });
   }
-  const handoff = await getCheckoutHandoff(supabase, String(box.user_id), id);
+  const handoff = await getCheckoutHandoff(supabase, String(box.userId), id);
   if (!handoff) {
     return NextResponse.json({ error: "checkout handoff not found" }, { status: 404 });
   }
@@ -66,21 +60,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 /** Create an owner-scoped handoff from the authenticated Box/Hermes lane. */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const auth = request.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const supabase = serviceClient();
-  const { data: box } = await supabase.from("boxes").select("user_id").eq("gateway_token", token).maybeSingle();
-  if (!box) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || typeof body["merchant_url"] !== "string" || typeof body["item_summary"] !== "string") {
     return NextResponse.json({ error: "merchant_url and item_summary are required" }, { status: 400 });
   }
-  const { data: destination } = await supabase.from("imessage_destinations").select("space_id, phone").eq("user_id", box.user_id).maybeSingle();
+  const { data: destination } = await supabase.from("imessage_destinations").select("space_id, phone").eq("user_id", box.userId).maybeSingle();
   if (!destination?.space_id || !destination.phone) return NextResponse.json({ error: "no known imessage destination" }, { status: 409 });
   try {
     const handoff = await createCheckoutHandoff(supabase, {
-      userId: String(box.user_id), spaceId: String(destination.space_id), phone: String(destination.phone),
+      userId: String(box.userId), spaceId: String(destination.space_id), phone: String(destination.phone),
       taskId: typeof body["task_id"] === "string" ? body["task_id"] : null,
       merchantUrl: body["merchant_url"], itemSummary: body["item_summary"],
       quantity: typeof body["quantity"] === "number" ? body["quantity"] : null,
@@ -101,16 +92,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 /** Advance a handoff from the same authenticated Box/Hermes lane. */
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const auth = request.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const supabase = serviceClient();
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  if (!box) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const box = await requireBox(supabase, request).catch(guardResponse);
+  if (box instanceof NextResponse) return box;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const id = typeof body?.["handoff_id"] === "string" ? body["handoff_id"] : "";
   const status = typeof body?.["status"] === "string" ? body["status"] as CheckoutHandoffStatus : undefined;
@@ -122,16 +106,16 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     if (body?.["expires_at"] === null || typeof body?.["expires_at"] === "string") update.expiresAt = body["expires_at"] as string | null;
     if (body?.["payment_request_id"] === null || typeof body?.["payment_request_id"] === "string") update.paymentRequestId = body["payment_request_id"] as string | null;
     if (typeof body?.["version"] === "number") update.expectedVersion = body["version"];
-    const handoff = await updateCheckoutHandoff(supabase, String(box.user_id), id, update);
+    const handoff = await updateCheckoutHandoff(supabase, String(box.userId), id, update);
     // A status update must never create another card. If the original bubble
     // is gone, the next agent reply can explicitly send one; this path edits
     // only the durable Spectrum session that already exists.
-    await refreshCheckoutCard(supabase, String(box.user_id), handoff).catch(
+    await refreshCheckoutCard(supabase, String(box.userId), handoff).catch(
       (error: unknown) => {
         console.error(
           JSON.stringify({
             msg: "checkout card refresh failed",
-            user_id: String(box.user_id),
+            user_id: String(box.userId),
             handoff_id: handoff.id,
             error: error instanceof Error ? error.message : "unknown",
           })

@@ -4,29 +4,19 @@
  * channel plumbing. See lib/calendar/sweep.ts for the full choreography.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/cron/auth";
 import { serviceClient } from "@/lib/supabase";
 import { sweepSchedules } from "@/lib/calendar/sweep";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!cronAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const startedAtMs = Date.now();
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const { fired } = await sweepSchedules(supabase);
-  // R-PERF-06: duration + rows-touched per run; a week of these feeds the
-  // 95%-idle decision on this every-minute cron's schedule.
-  console.info(
-    JSON.stringify({
-      msg: "cron schedules",
-      duration_ms: Date.now() - startedAtMs,
-      fired,
-    })
-  );
   return NextResponse.json({ ok: true, fired });
 }

@@ -9,7 +9,6 @@
  *    versions after 30 days, unpublished drafts beyond the newest five.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/cron/auth";
 import { serviceClient } from "@/lib/supabase";
 import { claimFlush, runFlush } from "@/lib/orchestrator/flush";
 import { recoverOrphanedCarriedJobs } from "@/lib/orchestrator/carryRecovery";
@@ -29,15 +28,16 @@ import { reconcileMigrations } from "@/lib/migration/sweep";
 import { resolveDueLocationRequests } from "@/lib/location/resolve";
 import { retryFailedApprovalRelays } from "@/lib/vault/purchase";
 import { armStopAfter, peekUserBox } from "@/lib/orchestrator/boxes";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!cronAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const startedAtMs = Date.now();
   const supabase = serviceClient();
   const now = new Date();
