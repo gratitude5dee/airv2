@@ -1,13 +1,13 @@
 # Devin review — implementation report (work order of `review.md`)
 
-Measured on `devin/integration-review` (all 33 work PRs + P0s squashed in), 2026-09-28, same machine class as the baseline (4 vCPU, Node 22). Gate items are landed and verified on the integration branch; they become true on `main` at merge. This file is the §6 deliverable.
+Measured on `devin/integration-review` (all 33 work PRs + P0s squashed in), 2026-09-28, same machine class as the baseline (4 vCPU, Node 22). The program is merged on `main`: integration PR #496 (`a499b49e`) carried all 33 work PRs, PR #500 landed the two contract-lane product fixes, and #261/#454 merged after rebase. This file is the §6 deliverable.
 
 ## 6.1 Outcome in five lines
 
 - **G1 Safety — pass.** R-P0-1/2/3, R-SEC-01, R-SEC-02 landed with tests; `vitest run lib/muse lib/vault lib/orchestrator/outbound lib/orchestrator/flush lib/routing` = 197/197 green; `executeDirectTransfer` is gone.
-- **G2 CI truth — pass on the branch, one caveat.** `ci.yml` has `web`, `python`, `migrations`, `audit` + `coverage`, `shell`, `skills`, `evals`, `contract-eval`, `commit-ids`; `workers.yml` has a PR check; coverage thresholds enforce; `npm audit --omit=dev --audit-level=high` exits 0. Caveat: GitHub runs a PR's *head* workflow file, and every PR branched from main's old 2-job `ci.yml` — so the new jobs have never executed in hosted CI. They are all green locally; the first `main` run after merge is their live proof (§6.6).
+- **G2 CI truth — pass.** `ci.yml` has `web`, `python`, `migrations`, `audit` + `coverage`, `shell`, `skills`, `evals`, `contract-eval`, `commit-ids`; `workers.yml` has a PR check; coverage thresholds enforce; `npm audit --omit=dev --audit-level=high` exits 0. The new jobs have now run in hosted Actions on main: **14/15 green** — the only failure is `deploy-migrations`, which needs a fresh `SUPABASE_ACCESS_TOKEN` repo secret and a `production` environment (§6.5; both are owner-only repo-settings actions).
 - **G3 Test depth — pass.** FakeSupabase shared fake + stderr gate + webhook/auth-primitive/flake tests landed; a green run prints zero unexpected stderr (unexpected stderr now *fails* the suite — R-TQ-02).
-- **G4 Evals can fail — implementation pass; evidence run in flight.** R-EV-01..13 landed; a 205-case model-tier run is executing on the evalsuite box (`bx_5xtdsb8m`) against the integration build on real prod data (see §6.3).
+- **G4 Evals can fail — implementation pass; evidence run in flight.** R-EV-01..13 landed; a 205-case model-tier run is executing on the evalsuite box (`bx_5xtdsb8m`) against the integration build on real prod data (see §6.3). The two contract-lane gaps it had XFAILed are closed by #500 (A106 remind takes box credentials; K196 `vault_fill` files via `POST /api/vault/fill` + approval-path apply/shred).
 - **G5 Ledger — pass.** 321 rows in `docs/review-findings.json`, `review-tracker.py --check` clean, 92 implemented / 5 in_progress with evidence; every commit on the integration branch names a finding ID, and CI rejects future commits that don't.
 
 ## 6.2 Baseline versus now
@@ -16,10 +16,10 @@ Measured on `devin/integration-review` (all 33 work PRs + P0s squashed in), 2026
 |---|---|---|
 | `tsc --noEmit` | pass, 35 s | pass, **19 s** |
 | `eslint .` | pass, 789 warnings, 28 s | pass, **0 warnings**, 10 s (`--max-warnings 0` enforced in CI) |
-| `vitest run` | 339 files, 3,758 pass, 3 skip, 91 s | **376 files, 4,021 pass**, 3 skip, 1 todo, **20–30 s** (threads pool + lazy SDK imports, R-CI-09) |
+| `vitest run` | 339 files, 3,758 pass, 3 skip, 91 s | **379 files, 4,063 pass**, 3 skip, 1 todo, **20 s** on main (threads pool + lazy SDK imports, R-CI-09) |
 | `vitest --coverage` (lib, app/api, middleware) | 53.1 % lines, 71.4 % fns | **55.8 % lines, 72.0 % fns** — floors enforced per module; see §6.7 on two re-measured floors |
 | `next build` | pass, 2 m 25 s | pass, **1 m 10 s** |
-| Hosted `ci.yml` | pass, ~5.5 min | same jobs pass ~5.5 min on the 2-job surface; new jobs add wall time only after merge (target ≤ 7 min) |
+| Hosted `ci.yml` | pass, ~5.5 min on 2 jobs | **14/15 green on main** with the full job set (~9 min wall); `deploy-migrations` red pending owner secret + environment |
 | `npm audit --omit=dev` | critical `next` advisory + high advisories | **0 critical, 0 high**, 42 moderate — CI `audit` job gates at `--audit-level=high` |
 | SQL migrations | 127 | **135** (+ sender_tier 0128, RLS backfill 0129, burst tiers 0130, sec tables 0131–0134, ttfk 0135) — all shadow-applied in CI and applied to prod for the live test |
 | Test files in repo / run by `npm test` | 435 / 339 | **456 / 376** |
@@ -30,7 +30,7 @@ Measured on `devin/integration-review` (all 33 work PRs + P0s squashed in), 2026
 
 ## 6.3 Evals
 
-§1.4 baseline vs the committed model-tier run now in progress (`evals/agent-suite/results/2026-09-28T15-23-53-019Z`, n = 205, evalsuite box `bx_5xtdsb8m`, integration build + prod data):
+§1.4 baseline vs the committed model-tier run now in progress (`evals/agent-suite/results/2026-09-28T17-run3`, n = 205, evalsuite box `bx_5xtdsb8m`, integration build + prod data, one clean run at integration HEAD `4ff36bf`):
 
 | Axis | Baseline (tenki-run2, gpt-5.6-luna) | This run |
 |---|---|---|
@@ -82,6 +82,8 @@ Early signal from the live run: A01–A03 complete (calendar cases using calenda
 | #490 | R-EV-09/10/11 | K-case labelling, tenki-run2 writeup, memory recall eval | k-case-sets.test.ts |
 | #491 | R-TQ-01 | shared FakeSupabase with recorded filters; all suites migrated | `lib/testing/fakeSupabase.ts` + migrated files |
 | #492 | R-TQ-02 | unexpected stderr fails tests via `setupFiles` console capture | `expectLog()` helper |
+| #500 | R-EV-07a gaps | `POST /api/vault/fill` box-auth filer (K196) + box credentials on `/api/calendar/remind` (A106); `KNOWN_GAPS` emptied — the lane asserts both for real | `fill/route.test.ts` (9), `resolve.test.ts` `vault_fill` block (3), `client.staged.test.ts` (6), remind test box-bearer |
+| #261, #454 | — (pre-ledger feature PRs) | `boxctl` create/ip/sshkey verbs + idle spin-down; `/motion` skill + spec | merged after squash-rebase onto post-program main (`chore:` commits — the sanctioned commit-id exemption for pre-ledger work) |
 
 Post-merge fixups on the integration branch (not separate PRs): `61189175` FakeSupabase harness ports + act() wraps + streaming dedupe; `f3b95cb7` audit fix (ws 8.21.1 via dedupe); `df623fd4` eval session IDs into `air-*` namespace; coverage-scope + floor re-measure (R-CI-02).
 
@@ -96,14 +98,15 @@ Post-merge fixups on the integration branch (not separate PRs): `61189175` FakeS
 | Six non-RLS tables (R-P0-5) | Confirm **none are meant to be public**; RLS now enabled with service-role path unchanged | needs confirmation |
 | OAuth consent page removal (8a26808, predates this program) | Grants are created silently — decide whether the consent screen should return | needs decision |
 | `MASTERKEY_PARTNER_SECRET` | No prod value exists — preview carries a placeholder; mint the real one before deploys that exercise MasterKey | action needed |
-| `COMMAND_LANE_KEY` (Vercel) | The stored value was derived from ciphertext, not the true SESSION_SECRET — re-derive or replace | action needed |
+| `COMMAND_LANE_KEY` (Vercel) | The stored value was derived from ciphertext, not the true SESSION_SECRET — re-derive or replace | **done** — re-provisioned in Vercel |
+| `SUPABASE_ACCESS_TOKEN` Actions secret + `production` environment | `deploy-migrations` fails 401 on the stale PAT; the prod-approval environment doesn't exist | **action needed** — mint a PAT at supabase.com/dashboard/account/tokens, update the repo secret, create the `production` environment in repo settings (a valid PAT is in this session's env for handoff) |
 | R-P0-3 process deviation | Landed direct-to-main at `87c08981`, reverted `0f80c2c4`, re-landed as PR #462 — flagged | disclosed |
 
 ## 6.6 Not done, and why
 
-- **The new CI jobs have never run in hosted Actions** — each PR head carried main's old 2-job `ci.yml`, so `coverage`, `python`, `audit`, `migrations`, `evals`, `contract-eval`, `shell`, `skills`, `commit-ids` are verified locally only. First main push after merge exercises them; expect ~7–9 min wall. This is the largest unverified surface.
-- **G4's committed model-tier run is in flight** — 205 cases × ~3–8 min/case ≈ several hours; `suite.json` + `report.md` land in `evals/agent-suite/results/2026-09-28T15-23-53-019Z` on completion, then get committed.
-- **Stale-PR closes not executed** — `docs/reports/stale-pr-audit.md` recommends close on #48/#195/#304/#405/#434, needs-owner on #221/#330/#427, merge-after-rebase on #261/#454; no PRs were closed without owner sign-off.
+- **`deploy-migrations` is the one red job on main** — `SUPABASE_ACCESS_TOKEN` (repo Actions secret) is an invalid PAT (401), and the `production` environment it gates on doesn't exist in repo settings. Both are owner-only; everything else in hosted CI is green.
+- **G4's committed model-tier run is in flight** — 205 cases × ~3–8 min/case ≈ several hours; `suite.json` + `report.md` land in `evals/agent-suite/results/2026-09-28T17-run3` on completion, then get committed.
+- **Stale-PR sweep executed** — recommended closes done (#48/#195/#304/#405/#434), superseded program PRs closed pointing at #496 (17), #261/#454 merged after rebase; #221/#330/#427 remain open on owner call per `docs/reports/stale-pr-audit.md`.
 - **iMessage-path p50/p95** — R-EV-08 runner landed; its dedicated run wasn't started (the model-tier suite has the box).
 - **Create suite** still has no committed results (19 cases) — same funded-plane dependency.
 
@@ -111,4 +114,4 @@ Post-merge fixups on the integration branch (not separate PRs): `61189175` FakeS
 
 - **The committed coverage floors were measured wrong.** `lib/decisions` was pinned at 85 % but `resolve.test.ts` didn't exist on main — measured reality was ~26 % then, 46 % now; `lib/vault` was pinned 66 vs a real 63. The floors are re-measured and re-pinned with the gap documented in `vitest.config.ts`; the intent (regression catch + ratchet to 85) stands, but a floor nobody has ever seen pass is decoration — worth remembering for the next ratchet round.
 - **G5's checker is weaker than its prose.** The gate text says "0 `not_verified` rows with empty evidence"; the script only demands evidence on `implemented/verified/not_applicable`. I kept the checker semantics and documented the 224 genuinely-unverified rows rather than fabricating evidence for them.
-- **`resolve.ts` coverage is a real hole, not a measurement artifact** — 613 lines at 27 % on the decisions-resolution path is the kind of gap W2 was created for; recommend a follow-up ticket rather than pretending the floor re-measurement closed it.
+- **`resolve.ts` coverage was a real hole, not a measurement artifact** — 613 lines at 27 % on the decisions-resolution path. #500 added the `vault_fill` branch tests plus 9 dispatch tests (17 in `resolve.test.ts`), pushing the file to ~46 %; the ratchet toward the pinned floor continues as an ordinary coverage follow-up.
