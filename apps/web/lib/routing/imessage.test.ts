@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 const isBurstStart = vi.fn();
 const carryQuickAckMarker = vi.fn();
@@ -22,6 +21,7 @@ import type { InboundMessage } from "../orchestrator/flush";
 import type { FastReactionSender } from "../spectrum/fast-reaction";
 import type { SpectrumSender } from "../spectrum/sender";
 import type { InitialResponse } from "../orchestrator/sharedBridge";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 const message: InboundMessage = {
   userId: "user-1",
@@ -31,7 +31,7 @@ const message: InboundMessage = {
   body: "thanks!",
 };
 
-const supabase = {} as SupabaseClient;
+const supabase = new FakeSupabase().client();
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());

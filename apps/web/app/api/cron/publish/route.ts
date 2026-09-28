@@ -17,6 +17,16 @@ export const maxDuration = 800;
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireCron(request).catch(guardResponse);
   if (auth instanceof NextResponse) return auth;
+  const startedAtMs = Date.now();
   const result = await publishDueSlots(serviceClient());
+  // R-PERF-06: duration + rows-touched per run; a week of these feeds the
+  // 95%-idle decision on this cron's schedule.
+  console.info(
+    JSON.stringify({
+      msg: "cron publish",
+      duration_ms: Date.now() - startedAtMs,
+      ...result,
+    })
+  );
   return NextResponse.json({ ok: true, ...result });
 }

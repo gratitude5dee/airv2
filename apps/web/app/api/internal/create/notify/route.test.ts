@@ -139,13 +139,23 @@ describe("POST /api/internal/create/notify bridge auth", () => {
     expect(sendText).not.toHaveBeenCalled();
   });
 
-  it.todo(
-    // R-SEC-04 (parallel PR): the bridge has no nonce/replay store, so a
-    // captured (ts, sig, body) replays within the tolerance window today.
-    // When the replay fix lands this becomes a real assertion: second POST
-    // with identical headers → 401 and sendText still called once.
-    "rejects a replayed signature inside the tolerance window"
-  );
+  it("rejects a replayed signature inside the tolerance window", async () => {
+    // R-SEC-04: the nonce is the signature itself — a captured (ts, sig,
+    // body) replayed byte-identically inside the window is a replay, not a
+    // duplicate delivery. `outcome: "failed"` keeps this test's nonce
+    // distinct from the other cases'.
+    const first = signed({ job_id: JOB_ID, outcome: "failed" });
+    const second = signed(
+      { job_id: JOB_ID, outcome: "failed" },
+      {
+        ts: first.headers.get("x-air-ts") ?? "",
+        sig: first.headers.get("x-air-sig") ?? "",
+      }
+    );
+    expect((await POST(first)).status).toBe(200);
+    expect((await POST(second)).status).toBe(409);
+    expect(sendText).toHaveBeenCalledTimes(1);
+  });
 
   it("404s a job_id that does not exist", async () => {
     delete responses["create_jobs:always"];
