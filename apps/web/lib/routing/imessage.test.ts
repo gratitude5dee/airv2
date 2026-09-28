@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 const isBurstStart = vi.fn();
 const carryQuickAckMarker = vi.fn();
