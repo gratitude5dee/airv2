@@ -2,7 +2,7 @@
 
 ## Goal and status
 
-Implement all 249 findings in `review.md` and demonstrate A+/95 performance
+Implement all 249 findings in `docs/review-2026-09/astra-ultra-review.md` and demonstrate A+/95 performance
 for task completion, appropriate memory use, and the other review acceptance
 axes. The goal is active and incomplete. No live product score has been
 measured. Do not reinterpret passing unit tests as achieving this goal.
@@ -29,7 +29,7 @@ window had 66% remaining. No usage-reset credit was redeemed.
 
 ## Authoritative tracking
 
-Read `review.md`, `docs/review-findings.json`, and
+Read `docs/review-2026-09/astra-ultra-review.md`, `docs/review-findings.json`, and
 `docs/review-implementation-plan.md`. The JSON contains all finding IDs,
 dependencies, evidence, and implementation statuses. Run:
 

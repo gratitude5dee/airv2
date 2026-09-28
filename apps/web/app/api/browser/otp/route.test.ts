@@ -168,6 +168,24 @@ describe("browser OTP lane", () => {
     expect(await second.json()).toMatchObject({ status: "popped" });
   });
 
+  it("another user's request id reads as not_found — the lookup is owner-scoped", async () => {
+    // otp_requests queries always carry .eq("user_id", caller) — a foreign
+    // request id hits no row, so neither status nor code leaks.
+    const response = await GET(
+      authed(`https://app.example/api/browser/otp?request_id=${REQUEST_ID}`)
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "not_found" });
+    const scoping = state.calls.filter(
+      (c) =>
+        c.table === "otp_requests" &&
+        c.method === "eq" &&
+        c.args[0] === "user_id" &&
+        c.args[1] === "user-1"
+    );
+    expect(scoping.length).toBeGreaterThan(0);
+  });
+
   it("flips a stale pending request to expired", async () => {
     state.responses["otp_requests:maybeSingle"] = [
       {

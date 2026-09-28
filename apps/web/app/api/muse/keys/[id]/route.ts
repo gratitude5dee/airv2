@@ -12,7 +12,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   if (!museEnabled()) return new NextResponse(null, { status: 404 });
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await context.params;
   const revoked = await revokeMuseKey(serviceClient(), userId, id);
