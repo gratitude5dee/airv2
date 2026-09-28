@@ -194,7 +194,7 @@ async function deliverImessage(
     .eq("user_id", userId)
     .maybeSingle();
   if (!destination?.space_id || !destination.phone) return false;
-  const sender = await createSpectrumSender();
+  const sender = await createSpectrumSender("calendar-sweep");
   try {
     await sender.sendText(
       destination.space_id as string,
