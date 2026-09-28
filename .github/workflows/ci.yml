@@ -268,7 +268,7 @@ jobs:
         run: node --test ".agents/skills/**/*.test.mjs"
   evals:
     # R-CI-08: the eval harnesses ship tsconfigs nothing ran. Typecheck all
-    # three: agent-suite, its create/ sub-suite, and model-bench.
+    # four: agent-suite, its create/ sub-suite, model-bench, and memory.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -284,6 +284,7 @@ jobs:
           npx --yes -p typescript@5 tsc -p evals/agent-suite/tsconfig.json --noEmit
           npx --yes -p typescript@5 tsc -p evals/agent-suite/create/tsconfig.json --noEmit
           npx --yes -p typescript@5 tsc -p evals/model-bench/tsconfig.json --noEmit
+          npx --yes -p typescript@5 tsc -p evals/memory/tsconfig.json --noEmit
       # The evals run on a box, but the scorer itself is pure — its
       # regression tests run here on every push (R-EV-01..06).
       - run: npx vitest run evals/agent-suite/score.test.ts
