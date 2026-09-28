@@ -153,7 +153,7 @@ def test_totp_type_delivers_code_not_stdout(home, capsys, fake_browser):
     assert out == f"typed {item_id}/totp into grubhub.com\n"
     [typed] = fake_browser["typed"]
     assert len(typed) == 6 and typed.isdigit()
-    assert typed not in out
+    assert typed not in out.replace(item_id, "")
 
 
 def test_totp_type_respects_grants(home, capsys, fake_browser):
