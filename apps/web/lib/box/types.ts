@@ -1,6 +1,7 @@
 /**
  * Provider-neutral Box vocabulary shared by lib/box/client.ts (the ascii.dev
- * implementation and dispatch facade) and lib/box/tenki.ts.
+ * implementation and dispatch facade), lib/box/tenki.ts, and the namespace
+ * adapter in lib/namespace/client.ts (R-ARCH-08).
  */
 import { z } from "zod";
 
@@ -70,4 +71,37 @@ export class BoxApiError extends Error {
     this.requestId = info.requestId;
     this.providerStatus = info.providerStatus;
   }
+}
+
+/** A hosted route to a port on the box; token is "" where ingress has none. */
+export interface HostedRoute {
+  url: string;
+  token: string;
+}
+
+/**
+ * The provider seam lib/box dispatches over — the box vocabulary every
+ * compute provider answers. `Id` is the provider's handle: a box id for
+ * ascii/tenki, a BridgeControl for lib/namespace's bridge-backed instance.
+ * Provisioning (fork/create) stays provider-specific and is not on the seam,
+ * and neither are provider extras like renameBox or Tenki's richer
+ * hostRoute/ttl options.
+ */
+export interface BoxProvider<Id> {
+  getBox(id: Id, options?: { timeoutMs?: number }): Promise<Box>;
+  resume(id: Id, options?: { timeoutMs?: number }): Promise<Box>;
+  stop(id: Id): Promise<Box>;
+  deleteBox(id: Id): Promise<void>;
+  requestDesktop(
+    id: Id,
+    options?: { vnc?: boolean; timeoutMs?: number }
+  ): Promise<string | undefined>;
+  command(
+    id: Id,
+    cmd: string,
+    timeoutSeconds?: number
+  ): Promise<CommandResult>;
+  readFile(id: Id, path: string): Promise<string>;
+  writeFile(id: Id, path: string, content: string): Promise<void>;
+  hostRoute(id: Id, port: number): Promise<HostedRoute>;
 }

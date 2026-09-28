@@ -8,7 +8,6 @@
  */
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase";
 import { command } from "@/lib/box/client";
 import { ensureBoxAwake } from "@/lib/orchestrator/boxes";
@@ -21,6 +20,7 @@ import {
 import { ensureUserBucket, releaseQuota, reserveQuota } from "@/lib/storage/buckets";
 import { publicUrl, putObject, r2Configured } from "@/lib/storage/r2";
 import { recordOpsEvent, uploadRateLimited } from "@/lib/security/limits";
+import { guardResponse, requireBox } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,20 +28,6 @@ export const maxDuration = 300;
 
 const BOX_PATH_RE = /^\/home\/user\/[A-Za-z0-9._/ -]{1,512}$/;
 
-async function boxUserId(
-  supabase: SupabaseClient,
-  request: NextRequest
-): Promise<string | null> {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
-  const { data: box } = await supabase
-    .from("boxes")
-    .select("user_id")
-    .eq("gateway_token", token)
-    .maybeSingle();
-  return box ? (box.user_id as string) : null;
-}
 
 function contentTypeFor(path: string, declared: string): string | null {
   const normalized = declared.toLowerCase().trim();
@@ -77,10 +63,9 @@ async function pullBoxFile(boxId: string, path: string): Promise<Buffer> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = serviceClient();
-  const userId = await boxUserId(supabase, request);
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireBox(supabase, request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
   if (!r2Configured()) {
     return NextResponse.json(
       { error: "media storage unavailable" },

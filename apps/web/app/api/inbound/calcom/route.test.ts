@@ -8,11 +8,11 @@
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import type { DedupeKey } from "@/lib/routing/inbound";
 
 const db = vi.hoisted(() => ({
-  fake: null as unknown as AdminFakeDb,
+  fake: null as unknown as FakeSupabase,
   afterCbs: [] as (() => Promise<unknown>)[],
 }));
 
@@ -118,7 +118,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  db.fake = new AdminFakeDb();
+  db.fake = new FakeSupabase();
   db.afterCbs.length = 0;
   process.env["BOX_DASHBOARD_AUTH_KEY"] = SEAL_KEY;
   db.fake.rows("calendar_accounts").push({

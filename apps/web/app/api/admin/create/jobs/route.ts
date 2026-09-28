@@ -6,7 +6,6 @@
  * (skill-use). `?days=` window, default 30. Metadata only (CR21).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { asJobMeta, jobsFrom, type JobMeta } from "@/lib/admin/createOps";
 import {
   aggregateGroups,
@@ -17,6 +16,7 @@ import {
 import { CREATE_LABEL_PREFIX } from "@/lib/create/budget";
 import { serviceClient } from "@/lib/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,9 +64,8 @@ async function pageSince<T>(
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const days = windowDays(request);
   if (days === null) {
     return NextResponse.json(

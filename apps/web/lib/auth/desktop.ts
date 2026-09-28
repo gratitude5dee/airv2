@@ -20,6 +20,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { log } from "../log";
 
 export const PAIRING_TTL_SECONDS = 10 * 60;
 export const DEVICE_TOKEN_TTL_SECONDS = 12 * 60 * 60;
@@ -78,13 +79,8 @@ export function mintPairingToken(userId: string): {
     jti: randomBytes(12).toString("base64url"),
     exp: Math.floor(Date.now() / 1000) + PAIRING_TTL_SECONDS,
   };
-  console.log(
-    JSON.stringify({
-      msg: "desktop pairing token minted",
-      user_id: userId,
-      jti: claims.jti,
-    })
-  );
+  log.info("desktop pairing token minted", {user_id: userId,
+      jti: claims.jti,});
   return { token: encode(claims), expiresIn: PAIRING_TTL_SECONDS };
 }
 
@@ -154,13 +150,8 @@ export async function pairDevice(
     throw new Error(`desktop pairing failed: ${error.message}`);
   }
   const deviceId = (data as { id: string }).id;
-  console.log(
-    JSON.stringify({
-      msg: "desktop device paired",
-      user_id: claims.userId,
-      device_id: deviceId,
-    })
-  );
+  log.info("desktop device paired", {user_id: claims.userId,
+      device_id: deviceId,});
   return { userId: claims.userId, deviceId };
 }
 

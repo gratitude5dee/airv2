@@ -4,7 +4,6 @@
  * are edited in place on update.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { UnsupportedError } from "spectrum-ts";
 import { env } from "../env";
 import {
   createSpectrumSender,
@@ -36,9 +35,16 @@ import {
   type CheckoutHandoffStatus,
 } from "../checkout/handoffs";
 import { getJob } from "../create/job";
+import { log } from "../log";
 
 /** Card links stay tappable for a day — cards linger in the transcript. */
 export const CARD_LINK_TTL_MINUTES = 24 * 60;
+
+/** spectrum-ts only loads when a send actually ran — the error path pays it. */
+async function isUnsupportedError(error: unknown): Promise<boolean> {
+  const { UnsupportedError } = await import("spectrum-ts");
+  return error instanceof UnsupportedError;
+}
 
 /**
  * Inline mini-UI: the card bubble is a static layout preview (never
@@ -416,13 +422,8 @@ async function sendCheckoutHandoffCard(
         message
       );
     } catch (error) {
-      if (!(error instanceof UnsupportedError)) throw error;
-      console.info(
-        JSON.stringify({
-          msg: "checkout native card unsupported; using browser handoff",
-          user_id: owner.userId,
-        })
-      );
+      if (!(await isUnsupportedError(error))) throw error;
+      log.info("checkout native card unsupported; using browser handoff", {user_id: owner.userId,});
     }
 
     try {
@@ -435,13 +436,8 @@ async function sendCheckoutHandoffCard(
       if (!nativeDelivered) throw error;
       // A separate browser link is useful, but an ambiguous second send must
       // never cause a full-card retry after the native handoff was accepted.
-      console.error(
-        JSON.stringify({
-          msg: "checkout browser handoff link failed after native card",
-          user_id: owner.userId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+      log.error("checkout browser handoff link failed after native card", {user_id: owner.userId,
+          error: error instanceof Error ? error.message : "unknown",});
     }
   } finally {
     if (ownSender) await send.close().catch(() => undefined);
@@ -505,20 +501,13 @@ export async function sendMarkedCards(
         );
       }
       sent += 1;
-      console.log(
-        JSON.stringify({ msg: "card sent", kind, user_id: owner.userId, via: "marker" })
-      );
+      log.info("card sent", {kind, user_id: owner.userId, via: "marker"});
     } catch (error) {
       await claim?.release().catch(() => undefined);
-      console.error(
-        JSON.stringify({
-          msg: "card send failed",
-          kind,
+      log.error("card send failed", {kind,
           user_id: owner.userId,
           via: "marker",
-          error: error instanceof Error ? error.message : "unknown error",
-        })
-      );
+          error: error instanceof Error ? error.message : "unknown error",});
     }
   }
   return sent;
@@ -551,15 +540,10 @@ export async function persistCardSession(
       session
     );
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "mini-app card session persistence failed",
-        user_id: userId,
+    log.error("mini-app card session persistence failed", {user_id: userId,
         kind: appSlug,
         resource_id: resourceId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 
@@ -598,15 +582,10 @@ export async function updateMiniAppCard(
     destination = result.data;
     destinationError = result.error;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "mini-app card destination lookup failed",
-        user_id: userId,
+    log.error("mini-app card destination lookup failed", {user_id: userId,
         kind: appSlug,
         resource_id: resourceId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return "failed";
   }
   if (destinationError || !destination?.space_id || !destination.phone) return "failed";
@@ -622,15 +601,10 @@ export async function updateMiniAppCard(
       resourceId
     );
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "mini-app card session lookup failed",
-        user_id: userId,
+    log.error("mini-app card session lookup failed", {user_id: userId,
         kind: appSlug,
         resource_id: resourceId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return "failed";
   }
 
@@ -644,15 +618,10 @@ export async function updateMiniAppCard(
     try {
       send = await createSpectrumSender("card-update");
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "mini-app card sender creation failed",
-          user_id: userId,
+      log.error("mini-app card sender creation failed", {user_id: userId,
           kind: appSlug,
           resource_id: resourceId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+          error: error instanceof Error ? error.message : "unknown",});
       return "failed";
     }
   }
@@ -675,15 +644,10 @@ export async function updateMiniAppCard(
         appSlug,
         resourceId
       ).catch((error: unknown) => {
-        console.error(
-          JSON.stringify({
-            msg: "mini-app card session deletion failed",
-            user_id: userId,
+        log.error("mini-app card session deletion failed", {user_id: userId,
             kind: appSlug,
             resource_id: resourceId,
-            error: error instanceof Error ? error.message : "unknown",
-          })
-        );
+            error: error instanceof Error ? error.message : "unknown",});
       });
       return "stale";
     }
@@ -697,46 +661,31 @@ export async function updateMiniAppCard(
         refreshed
       );
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          msg: "mini-app card session persistence failed",
-          user_id: userId,
+      log.error("mini-app card session persistence failed", {user_id: userId,
           kind: appSlug,
           resource_id: resourceId,
-          error: error instanceof Error ? error.message : "unknown",
-        })
-      );
+          error: error instanceof Error ? error.message : "unknown",});
     }
     return "updated";
   } catch (error) {
-    if (error instanceof UnsupportedError) {
+    if (await isUnsupportedError(error)) {
       await deleteMiniAppCardSession(
         supabase,
         userId,
         appSlug,
         resourceId
       ).catch((deleteError: unknown) => {
-        console.error(
-          JSON.stringify({
-            msg: "mini-app card session deletion failed",
-            user_id: userId,
+        log.error("mini-app card session deletion failed", {user_id: userId,
             kind: appSlug,
             resource_id: resourceId,
-            error: deleteError instanceof Error ? deleteError.message : "unknown",
-          })
-        );
+            error: deleteError instanceof Error ? deleteError.message : "unknown",});
       });
       return "stale";
     }
-    console.error(
-      JSON.stringify({
-        msg: "mini-app card update failed",
-        user_id: userId,
+    log.error("mini-app card update failed", {user_id: userId,
         kind: appSlug,
         resource_id: resourceId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+        error: error instanceof Error ? error.message : "unknown",});
     return "failed";
   } finally {
     if (ownSender) await send?.close().catch(() => undefined);

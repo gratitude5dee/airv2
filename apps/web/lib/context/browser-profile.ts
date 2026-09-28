@@ -20,6 +20,7 @@ import { command, readFile, writeFile } from "../box/client";
 import { asRecord } from "../records";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { env } from "../env";
+import { log } from "../log";
 
 export const BROWSER_PROFILE_USE = "browser_profile_import";
 export const BROWSER_PROFILE_TTL_MINUTES = 30;
@@ -78,13 +79,8 @@ export function mintBrowserProfileTicket(userId: string): string {
     exp: Math.floor(Date.now() / 1000) + BROWSER_PROFILE_TTL_MINUTES * 60,
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  console.log(
-    JSON.stringify({
-      msg: "browser profile import ticket minted",
-      user_id: userId,
-      jti: claims.jti,
-    })
-  );
+  log.info("browser profile import ticket minted", {user_id: userId,
+      jti: claims.jti,});
   return `${payload}.${sign(payload)}`;
 }
 
@@ -267,17 +263,12 @@ export async function storeBrowserProfileChunk(
     }
   }
   await writeFile(box.boxId, stagedPath(chunk), chunk.content_b64);
-  console.log(
-    JSON.stringify({
-      msg: "browser profile part staged",
-      user_id: userId,
+  log.info("browser profile part staged", {user_id: userId,
       box_id: box.boxId,
       browser: chunk.browser,
       part: chunk.part,
       parts: chunk.parts,
-      final: chunk.final,
-    })
-  );
+      final: chunk.final,});
   if (!chunk.final) {
     const status = defaultBrowserProfileStatus();
     status.browser = chunk.browser;
@@ -346,15 +337,10 @@ rm -rf "$HOME/${STAGING_DIR}"`,
     imported_at: new Date().toISOString(),
   };
   await writeFile(boxId, STATUS_PATH, JSON.stringify(status, null, 2));
-  console.log(
-    JSON.stringify({
-      msg: "browser profile snapshot enabled",
-      box_id: boxId,
+  log.info("browser profile snapshot enabled", {box_id: boxId,
       browser,
       files,
-      bytes,
-    })
-  );
+      bytes,});
   return status;
 }
 
@@ -374,13 +360,8 @@ export async function disableBrowserProfile(
   await setUseRealProfile(box.boxId, false);
   const status = defaultBrowserProfileStatus();
   await writeFile(box.boxId, STATUS_PATH, JSON.stringify(status, null, 2));
-  console.log(
-    JSON.stringify({
-      msg: "browser profile snapshot deleted",
-      user_id: userId,
-      box_id: box.boxId,
-    })
-  );
+  log.info("browser profile snapshot deleted", {user_id: userId,
+      box_id: box.boxId,});
   return status;
 }
 

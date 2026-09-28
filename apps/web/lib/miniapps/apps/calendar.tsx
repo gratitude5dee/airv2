@@ -52,6 +52,7 @@ import {
   subCopy,
   tiltFor,
 } from "./calendar-mosaic";
+import { log } from "../../log";
 
 interface InviteDecision {
   id: string;
@@ -1093,15 +1094,10 @@ ${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus t
                     attendees: attendees.map((email) => ({ email })),
                   });
                 } catch (error) {
-                  console.error(
-                    JSON.stringify({
-                      msg: "agent calendar event create failed",
-                      error:
+                  log.error("agent calendar event create failed", {error:
                         error instanceof Error
                           ? error.message
-                          : String(error),
-                    })
-                  );
+                          : String(error),});
                 }
               }
             }
@@ -1133,12 +1129,7 @@ ${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus t
           target.searchParams.set("booking", url);
           return withBaseHeaders(NextResponse.redirect(target, 303));
         } catch (error) {
-          console.error(
-            JSON.stringify({
-              msg: "booking link create failed",
-              error: error instanceof Error ? error.message : String(error),
-            })
-          );
+          log.error("booking link create failed", {error: error instanceof Error ? error.message : String(error),});
         }
       }
       return back();
@@ -1196,13 +1187,8 @@ ${isOwner ? `<div id="prompt">${promptBar("Ask your agent — e.g. block focus t
                 eventUid,
                 action === "approve" ? "accepted" : "declined"
               ).catch((error) =>
-                console.error(
-                  JSON.stringify({
-                    msg: "calendar rsvp failed",
-                    error:
-                      error instanceof Error ? error.message : String(error),
-                  })
-                )
+                log.error("calendar rsvp failed", {error:
+                      error instanceof Error ? error.message : String(error),})
               );
             }
           }

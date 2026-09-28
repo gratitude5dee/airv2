@@ -26,6 +26,7 @@ import { presignGet } from "../storage/r2";
 import { activeMigrationFor } from "../migration/exclusion";
 import { FleetError, getRelease, type TemplateRelease } from "./releases";
 import { getChannel, type ChannelName } from "./channels";
+import { log } from "../log";
 
 export const DEFAULT_WAVE_SIZE = 3;
 // The box provider rejects command timeouts above 600 seconds, so every
@@ -380,13 +381,8 @@ async function reclaimExpiredLeases(
     throw new FleetError(`lease reclaim failed: ${error.message}`, 500);
   }
   for (const row of data ?? []) {
-    console.warn(
-      JSON.stringify({
-        msg: "fleet sync claim expired",
-        job_id: jobId,
-        box_id: row.provider_box_id,
-      }),
-    );
+    log.warn("fleet sync claim expired", {job_id: jobId,
+        box_id: row.provider_box_id,});
   }
 }
 
@@ -583,14 +579,9 @@ export async function runSyncJobs(
       }
       totals.failed += 1;
       const failures = await bumpFailures(supabase, job.id);
-      console.error(
-        JSON.stringify({
-          msg: "fleet sync box failed",
-          job_id: job.id,
+      log.error("fleet sync box failed", {job_id: job.id,
           box_id: boxId,
-          error: boxError ?? "unknown",
-        }),
-      );
+          error: boxError ?? "unknown",});
       if (failures >= job.failure_threshold) {
         // Pause before releasing: once the job is off canary/rolling no sweep
         // claims (runSyncJobs only picks active jobs) and sweeps mid-wave stop

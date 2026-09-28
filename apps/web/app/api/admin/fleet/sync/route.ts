@@ -5,11 +5,11 @@
  * actual box work happens on the cron sweep (runSyncJobs), a wave per tick.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import { isChannelName } from "@/lib/fleet/channels";
 import { FleetError } from "@/lib/fleet/releases";
 import { resumeJob, setJobState, startSyncJob } from "@/lib/fleet/sync";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +23,8 @@ function errorResponse(error: unknown): NextResponse {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const { data: jobs } = await supabase
     .from("sync_jobs")
@@ -46,9 +45,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   let body: {
     channel?: unknown;
     canary_box_ids?: unknown;
@@ -98,9 +96,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   let body: { job_id?: unknown; action?: unknown };
   try {
     body = await request.json();

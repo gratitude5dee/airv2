@@ -1,0 +1,4 @@
+{"comment": "K106 \u2014 return flow reaches the label without claiming completion"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://amazon.example.com/returns"}}
+{"sse": {"event": "message.delta", "delta": "I found the monitor order and reached the return label step \u2014 the return request itself is ready for you to confirm on the site."}}
+{"sse": {"event": "run.completed"}}

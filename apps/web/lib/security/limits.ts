@@ -7,6 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "../log";
 
 export type OpsEventKind =
   | "store_open"
@@ -88,9 +89,7 @@ export async function recordOpsEvent(
     bytes: bytes ?? 0,
   });
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "ops event insert failed", kind, error: error.message })
-    );
+    log.error("ops event insert failed", {kind, error: error.message});
   }
 }
 
@@ -127,9 +126,7 @@ async function countRecent(
     .eq("user_id", userId)
     .gte("created_at", since);
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "ops event count failed", kind, error: error.message })
-    );
+    log.error("ops event count failed", {kind, error: error.message});
     return null;
   }
   return count ?? 0;
@@ -155,9 +152,7 @@ async function markRateLimited(
     .eq("ref", kind)
     .gte("created_at", since);
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "ops event count failed", kind, error: error.message })
-    );
+    log.error("ops event count failed", {kind, error: error.message});
     return;
   }
   if ((count ?? 0) > 0) return;
@@ -321,13 +316,8 @@ export async function pairExchangeRateLimited(
     .eq("ref", source)
     .gte("created_at", since);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "ops event count failed",
-        kind: "pair_attempt",
-        error: error.message,
-      })
-    );
+    log.error("ops event count failed", {kind: "pair_attempt",
+        error: error.message,});
     return false; // fail open, matching the other ledger limits
   }
   if ((count ?? 0) >= PAIR_ATTEMPTS_PER_HOUR) {
@@ -357,13 +347,8 @@ export async function payLinkCheckoutRateLimited(
   if (error) {
     // Money-facing anonymous mutation fails closed if its abuse ledger is
     // unavailable; buyers can safely retry after the brief outage.
-    console.error(
-      JSON.stringify({
-        msg: "ops event count failed",
-        kind: "pay_link_checkout",
-        error: error.message,
-      })
-    );
+    log.error("ops event count failed", {kind: "pay_link_checkout",
+        error: error.message,});
     return true;
   }
   if ((count ?? 0) >= PAY_LINK_CHECKOUTS_PER_MINUTE) {
@@ -393,13 +378,8 @@ async function markPairRateLimited(
     .eq("ref", ref)
     .gte("created_at", since);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "ops event count failed",
-        kind: "rate_limited",
-        error: error.message,
-      })
-    );
+    log.error("ops event count failed", {kind: "rate_limited",
+        error: error.message,});
     return;
   }
   if ((count ?? 0) > 0) return;

@@ -2,8 +2,8 @@
  * Consent grants: one live grant per scope, idempotent grant, revoke closes
  * the grant, and the guard throws a written line when a scope is missing.
  */
-import { describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   CONSENT_POLICY_VERSION,
   ConsentRequiredError,
@@ -14,33 +14,7 @@ import {
   revokeConsent,
 } from "./consent";
 
-interface Result {
-  data: unknown;
-  error?: { code?: string; message: string } | null;
-}
-
-function builder(results: Result[]) {
-  const calls: Array<{ method: string; args: unknown[] }> = [];
-  const chain: Record<string, unknown> = {};
-  const next = () => results.shift() ?? { data: null, error: null };
-  for (const method of ["select", "eq", "is", "order", "insert", "update"]) {
-    chain[method] = vi.fn((...args: unknown[]) => {
-      calls.push({ method, args });
-      return chain;
-    });
-  }
-  chain["maybeSingle"] = vi.fn(async () => next());
-  chain["single"] = vi.fn(async () => next());
-  chain["then"] = (resolve: (value: Result) => unknown) =>
-    Promise.resolve(next()).then(resolve);
-  return { chain, calls };
-}
-
-function fakeSupabase(results: Result[]) {
-  const { chain, calls } = builder(results);
-  const supabase = { from: vi.fn(() => chain) } as unknown as SupabaseClient;
-  return { supabase, calls };
-}
+const db = new FakeSupabase();
 
 const grant = {
   id: "c-1",
@@ -53,43 +27,51 @@ const grant = {
   revoked_at: null,
 };
 
+beforeEach(() => {
+  db.reset();
+});
+
 describe("grantConsent", () => {
   it("returns the existing live grant without inserting", async () => {
-    const { supabase, calls } = fakeSupabase([{ data: grant }]);
-    const result = await grantConsent(supabase, "u1", "likeness", {
+    db.tables["twin_consents"] = [{ ...grant }];
+    const result = await grantConsent(db.client(), "u1", "likeness", {
       surface: "onboarding",
     });
     expect(result?.id).toBe("c-1");
-    expect(calls.some((call) => call.method === "insert")).toBe(false);
+    expect(db.inserts).toHaveLength(0);
   });
 
   it("inserts a versioned grant when none is live", async () => {
-    const { supabase, calls } = fakeSupabase([
-      { data: null },
-      { data: { ...grant, id: "c-2", scope: "voice" } },
-    ]);
-    const result = await grantConsent(supabase, "u1", "voice", {
+    const result = await grantConsent(db.client(), "u1", "voice", {
       surface: "settings",
       evidenceAssetId: "asset-9",
     });
-    expect(result?.id).toBe("c-2");
-    const insert = calls.find((call) => call.method === "insert");
-    expect(insert?.args[0]).toEqual({
+    expect(db.inserts).toHaveLength(1);
+    expect(db.inserts[0]?.row).toMatchObject({
       user_id: "u1",
       scope: "voice",
       policy_version: CONSENT_POLICY_VERSION,
       surface: "settings",
       evidence_asset_id: "asset-9",
     });
+    expect(result?.id).toBe(db.inserts[0]?.row["id"]);
   });
 
   it("re-reads the winner when a concurrent grant took the unique slot", async () => {
-    const { supabase } = fakeSupabase([
-      { data: null },
-      { data: null, error: { code: "23505", message: "duplicate" } },
-      { data: { ...grant, id: "c-winner" } },
-    ]);
-    const result = await grantConsent(supabase, "u1", "likeness", {
+    // The winner row lands between the caller's read and insert: the first
+    // lookup still misses, the insert collides on the unique slot, and the
+    // re-read returns the winner. unique keys make the insert raise 23505.
+    db.tables["twin_consents"] = [{ ...grant, id: "c-winner" }];
+    db.uniques["twin_consents"] = ["user_id", "scope"];
+    let reads = 0;
+    db.resolve = (q) => {
+      if (q.table === "twin_consents" && q.mode === "select") {
+        reads += 1;
+        if (reads === 1) return { data: null };
+      }
+      return undefined;
+    };
+    const result = await grantConsent(db.client(), "u1", "likeness", {
       surface: "onboarding",
     });
     expect(result?.id).toBe("c-winner");
@@ -97,31 +79,33 @@ describe("grantConsent", () => {
 });
 
 describe("revokeConsent / hasConsent / requireConsent", () => {
-  it("closes a live grant and reports it", async () => {
-    const { supabase, calls } = fakeSupabase([{ data: [{ id: "c-1" }] }]);
-    expect(await revokeConsent(supabase, "u1", "likeness")).toBe(true);
-    const update = calls.find((call) => call.method === "update");
-    expect(update?.args[0]).toHaveProperty("revoked_at");
+  it("closes a live grant and reports true", async () => {
+    db.tables["twin_consents"] = [{ ...grant }];
+    expect(await revokeConsent(db.client(), "u1", "likeness")).toBe(true);
+    expect(db.updates[0]?.patch).toHaveProperty("revoked_at");
+    expect(db.rows("twin_consents")[0]?.["revoked_at"]).not.toBeNull();
   });
 
   it("reports false when nothing was live", async () => {
-    const { supabase } = fakeSupabase([{ data: [] }]);
-    expect(await revokeConsent(supabase, "u1", "voice")).toBe(false);
+    db.tables["twin_consents"] = [{ ...grant }];
+    expect(await revokeConsent(db.client(), "u1", "voice")).toBe(false);
   });
 
   it("hasConsent mirrors the live row; requireConsent throws a written line", async () => {
-    expect(await hasConsent(fakeSupabase([{ data: grant }]).supabase, "u1", "likeness")).toBe(true);
-    expect(await hasConsent(fakeSupabase([{ data: null }]).supabase, "u1", "likeness")).toBe(false);
+    db.tables["twin_consents"] = [{ ...grant }];
+    expect(await hasConsent(db.client(), "u1", "likeness")).toBe(true);
+    expect(await hasConsent(db.client(), "u1", "voice")).toBe(false);
     await expect(
-      requireConsent(fakeSupabase([{ data: null }]).supabase, "u1", "voice")
+      requireConsent(db.client(), "u1", "voice")
     ).rejects.toBeInstanceOf(ConsentRequiredError);
   });
 
   it("listConsents drops rows with unknown scopes", async () => {
-    const { supabase } = fakeSupabase([
-      { data: [grant, { ...grant, id: "c-x", scope: "telepathy" }] },
-    ]);
-    const consents = await listConsents(supabase, "u1");
+    db.tables["twin_consents"] = [
+      { ...grant },
+      { ...grant, id: "c-x", scope: "telepathy" },
+    ];
+    const consents = await listConsents(db.client(), "u1");
     expect(consents.map((row) => row.id)).toEqual(["c-1"]);
   });
 });

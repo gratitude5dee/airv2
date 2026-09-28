@@ -12,6 +12,7 @@ import { BoxApiError, command, readFile, writeFile } from "@/lib/box/client";
 import { USER_PROFILE_CHAR_LIMIT, USER_PROFILE_PATH } from "@/lib/memory/files";
 import { armStopAfter, ensureBoxAwake } from "@/lib/orchestrator/boxes";
 import { deepMemoryForget, deepMemoryIndex } from "@/lib/memory/deep";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 vi.mock("@/lib/box/client", async (importOriginal) => ({
   BoxApiError: (await importOriginal<typeof import("@/lib/box/client")>()).BoxApiError,
@@ -30,9 +31,7 @@ vi.mock("@/lib/memory/deep", () => ({
 }));
 
 function fakeSupabase(): SupabaseClient {
-  return {
-    from: () => ({ upsert: vi.fn().mockResolvedValue({}) }),
-  } as unknown as SupabaseClient;
+  return new FakeSupabase().client();
 }
 
 const handoff = {

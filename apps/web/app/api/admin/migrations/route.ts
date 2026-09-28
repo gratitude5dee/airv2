@@ -10,7 +10,6 @@
  * POST   { op: "cutover"|"cancel"|"return"|"cleanup", user_id }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import {
   approveCleanup,
@@ -29,6 +28,8 @@ import {
 } from "@/lib/migration/types";
 import { driveMigration } from "@/lib/migration/driver";
 import { loadMigrationForUser } from "@/lib/migration/store";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,19 +59,13 @@ function errorResponse(error: unknown): NextResponse {
   }
   // Unknown errors: log server-side only — the message can carry provider
   // or driver internals that don't belong in an operator-facing response.
-  console.error(
-    JSON.stringify({
-      msg: "admin migrations op failed",
-      error: error instanceof Error ? error.message : String(error),
-    })
-  );
+  log.error("admin migrations op failed", {error: error instanceof Error ? error.message : String(error),});
   return NextResponse.json({ error: "internal" }, { status: 500 });
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const userId = request.nextUrl.searchParams.get("user_id");
   const supabase = serviceClient();
   if (userId) {
@@ -101,9 +96,8 @@ interface PostBody {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   let body: PostBody;
   try {
     body = (await request.json()) as PostBody;

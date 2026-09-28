@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { storeSessionUserId } from "@/lib/miniapps/storeSession";
 import { serviceClient } from "@/lib/supabase";
 import { chatEventStream, SSE_HEADERS } from "@/lib/chat/relay";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,9 +33,7 @@ export async function GET(
     return new Response(stream, { headers: SSE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "create events proxy failed", user_id: userId, error: message })
-    );
+    log.error("create events proxy failed", {user_id: userId, error: message});
     return NextResponse.json({ error: "stream failed" }, { status: 500 });
   }
 }

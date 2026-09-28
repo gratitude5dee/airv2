@@ -1,0 +1,7 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "daemon_started",
+  "idempotency_key": "3f4d8c2a1b0e4f6a8c2d1e0f9a7b5c3d",
+  "occurred_at": "2026-09-20T04:12:33Z",
+  "prompt_excerpt": "the user's raw prompt text must never cross the boundary"
+}

@@ -1,131 +1,43 @@
 /**
- * Client entry for the native Onairos sign-in on the onboarding mini-app's
+ * Thin entry for the native Onairos sign-in on the onboarding mini-app's
  * onairos step (MA9.2). Bundled to public/creator-os/onairos-connect.js by
  * scripts/build-onairos-connect.mjs and mounted onto #onairos-connect.
  *
- * The SDK runs its consent/auth flow in the browser; on completion this
- * posts the opaque handoff ({ api_url, token }) back to the mini-app as a
- * regular form post. Persona fetching and persistence stay server-side in
- * lib/onairos/sync.ts — no persona data or key material is handled here
- * beyond the short-lived handoff token the SDK returns to the page.
+ * R-PERF-07: react-dom + the ~3 MB `onairos` SDK are code-split into an
+ * async chunk (./onairos-connect-app) so the onboarding slide doesn't pay
+ * 2.4 MB before the first tap. The chunk loads on the first intent gesture
+ * (pointer/focus/key) — by the time the user reaches the button it's warm —
+ * or once the page goes idle so passive readers still get it.
  */
-import { StrictMode, useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { OnairosButton, initializeApiKey } from "onairos";
-import { canonicalApiUrl } from "@/lib/onairos/handoffUrl";
-
-function submitHandoff(apiUrl: string, token: string): void {
-  const form = document.createElement("form");
-  form.method = "post";
-  form.style.display = "none";
-  const add = (name: string, value: string): void => {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-  };
-  add("action", "onairos_handoff");
-  add("api_url", apiUrl);
-  add("token", token);
-  document.body.appendChild(form);
-  form.submit();
-}
-
-function ConnectApp({
-  apiKey,
-  googleClientId,
-}: {
-  apiKey: string;
-  googleClientId: string | null;
-}): React.ReactElement {
-  const [phase, setPhase] = useState<
-    "loading" | "ready" | "submitting" | "error"
-  >("loading");
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    setPhase("loading");
-    // Our own Google OAuth web client ID (public identifier): the SDK's
-    // built-in one only authorizes Onairos's origins, so "Continue with
-    // Google" is refused by Google on our domain without it.
-    initializeApiKey({
-      apiKey,
-      ...(googleClientId
-        ? {
-            googleClientIds: {
-              webClientId: googleClientId,
-              serverClientId: googleClientId,
-            },
-          }
-        : {}),
-    })
-      .then(() => {
-        if (!cancelled) setPhase("ready");
-      })
-      .catch((error: unknown) => {
-        // Diagnostic only — the message never carries the key or a token.
-        console.error(
-          "onairos init failed:",
-          error instanceof Error ? error.message : String(error)
-        );
-        if (!cancelled) setPhase("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apiKey, googleClientId, attempt]);
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  if (phase === "loading") {
-    return <p className="muted">Loading Onairos sign-in…</p>;
-  }
-  if (phase === "error") {
-    return (
-      <p className="muted">
-        Onairos sign-in couldn&apos;t reach the service —{" "}
-        <button type="button" className="ghost" onClick={retry}>
-          try again
-        </button>{" "}
-        or use the iMessage option below.
-      </p>
-    );
-  }
-  if (phase === "submitting") {
-    return <p className="muted">Connecting your context…</p>;
-  }
-  return (
-    <OnairosButton
-      webpageName="air by WZRD.tech"
-      requestData={["preferences", "personality"]}
-      autoFetch={false}
-      onComplete={(data, error) => {
-        if (error || !data || !data.token || !data.apiUrl) {
-          if (error) {
-            console.error(
-              "onairos flow failed:",
-              error instanceof Error ? error.message : String(error)
-            );
-            setPhase("error");
-          }
-          return;
-        }
-        setPhase("submitting");
-        submitHandoff(
-          canonicalApiUrl(data.apiUrl, window.location.origin),
-          data.token
-        );
-      }}
-    />
-  );
-}
+export {};
 
 const mount = document.getElementById("onairos-connect");
 const apiKey = mount?.dataset["apiKey"] ?? "";
 const googleClientId = mount?.dataset["googleClientId"] ?? null;
+
+let loading: Promise<void> | undefined;
+function load(): void {
+  loading ??= import("./onairos-connect-app")
+    .then(({ mountOnairosConnect }) => {
+      if (mount && apiKey) {
+        mountOnairosConnect(mount, { apiKey, googleClientId });
+      }
+    })
+    .catch((error: unknown) => {
+      // Leave `loading` cleared so the next gesture retries the fetch.
+      console.error(
+        "onairos chunk failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+      loading = undefined;
+    });
+}
+
 if (mount && apiKey) {
-  createRoot(mount).render(
-    <StrictMode>
-      <ConnectApp apiKey={apiKey} googleClientId={googleClientId} />
-    </StrictMode>
-  );
+  for (const event of ["pointerdown", "focusin", "keydown"] as const) {
+    document.addEventListener(event, load, { once: true, capture: true });
+  }
+  const idle = window.requestIdleCallback;
+  if (idle) idle(load, { timeout: 8_000 });
+  else setTimeout(load, 3_000);
 }

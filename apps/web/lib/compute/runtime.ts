@@ -18,10 +18,8 @@ import {
   type CommandResult,
 } from "../box/client";
 import {
-  bridgeCommand,
-  bridgeReadFile,
-  bridgeWriteFile,
   destroyInstance,
+  provider as nativeProvider,
   suspendInstance,
   type BridgeControl,
 } from "../namespace/client";
@@ -109,7 +107,11 @@ export async function runCommand(
     case "box":
       return boxCommand(target.instanceId, cmd, timeoutSeconds);
     case "native":
-      return bridgeCommand(bridgeControl(target), cmd, timeoutSeconds);
+      return nativeProvider.command(
+        bridgeControl(target),
+        cmd,
+        timeoutSeconds
+      );
   }
 }
 
@@ -121,7 +123,10 @@ export async function readComputeFile(
     case "box":
       return boxReadFile(target.instanceId, path);
     case "native":
-      return bridgeReadFile(bridgeControl(target), absolute(target, path));
+      return nativeProvider.readFile(
+        bridgeControl(target),
+        absolute(target, path)
+      );
   }
 }
 
@@ -134,7 +139,7 @@ export async function writeComputeFile(
     case "box":
       return boxWriteFile(target.instanceId, path, content);
     case "native":
-      return bridgeWriteFile(
+      return nativeProvider.writeFile(
         bridgeControl(target),
         absolute(target, path),
         content,

@@ -1,45 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { recoverOrphanedCarriedJobs } from "./carryRecovery";
+import { FakeSupabase } from "../testing/fakeSupabase";
 
 type Row = Record<string, unknown>;
 
-function query(rows: Row[]) {
-  const chain = {
-    select: vi.fn(() => chain),
-    lt: vi.fn(() => chain),
-    order: vi.fn(() => chain),
-    in: vi.fn(() => Promise.resolve({ data: rows, error: null })),
-    limit: vi.fn(() => Promise.resolve({ data: rows, error: null })),
-  };
-  return chain;
-}
-
 function fakeSupabase(tables: Record<string, Row[]>) {
-  const upserts: Row[][] = [];
-  return {
-    upserts,
-    client: {
-      from: vi.fn((table: string) => {
-        if (table === "flush_jobs") {
-          const rows = tables[table] ?? [];
-          const chain = query(rows);
-          return {
-            ...chain,
-            upsert: vi.fn((value: Row | Row[]) => {
-              upserts.push(Array.isArray(value) ? value : [value]);
-              return Promise.resolve({ error: null });
-            }),
-          };
-        }
-        return query(tables[table] ?? []);
-      }),
-    },
-  };
+  const db = new FakeSupabase();
+  for (const [table, rows] of Object.entries(tables)) {
+    db.tables[table] = rows.map((row) => ({ ...row }));
+  }
+  return { client: db.client(), db };
 }
 
 describe("recoverOrphanedCarriedJobs", () => {
   it("re-arms an old carried conversation using its exact durable destination", async () => {
-    const db = fakeSupabase({
+    const { client, db } = fakeSupabase({
       carried_messages: [
         {
           user_id: "user-1",
@@ -57,14 +32,15 @@ describe("recoverOrphanedCarriedJobs", () => {
     });
 
     const result = await recoverOrphanedCarriedJobs(
-      db.client as never,
+      client as never,
       new Date("2026-09-14T21:30:00.000Z"),
     );
 
     expect(result).toEqual({ restored: 1, unresolved: 0 });
-    expect(db.upserts).toEqual([
-      [
-        expect.objectContaining({
+    expect(db.upserts.map((u) => ({ table: u.table, row: u.row }))).toEqual([
+      {
+        table: "flush_jobs",
+        row: expect.objectContaining({
           space_id: "space-1",
           user_id: "user-1",
           phone: "shared",
@@ -73,12 +49,12 @@ describe("recoverOrphanedCarriedJobs", () => {
           chain_started_at: null,
           hermes_run_id: null,
         }),
-      ],
+      },
     ]);
   });
 
   it("does not overwrite a live flush job for the carried conversation", async () => {
-    const db = fakeSupabase({
+    const { client, db } = fakeSupabase({
       carried_messages: [
         {
           user_id: "user-1",
@@ -91,7 +67,7 @@ describe("recoverOrphanedCarriedJobs", () => {
     });
 
     const result = await recoverOrphanedCarriedJobs(
-      db.client as never,
+      client as never,
       new Date("2026-09-14T21:30:00.000Z"),
     );
 
@@ -100,7 +76,7 @@ describe("recoverOrphanedCarriedJobs", () => {
   });
 
   it("leaves a body-preserving orphan untouched when its line cannot be inferred", async () => {
-    const db = fakeSupabase({
+    const { client, db } = fakeSupabase({
       carried_messages: [
         {
           user_id: "user-1",
@@ -116,7 +92,7 @@ describe("recoverOrphanedCarriedJobs", () => {
     });
 
     const result = await recoverOrphanedCarriedJobs(
-      db.client as never,
+      client as never,
       new Date("2026-09-14T21:30:00.000Z"),
     );
 

@@ -9,6 +9,8 @@ import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "./apps/types";
 import { serveIdentityThumb, thumbHref } from "./identityThumb";
+import { FakeSupabase } from "../testing/fakeSupabase";
+import { ASSETS_BUCKET } from "../assets/keys";
 
 interface Row {
   asset_id: string;
@@ -17,68 +19,33 @@ interface Row {
   storage_key: string;
 }
 
-/** Mimics exactly the two reads listIdentityAssets makes — identity_assets
- * then creative_assets — plus the storage download downloadIdentityAsset
- * makes, scoped to whatever rows this owner actually has. */
-function fakeSupabase(userId: string, rows: Row[]): SupabaseClient {
-  const identityQuery: Record<string, unknown> = {};
-  const chain = (): typeof identityQuery => identityQuery;
-  identityQuery["select"] = chain;
-  identityQuery["eq"] = chain;
-  identityQuery["order"] = chain;
-  identityQuery["then"] = (
-    resolve: (value: { data: unknown; error: null }) => unknown
-  ) =>
-    Promise.resolve({
-      data: rows.map((r) => ({
-        id: `row-${r.asset_id}`,
-        asset_id: r.asset_id,
-        role: r.role,
-        position: 0,
-        source: "upload",
-        status: r.status,
-        consent_id: null,
-        label: null,
-        provider_ref: null,
-        created_at: "2026-09-01T00:00:00Z",
-      })),
-      error: null,
-    }).then(resolve);
-
-  const assetsQuery: Record<string, unknown> = {};
-  const assetsChain = (): typeof assetsQuery => assetsQuery;
-  assetsQuery["select"] = assetsChain;
-  assetsQuery["eq"] = assetsChain;
-  assetsQuery["in"] = assetsChain;
-  assetsQuery["then"] = (
-    resolve: (value: { data: unknown; error: null }) => unknown
-  ) =>
-    Promise.resolve({
-      data: rows.map((r) => ({
-        id: r.asset_id,
-        storage_key: r.storage_key,
-        user_id: userId,
-      })),
-      error: null,
-    }).then(resolve);
-
-  const bytesByKey = new Map<string, Buffer>();
-
-  return {
-    from: (table: string) =>
-      table === "identity_assets" ? identityQuery : assetsQuery,
-    storage: {
-      from: () => ({
-        download: async (key: string) => {
-          const bytes = bytesByKey.get(key);
-          return bytes
-            ? { data: new Blob([new Uint8Array(bytes)]), error: null }
-            : { data: null, error: { message: "not found" } };
-        },
-      }),
-    },
-    __setBytes: (key: string, bytes: Buffer) => bytesByKey.set(key, bytes),
-  } as unknown as SupabaseClient & { __setBytes: (key: string, bytes: Buffer) => void };
+/** Seeds the two tables listIdentityAssets reads — identity_assets then
+ * creative_assets — for `ownerId`, so the session's user_id scoping is
+ * exercised for real. Storage bytes go in db.storageObjects. */
+function fakeSupabase(ownerId: string, rows: Row[]): {
+  supabase: SupabaseClient;
+  db: FakeSupabase;
+} {
+  const db = new FakeSupabase();
+  db.tables["identity_assets"] = rows.map((r) => ({
+    id: `row-${r.asset_id}`,
+    user_id: ownerId,
+    asset_id: r.asset_id,
+    role: r.role,
+    position: 0,
+    source: "upload",
+    status: r.status,
+    consent_id: null,
+    label: null,
+    provider_ref: null,
+    created_at: "2026-09-01T00:00:00Z",
+  }));
+  db.tables["creative_assets"] = rows.map((r) => ({
+    id: r.asset_id,
+    user_id: ownerId,
+    storage_key: r.storage_key,
+  }));
+  return { supabase: db.client(), db };
 }
 
 const png = async (rgb: { r: number; g: number; b: number }): Promise<Buffer> =>
@@ -104,7 +71,7 @@ describe("thumbHref", () => {
 
 describe("serveIdentityThumb", () => {
   it("returns null when the request names no thumbnail — the caller renders its page", async () => {
-    const supabase = fakeSupabase("user-1", []);
+    const { supabase } = fakeSupabase("user-1", []);
     const result = await serveIdentityThumb(
       ctxFor("user-1", supabase, "?step=selfies")
     );
@@ -112,10 +79,10 @@ describe("serveIdentityThumb", () => {
   });
 
   it("resizes a ready image the session owns down to the requested width", async () => {
-    const supabase = fakeSupabase("user-1", [
+    const { supabase, db } = fakeSupabase("user-1", [
       { asset_id: "asset-1", role: "selfie", status: "ready", storage_key: "u1/a1.png" },
-    ]) as SupabaseClient & { __setBytes: (key: string, bytes: Buffer) => void };
-    supabase.__setBytes("u1/a1.png", await png({ r: 200, g: 40, b: 40 }));
+    ]);
+    db.storageObjects[`${ASSETS_BUCKET}/u1/a1.png`] = new Uint8Array(await png({ r: 200, g: 40, b: 40 }));
 
     const response = await serveIdentityThumb(
       ctxFor("user-1", supabase, "?thumb=asset-1&w=64")
@@ -134,10 +101,10 @@ describe("serveIdentityThumb", () => {
   });
 
   it("falls back to a sane default width for an unlisted size", async () => {
-    const supabase = fakeSupabase("user-1", [
+    const { supabase, db } = fakeSupabase("user-1", [
       { asset_id: "asset-1", role: "selfie", status: "ready", storage_key: "u1/a1.png" },
-    ]) as SupabaseClient & { __setBytes: (key: string, bytes: Buffer) => void };
-    supabase.__setBytes("u1/a1.png", await png({ r: 10, g: 10, b: 200 }));
+    ]);
+    db.storageObjects[`${ASSETS_BUCKET}/u1/a1.png`] = new Uint8Array(await png({ r: 10, g: 10, b: 200 }));
 
     const response = await serveIdentityThumb(
       ctxFor("user-1", supabase, "?thumb=asset-1&w=99999")
@@ -148,10 +115,16 @@ describe("serveIdentityThumb", () => {
 
   it("404s an asset id that does not belong to this session — no cross-user access", async () => {
     // The row exists, but for a different owner: listIdentityAssets is
-    // called with THIS session's userId, so a real Supabase query would
-    // never return someone else's row in the first place. Modelling that
-    // here as an empty result is the point of the test.
-    const supabase = fakeSupabase("user-2", []);
+    // called with THIS session's userId, so the real query never returns
+    // someone else's row.
+    const { supabase } = fakeSupabase("user-2", [
+      {
+        asset_id: "someone-elses-asset",
+        role: "selfie",
+        status: "ready",
+        storage_key: "u2/a1.png",
+      },
+    ]);
     const response = await serveIdentityThumb(
       ctxFor("user-1", supabase, "?thumb=someone-elses-asset&w=64")
     );
@@ -159,7 +132,7 @@ describe("serveIdentityThumb", () => {
   });
 
   it("404s a video or audio asset id instead of trying to decode it as an image", async () => {
-    const supabase = fakeSupabase("user-1", [
+    const { supabase } = fakeSupabase("user-1", [
       {
         asset_id: "asset-video",
         role: "reference_video",
@@ -174,7 +147,7 @@ describe("serveIdentityThumb", () => {
   });
 
   it("404s an asset that is not ready yet", async () => {
-    const supabase = fakeSupabase("user-1", [
+    const { supabase } = fakeSupabase("user-1", [
       { asset_id: "asset-1", role: "selfie", status: "processing", storage_key: "u1/a1.png" },
     ]);
     const response = await serveIdentityThumb(
@@ -184,7 +157,7 @@ describe("serveIdentityThumb", () => {
   });
 
   it("404s when the storage object cannot be downloaded", async () => {
-    const supabase = fakeSupabase("user-1", [
+    const { supabase } = fakeSupabase("user-1", [
       { asset_id: "asset-1", role: "selfie", status: "ready", storage_key: "u1/missing.png" },
     ]);
     const response = await serveIdentityThumb(

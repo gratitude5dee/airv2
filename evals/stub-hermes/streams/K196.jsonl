@@ -1,0 +1,4 @@
+{"comment": "K196 \u2014 vault_fill decision kind has no box-side filer today; honest replay records no call"}
+{"sse": {"event": "tool.started", "tool": "skill_view", "preview": "vault-use \u2192 SKILL.md"}}
+{"sse": {"event": "message.delta", "delta": "That's a sensitive ID \u2014 I won't keep it in memory or notes. There's no pending vault filing I can open from the box right now; tell me to route it through the vault when the approval path lands."}}
+{"sse": {"event": "run.completed"}}

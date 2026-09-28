@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { FakeSupabase, type Row } from "../testing/fakeSupabase";
 import { claimSchedule, classifyTickOutput } from "./sweep";
 import type { AgentSchedule } from "./schedule";
+
+const db = new FakeSupabase();
+
+beforeEach(() => db.reset());
 
 const SCHEDULE: AgentSchedule = {
   id: "s1",
@@ -20,9 +24,10 @@ const SCHEDULE: AgentSchedule = {
 };
 
 /**
- * A supabase stub whose claim_schedule RPC emulates the real one's contract:
- * CAS on (id, status=active, next_run_at=expected) + admission check +
- * delivery-receipt dedupe, all in one statement.
+ * The claim_schedule RPC emulated the way the real one behaves: a CAS on the
+ * agent_schedules row (status=active, next_run_at=expected → advance) plus
+ * admission check + delivery-receipt dedupe, all in one statement. Row state
+ * lives in the fake's table, so a lost CAS leaves the row visibly advanced.
  */
 function makeSupabase(
   row: { next_run_at: string; status: string },
@@ -30,40 +35,45 @@ function makeSupabase(
 ) {
   const claims: string[][] = [];
   const receipts = opts.receipts ?? new Map<string, string>();
-  const client = {
-    rpc: (name: string, args: Record<string, unknown>) => {
-      expect(name).toBe("claim_schedule");
-      const expected = args["p_expected_next_run_at"] as string;
-      const next = args["p_next_run_at"] as string;
-      claims.push([expected, next]);
-      const stableId = `${SCHEDULE.id}@${expected}`;
-      if (opts.admission === "closed") {
-        return Promise.resolve({ data: { claimed: false, reason: "admission_closed" } });
-      }
-      if (row.status !== "active" || row.next_run_at !== expected) {
-        return Promise.resolve({ data: { claimed: false, reason: "lost" } });
-      }
-      row.next_run_at = next;
-      const existing = receipts.get(stableId);
-      if (existing && existing !== "held") {
-        return Promise.resolve({
-          data: { claimed: true, duplicate: true, schedule: { ...SCHEDULE, next_run_at: next } },
-        });
-      }
-      receipts.set(stableId, "running");
-      return Promise.resolve({
-        data: {
-          claimed: true,
-          duplicate: false,
-          schedule: { ...SCHEDULE, next_run_at: next },
-          operation_id: "op-1",
-        },
-      });
-    },
-    from: () => {
+  db.tables["agent_schedules"] = [{ ...SCHEDULE, ...row }];
+  db.rpcResults["claim_schedule"] = (rawArgs: unknown) => {
+    const args = rawArgs as Record<string, unknown>;
+    const expected = args["p_expected_next_run_at"] as string;
+    const next = args["p_next_run_at"] as string;
+    claims.push([expected, next]);
+    const stored = db
+      .rows("agent_schedules")
+      .find((r: Row) => r["id"] === args["p_schedule_id"]);
+    if (!stored) return { claimed: false, reason: "lost" };
+    const stableId = `${stored["id"] as string}@${expected}`;
+    if (opts.admission === "closed") {
+      return { claimed: false, reason: "admission_closed" };
+    }
+    if (stored["status"] !== "active" || stored["next_run_at"] !== expected) {
+      return { claimed: false, reason: "lost" };
+    }
+    stored["next_run_at"] = next;
+    const existing = receipts.get(stableId);
+    if (existing && existing !== "held") {
+      return { claimed: true, duplicate: true, schedule: { ...stored } };
+    }
+    receipts.set(stableId, "running");
+    return {
+      claimed: true,
+      duplicate: false,
+      schedule: { ...stored },
+      operation_id: "op-1",
+    };
+  };
+  // Tripwire: every table query throws — claimSchedule must go through the
+  // RPC; db.resolve sees table queries (mode !== "rpc") before they run.
+  db.resolve = (q) => {
+    if (q.mode !== "rpc") {
       throw new Error("claimSchedule must not touch tables directly — the RPC owns the claim");
-    },
-  } as unknown as SupabaseClient;
+    }
+    return undefined;
+  };
+  const client = db.client();
   return { client, claims, receipts };
 }
 describe("claimSchedule", () => {

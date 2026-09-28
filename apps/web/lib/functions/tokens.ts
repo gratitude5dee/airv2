@@ -18,6 +18,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { env } from "../env";
+import { log } from "../log";
 
 export type AppRole = "owner" | "guest" | "anon" | "agent";
 
@@ -62,16 +63,11 @@ export function mintAppToken(
     exp: Math.floor(Date.now() / 1000) + APP_TOKEN_TTL_SECONDS,
   };
   const payload = Buffer.from(JSON.stringify(full)).toString("base64url");
-  console.log(
-    JSON.stringify({
-      msg: "app token minted",
-      app: full.app,
+  log.info("app token minted", {app: full.app,
       role: full.role,
       jti: full.jti,
       draft: full.draft === true,
-      channel: full.channel ?? null,
-    })
-  );
+      channel: full.channel ?? null,});
   return `${payload}.${sign(payload, key)}`;
 }
 

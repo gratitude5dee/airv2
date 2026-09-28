@@ -1,0 +1,4 @@
+{"comment": "K109 \u2014 survey filled from the Marriott email; nothing committing"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://survey.example.com/marriott"}}
+{"sse": {"event": "message.delta", "delta": "Filled in the stay feedback from your Marriott email \u2014 ratings only, nothing that commits you."}}
+{"sse": {"event": "run.completed"}}

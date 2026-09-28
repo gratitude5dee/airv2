@@ -22,6 +22,7 @@ import {
 import type { Draft, DraftKind, DraftMedia } from "./adapter";
 import { PublishError } from "./adapter";
 import { makePublishCtx } from "./context";
+import { env } from "../env";
 import { adapterFor } from "./registry";
 import {
   capHeadroom,
@@ -37,6 +38,7 @@ import {
   retryDelaySeconds,
   verdictFor,
 } from "./verdict";
+import { log } from "../log";
 
 /** All of a user's slots due inside this window ride one wake — a machine
  * start is the limit that actually binds (ARCHITECTURE §6.2), so it is one
@@ -68,7 +70,7 @@ export async function publishDueSlots(
 ): Promise<PublishSweepResult> {
   // CM8 kill switch: halt scheduled publishing within one sweep without
   // touching a single slot — flipping back resumes the calendar as-is.
-  if (process.env["PUBLISH_KILL_SWITCH"] === "1") {
+  if (env.publishKillSwitch()) {
     return { usersWoken: 0, published: 0, parked: 0, deferred: 0, retried: 0 };
   }
   const nowIso = new Date().toISOString();
@@ -156,26 +158,16 @@ export async function publishDueSlots(
         box = await ensureBoxAwake(supabase, userId);
         result.usersWoken += 1;
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            msg: "publish sweep wake failed",
-            user_id: userId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("publish sweep wake failed", {user_id: userId,
+            error: error instanceof Error ? error.message : String(error),});
         continue; // slots stay scheduled; next sweep retries the wake
       }
       for (const slot of slots) {
         const outcome = await publishSlot(supabase, box, slot).catch(
           (error) => {
-            console.error(
-              JSON.stringify({
-                msg: "publish slot crashed",
-                slot_id: slot.id,
+            log.error("publish slot crashed", {slot_id: slot.id,
                 user_id: userId,
-                error: error instanceof Error ? error.message : String(error),
-              })
-            );
+                error: error instanceof Error ? error.message : String(error),});
             return "skipped" as const;
           }
         );
@@ -384,13 +376,8 @@ async function finalizeAsPublished(
     })
     .eq("id", slotId);
   if (error) {
-    console.error(
-      JSON.stringify({
-        msg: "slot finalize failed",
-        slot_id: slotId,
-        error: error.message,
-      })
-    );
+    log.error("slot finalize failed", {slot_id: slotId,
+        error: error.message,});
     return false;
   }
   return true;
@@ -459,13 +446,8 @@ async function park(
     { kind, message },
     slot.id
   ).catch((error) => {
-    console.error(
-      JSON.stringify({
-        msg: "decision raise failed",
-        slot_id: slot.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("decision raise failed", {slot_id: slot.id,
+        error: error instanceof Error ? error.message : String(error),});
   });
 }
 

@@ -9,7 +9,6 @@
  * optional W&B mirror (lib/traces/weave.ts) stays dormant without WANDB_API_KEY.
  */
 import { after, NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase";
 import {
   adminCsvHeader,
@@ -19,6 +18,7 @@ import {
   type TraceWindow,
 } from "@/lib/traces/receipts";
 import { mirrorReceipts, weaveEnabled } from "@/lib/traces/weave";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,9 +39,8 @@ function parseWindow(request: NextRequest): TraceWindow | null {
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const params = request.nextUrl.searchParams;
   const format = params.get("format") ?? "json";
   if (format !== "json" && format !== "csv" && format !== "jsonl") {

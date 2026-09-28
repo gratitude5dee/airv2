@@ -37,6 +37,7 @@ import {
   type BrowserProfileStatus,
 } from "../context/browser-profile";
 import { readLinkAuthDoc, type LinkAuthDoc } from "../payments/linkAuth";
+import { log } from "../log";
 
 const TABLE = "onboarding_status_mirror";
 
@@ -152,13 +153,8 @@ export async function writeStatusMirror(
       .upsert(row, { onConflict: "user_id" });
     if (error) throw new Error(error.message);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "onboarding mirror write failed",
-        user_id: userId,
-        error: error instanceof Error ? error.message : "unknown",
-      })
-    );
+    log.error("onboarding mirror write failed", {user_id: userId,
+        error: error instanceof Error ? error.message : "unknown",});
   }
 }
 

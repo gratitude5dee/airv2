@@ -18,7 +18,12 @@ import { command } from "../box/client";
 import { health, deleteJob, listJobs } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake, type UserBox } from "../orchestrator/boxes";
 import { botTarget, BOT_NAME_PATTERN, isValidBotName } from "./client";
-import type { BotAvatarKind, BotModelTier, BotRow } from "./store";
+import {
+  BOT_COLUMNS,
+  type BotAvatarKind,
+  type BotModelTier,
+  type BotRow,
+} from "./store";
 
 const HERMES_BIN = "/home/user/.hermes-venv/bin/hermes";
 const PROFILES_DIR = "/home/user/.hermes/profiles";
@@ -224,9 +229,7 @@ export async function provisionBot(
         status: "ready",
         group_label: options.groupLabel ?? null,
       })
-      .select(
-        "id, user_id, name, title, description, avatar_kind, avatar_ref, model_tier, api_server_key, status, group_label, created_at"
-      )
+      .select(BOT_COLUMNS)
       .single();
     if (error || !data) {
       throw new Error(`bots insert failed: ${error?.message}`);

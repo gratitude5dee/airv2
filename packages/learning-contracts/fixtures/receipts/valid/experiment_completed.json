@@ -1,0 +1,20 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "experiment_completed",
+  "idempotency_key": "f1e2d3c4b5a6978899aabbccddeeff00",
+  "occurred_at": "2026-09-20T05:01:44Z",
+  "trace_id": "tr_01h45axk3q0m9t2r7v8w4y6zbn",
+  "experiment_id": "exp_4f6a8c2d1e0b",
+  "candidate_id": "cand_8c2d1e0f9a7b",
+  "status": "passed",
+  "backend": "hud",
+  "aggregate": {
+    "tokens": 184320,
+    "cost_usd": 0.4127,
+    "latency_ms_p95": 8400,
+    "sample_count": 24,
+    "task_success_delta": 0.083,
+    "task_success_delta_lower95": 0.011,
+    "hard_gate_failures": 0
+  }
+}

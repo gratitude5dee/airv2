@@ -13,6 +13,7 @@ import {
   verifySignupToken,
 } from "@/lib/auth/session";
 import { provisionUser } from "@/lib/provisioning/provision";
+import { log } from "@/lib/log";
 
 export const maxDuration = 800;
 
@@ -57,9 +58,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!userId) {
     const result = await provisionUser({ boundPhone: grant.phone });
     userId = result.userId;
-    console.log(
-      JSON.stringify({ msg: "self-serve signup provisioned", user_id: userId })
-    );
+    log.info("self-serve signup provisioned", {user_id: userId});
   }
 
   // OTP verified: the account is claimed by its owner from birth.

@@ -1,0 +1,5 @@
+{"comment": "K130 \u2014 mini-app ships through the publish decision"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "open-miniapp create sourdough-tracker --fields time,ratio,photo_url"}}
+{"call": {"method": "POST", "path": "/api/miniapps/publish", "body": {"appname": "sourdough-tracker-$LANE", "name": "Sourdough Feedings", "description": "Log feeding time, ratio, and a photo URL for each feed."}}}
+{"sse": {"event": "message.delta", "delta": "Built the sourdough tracker and staged it for publish \u2014 it goes live only after you approve."}}
+{"sse": {"event": "run.completed"}}

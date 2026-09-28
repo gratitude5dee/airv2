@@ -5,7 +5,7 @@
  * stale drafts are left alone.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { listDrafts } from "../agentmail/client";
 import { queueEmailDraftReview } from "./review";
 import { sweepUnfiledDrafts } from "./draftSweep";
@@ -13,50 +13,28 @@ import { sweepUnfiledDrafts } from "./draftSweep";
 vi.mock("../agentmail/client", () => ({ listDrafts: vi.fn() }));
 vi.mock("./review", () => ({ queueEmailDraftReview: vi.fn() }));
 
-interface Row {
-  [key: string]: unknown;
-}
+const db = new FakeSupabase();
 
-function fakeSupabase(options: {
-  boxes: Row[];
-  addresses: Row[];
+/** A box active inside the 30-minute sweep window at NOW. */
+const ACTIVE_BOX = { user_id: "user-1", last_active_at: "2026-08-26T11:59:00Z" };
+const PRIMARY_INBOX = {
+  user_id: "user-1",
+  agentmail_inbox_id: "inbox-1",
+  retired_at: null,
+};
+
+function seed(options: {
+  boxes: Record<string, unknown>[];
+  addresses: Record<string, unknown>[];
   decisionRefs: string[];
 }) {
-  const client = {
-    from(table: string) {
-      const builder = {
-        select() {
-          return builder;
-        },
-        eq() {
-          return builder;
-        },
-        is() {
-          return builder;
-        },
-        in() {
-          return builder;
-        },
-        gte() {
-          return builder;
-        },
-        then(
-          resolve: (value: { data: Row[] }) => unknown,
-          reject?: (reason: unknown) => unknown
-        ) {
-          const data =
-            table === "boxes"
-              ? options.boxes
-              : table === "agent_addresses"
-                ? options.addresses
-                : options.decisionRefs.map((ref) => ({ ref }));
-          return Promise.resolve({ data }).then(resolve, reject);
-        },
-      };
-      return builder;
-    },
-  };
-  return client as unknown as SupabaseClient;
+  db.tables["boxes"] = options.boxes.map((row) => ({ ...row }));
+  db.tables["agent_addresses"] = options.addresses.map((row) => ({ ...row }));
+  db.tables["decisions"] = options.decisionRefs.map((ref) => ({
+    user_id: "user-1",
+    kind: "email_draft",
+    ref,
+  }));
 }
 
 const NOW = new Date("2026-08-26T12:00:00Z");
@@ -67,6 +45,7 @@ const TOO_OLD = new Date(NOW.getTime() - 72 * 3600_000).toISOString();
 describe("sweepUnfiledDrafts", () => {
   beforeEach(() => {
     process.env["MAIL_PROVIDER"] = "agentmail";
+    db.reset();
     vi.mocked(listDrafts).mockReset();
     vi.mocked(queueEmailDraftReview).mockReset().mockResolvedValue(undefined);
   });
@@ -80,11 +59,12 @@ describe("sweepUnfiledDrafts", () => {
         updated_at: AGE_OK,
       },
     ]);
-    const client = fakeSupabase({
-      boxes: [{ user_id: "user-1" }],
-      addresses: [{ user_id: "user-1", agentmail_inbox_id: "inbox-1" }],
+    seed({
+      boxes: [ACTIVE_BOX],
+      addresses: [PRIMARY_INBOX],
       decisionRefs: [],
     });
+    const client = db.client();
     const filed = await sweepUnfiledDrafts(client, NOW);
     expect(filed).toBe(1);
     expect(vi.mocked(queueEmailDraftReview)).toHaveBeenCalledWith(
@@ -98,12 +78,12 @@ describe("sweepUnfiledDrafts", () => {
     vi.mocked(listDrafts).mockResolvedValue([
       { draft_id: "draft-1", updated_at: AGE_OK },
     ]);
-    const client = fakeSupabase({
-      boxes: [{ user_id: "user-1" }],
-      addresses: [{ user_id: "user-1", agentmail_inbox_id: "inbox-1" }],
+    seed({
+      boxes: [ACTIVE_BOX],
+      addresses: [PRIMARY_INBOX],
       decisionRefs: ["draft-1"],
     });
-    const filed = await sweepUnfiledDrafts(client, NOW);
+    const filed = await sweepUnfiledDrafts(db.client(), NOW);
     expect(filed).toBe(0);
     expect(vi.mocked(queueEmailDraftReview)).not.toHaveBeenCalled();
   });
@@ -115,23 +95,19 @@ describe("sweepUnfiledDrafts", () => {
       { draft_id: "no-stamp" },
       { draft_id: "bad-stamp", updated_at: "not-a-date" },
     ]);
-    const client = fakeSupabase({
-      boxes: [{ user_id: "user-1" }],
-      addresses: [{ user_id: "user-1", agentmail_inbox_id: "inbox-1" }],
+    seed({
+      boxes: [ACTIVE_BOX],
+      addresses: [PRIMARY_INBOX],
       decisionRefs: [],
     });
-    const filed = await sweepUnfiledDrafts(client, NOW);
+    const filed = await sweepUnfiledDrafts(db.client(), NOW);
     expect(filed).toBe(0);
     expect(vi.mocked(queueEmailDraftReview)).not.toHaveBeenCalled();
   });
 
   it("does nothing when no box was recently active", async () => {
-    const client = fakeSupabase({
-      boxes: [],
-      addresses: [],
-      decisionRefs: [],
-    });
-    const filed = await sweepUnfiledDrafts(client, NOW);
+    seed({ boxes: [], addresses: [], decisionRefs: [] });
+    const filed = await sweepUnfiledDrafts(db.client(), NOW);
     expect(vi.mocked(listDrafts)).not.toHaveBeenCalled();
     expect(filed).toBe(0);
   });

@@ -1,0 +1,4 @@
+{"comment": "K107 \u2014 read-only tracking check"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://orders.example.com"}}
+{"sse": {"event": "message.delta", "delta": "Tracking says the jacket is still in transit \u2014 the carrier shows no delivery estimate yet."}}
+{"sse": {"event": "run.completed"}}

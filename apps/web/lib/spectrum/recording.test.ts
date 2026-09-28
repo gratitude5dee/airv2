@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRecordingSpectrumSender } from "./recording";
+import { expectLog } from "../testing/expectLog";
+import { createUrlRecordingSpectrumSender } from "./recording";
 import { createSpectrumSender } from "./sender";
 import { createFastReactionSender } from "./fast-reaction";
 
@@ -29,10 +30,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("createRecordingSpectrumSender", () => {
+describe("createUrlRecordingSpectrumSender", () => {
   it("posts one event per outbound action, in send order", async () => {
     const events = stubRecorder();
-    const sender = createRecordingSpectrumSender("http://127.0.0.1:1/record");
+    const sender = createUrlRecordingSpectrumSender("http://127.0.0.1:1/record");
 
     await sender.startTyping("space-1", "+15551234567");
     await sender.markRead("space-1", "+15551234567", "msg-1");
@@ -76,7 +77,7 @@ describe("createRecordingSpectrumSender", () => {
 
   it("records one event per streamed chunk", async () => {
     const events = stubRecorder();
-    const sender = createRecordingSpectrumSender("http://127.0.0.1:1/record");
+    const sender = createUrlRecordingSpectrumSender("http://127.0.0.1:1/record");
 
     async function* stream() {
       yield "hello ";
@@ -92,7 +93,7 @@ describe("createRecordingSpectrumSender", () => {
 
   it("records sendApp/editApp with resolved urls and returns the documented fallbacks", async () => {
     const events = stubRecorder();
-    const sender = createRecordingSpectrumSender("http://127.0.0.1:1/record");
+    const sender = createUrlRecordingSpectrumSender("http://127.0.0.1:1/record");
 
     const session = {
       chatGuid: "chat",
@@ -144,11 +145,12 @@ describe("createRecordingSpectrumSender", () => {
         throw new Error("connection refused");
       })
     );
-    const sender = createRecordingSpectrumSender("http://127.0.0.1:1/record");
+    const sender = createUrlRecordingSpectrumSender("http://127.0.0.1:1/record");
     await expect(
       sender.sendText("space-1", "+15551234567", "hi")
     ).resolves.toBeUndefined();
     await sender.close();
+    expectLog(/eval spectrum record failed/, { level: "warn" });
   });
 });
 

@@ -1,18 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { isBackgroundId, DEFAULT_BACKGROUND } from "./backgrounds";
 import { userStyle, withStyle } from "./themeContext";
 import { renderShell, shellHtml } from "./shell";
 import { theme } from "./themes";
 
 function usersClient(row: Record<string, string> | null): SupabaseClient {
-  return {
-    from: () => ({
-      select: () => ({
-        eq: () => ({ maybeSingle: async () => ({ data: row }) }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const db = new FakeSupabase();
+  if (row) db.tables["users"] = [{ id: "u1", ...row }];
+  return db.client();
 }
 
 describe("backgrounds", () => {

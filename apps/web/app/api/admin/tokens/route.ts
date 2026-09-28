@@ -10,7 +10,6 @@
  * rows stay as they were so the existing Tokens tab binds unchanged.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
 import {
   aggregateGroups,
   asTokensRun,
@@ -21,6 +20,7 @@ import {
   type TokensRun,
 } from "@/lib/admin/tokenGroups";
 import { serviceClient } from "@/lib/supabase";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,9 +46,8 @@ function groupParam(request: NextRequest): TokensGroup | null {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const days = windowDays(request);
   if (days === null) {
     return NextResponse.json(

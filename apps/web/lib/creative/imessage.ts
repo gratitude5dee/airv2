@@ -30,6 +30,7 @@ import {
 } from "./parse";
 import { executeCreativeJob } from "./run";
 import { removeStagedInputs, stageCreativeInputs } from "./store";
+import { log } from "../log";
 
 const ATTACHMENT_MARKER = /\[attachment:([^\]]+)\]/g;
 
@@ -46,15 +47,10 @@ async function trySend(
     await send();
     return true;
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "creative delivery send failed",
-        stage,
+    log.error("creative delivery send failed", {stage,
         user_id: job.userId,
         space_id: job.spaceId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+        error: error instanceof Error ? error.message : String(error),});
     return false;
   }
 }
@@ -72,13 +68,10 @@ function logCreativeLatency(
   stage: string,
   startedAtMs: number,
 ): void {
-  console.info(JSON.stringify({
-    msg: "creative imessage latency",
-    user_id: job.userId,
+  log.info("creative imessage latency", {user_id: job.userId,
     space_id: job.spaceId,
     stage,
-    elapsed_ms: Math.max(0, Date.now() - startedAtMs),
-  }));
+    elapsed_ms: Math.max(0, Date.now() - startedAtMs),});
 }
 
 /**
@@ -94,11 +87,14 @@ export async function maybeRunCreativeLane(
   const startedAtMs = Number.isFinite(job.receivedAtMs)
     ? Number(job.receivedAtMs)
     : Date.now();
-  // Strip debounce framing so the parser sees only the user's words.
+  // Strip debounce framing — the carried prefix and the R-SEC-02 sender
+  // labels — so the parser sees only the user's words.
   const attachmentIds: string[] = [];
   const text = rawInput
     .split("\n")
-    .map((line) => line.replace(/^\[Earlier message\] /, ""))
+    .map((line) =>
+      line.replace(/^(?:\[Earlier message\] )?(?:\[from [^\]]*\] )?/, "")
+    )
     .join("\n")
     .replace(ATTACHMENT_MARKER, (_, ids: string) => {
       attachmentIds.push(...ids.split(",").filter(Boolean));
@@ -242,15 +238,10 @@ export async function deliverCreativeResult(
       sender.sendAttachment(job.spaceId, job.phone, bytes, { name, mimeType }),
     );
   } else {
-    console.error(
-      JSON.stringify({
-        msg: "creative delivery send failed",
-        stage: "asset_download",
+    log.error("creative delivery send failed", {stage: "asset_download",
         user_id: job.userId,
         space_id: job.spaceId,
-        error: download.error?.message ?? "empty asset download",
-      }),
-    );
+        error: download.error?.message ?? "empty asset download",});
   }
   if (!sent && result.deliveryUrl) {
     // Fallbacks carry only the short-TTL signed delivery URL.
@@ -272,15 +263,10 @@ export async function deliverCreativeResult(
   );
   if (!sent && !captionSent) {
     // The job is `delivered` in the database and the chat saw nothing.
-    console.error(
-      JSON.stringify({
-        msg: "creative delivery silent",
-        user_id: job.userId,
+    log.error("creative delivery silent", {user_id: job.userId,
         space_id: job.spaceId,
         job_id: jobId,
-        mode,
-      }),
-    );
+        mode,});
   }
 }
 

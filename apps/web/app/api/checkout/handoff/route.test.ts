@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const createCheckoutHandoff = vi.hoisted(() => vi.fn());
 const findActiveCheckoutHumanControl = vi.hoisted(() => vi.fn());
@@ -18,20 +19,9 @@ vi.mock("@/lib/checkout/handoffs", () => ({
 }));
 vi.mock("@/lib/miniapps/cards", () => ({ refreshCheckoutCard }));
 
-const box = { user_id: "owner-1" };
-const destination = { space_id: "space-1", phone: "+15550001111" };
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from(table: string) {
-      const row = table === "boxes" ? box : table === "imessage_destinations" ? destination : null;
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        maybeSingle: async () => ({ data: row, error: null }),
-      };
-      return chain;
-    },
-  }),
+  serviceClient: () => db.client(),
 }));
 
 import { GET, PATCH, POST } from "./route";
@@ -50,6 +40,11 @@ function request(method: "GET" | "POST" | "PATCH", body?: unknown, token = "good
 
 beforeEach(() => {
   vi.clearAllMocks();
+  db.reset();
+  db.tables["boxes"] = [{ user_id: "owner-1", gateway_token: "good-token" }];
+  db.tables["imessage_destinations"] = [
+    { user_id: "owner-1", space_id: "space-1", phone: "+15550001111" },
+  ];
   createCheckoutHandoff.mockResolvedValue({ id: "123e4567-e89b-12d3-a456-426614174000" });
   findActiveCheckoutHumanControl.mockResolvedValue(null);
   getCheckoutHandoff.mockResolvedValue({

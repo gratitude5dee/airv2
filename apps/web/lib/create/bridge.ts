@@ -12,6 +12,7 @@
  * the request path only (`/v1/jobs/<id>/events`), never the origin.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { db } from "../db";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 
@@ -84,10 +85,10 @@ export async function claimBridgeNonce(
   sig: string
 ): Promise<NonceClaim> {
   const cutoff = new Date(Date.now() - NONCE_TTL_MS).toISOString();
-  await supabase
-    .from("create_bridge_nonces")
-    .delete()
-    .lt("created_at", cutoff);
+  await db.write(
+    supabase.from("create_bridge_nonces").delete().lt("created_at", cutoff),
+    { what: "expire create bridge nonces" }
+  );
   const { data, error } = await supabase
     .from("create_bridge_nonces")
     .upsert({ sig }, { onConflict: "sig", ignoreDuplicates: true })

@@ -34,11 +34,17 @@ const rewriteOnairosBase = {
 };
 
 await build({
-  entryPoints: [join(root, "lib/miniapps/client/onairos-connect.tsx")],
-  outfile: join(root, "public/creator-os/onairos-connect.js"),
+  entryPoints: [
+    { in: join(root, "lib/miniapps/client/onairos-connect.tsx"), out: "onairos-connect" },
+  ],
+  outdir: join(root, "public/creator-os"),
+  // R-PERF-07: ESM + splitting keeps the entry a tiny shell — react-dom and
+  // the ~3 MB onairos SDK land in chunks/onairos/ and load on first intent.
+  chunkNames: "chunks/onairos/[name]-[hash]",
   bundle: true,
   minify: true,
-  format: "iife",
+  format: "esm",
+  splitting: true,
   platform: "browser",
   jsx: "automatic",
   define: { "process.env.NODE_ENV": '"production"' },

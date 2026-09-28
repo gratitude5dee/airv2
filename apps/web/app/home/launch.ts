@@ -1,5 +1,7 @@
 "use client";
 
+import { log } from "@/lib/log";
+
 /**
  * D12 shared mini-app launcher: every "open app" affordance in /home goes
  * through here. Opens a placeholder window synchronously so popup blockers
@@ -51,13 +53,8 @@ export async function launchMiniAppDetailed(
   const t0 = performance.now();
   const win = window.open("about:blank", "_blank");
   if (!win) {
-    console.warn(
-      JSON.stringify({
-        msg: "miniapp launch popup blocked",
-        slug,
-        ms: round(performance.now() - t0),
-      })
-    );
+    log.warn("miniapp launch popup blocked", {slug,
+        ms: round(performance.now() - t0),});
   }
   try {
     const mintStart = performance.now();
@@ -75,45 +72,30 @@ export async function launchMiniAppDetailed(
       if (win) win.location.href = data.url;
       else window.open(data.url, "_blank", "noopener");
       const ms = round(performance.now() - t0);
-      console.info(
-        JSON.stringify({
-          msg: "miniapp launch",
-          slug,
+      log.info("miniapp launch", {slug,
           status: res.status,
           mint_ms: mintMs,
           nav_ms: round(performance.now() - navStart),
           ms,
-          popup_blocked: !win,
-        })
-      );
+          popup_blocked: !win,});
       return { ok: true, slug, ms, mintMs, status: res.status };
     }
     win?.close();
     const ms = round(performance.now() - t0);
     const reason: LaunchFailure = res.ok ? "empty_url" : "mint_not_ok";
-    console.error(
-      JSON.stringify({
-        msg: "miniapp launch failed",
-        slug,
+    log.error("miniapp launch failed", {slug,
         reason,
         status: res.status,
         mint_ms: mintMs,
-        ms,
-      })
-    );
+        ms,});
     return { ok: false, slug, ms, mintMs, status: res.status, reason };
   } catch (err) {
     win?.close();
     const ms = round(performance.now() - t0);
-    console.error(
-      JSON.stringify({
-        msg: "miniapp launch failed",
-        slug,
+    log.error("miniapp launch failed", {slug,
         reason: "fetch_threw",
         error: err instanceof Error ? err.message : String(err),
-        ms,
-      })
-    );
+        ms,});
     return { ok: false, slug, ms, mintMs: ms, reason: "fetch_threw" };
   }
 }

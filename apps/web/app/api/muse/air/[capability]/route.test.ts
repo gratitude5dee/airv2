@@ -36,7 +36,7 @@ vi.mock("@/lib/muse/spend", () => ({
 
 import { POST } from "./route";
 import { sendWalletTokens } from "@/lib/thirdweb/client";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const BASE = "https://air.test/api/muse/air/";
 const USER = "user-1";
@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env["MUSE_ENABLED"] = "true";
   process.env["MUSE_WORKER_TOKEN"] = "worker-secret";
-  db.fake = new AdminFakeDb();
+  db.fake = new FakeSupabase();
 });
 
 describe("POST /api/muse/air/[capability]", () => {
@@ -74,13 +74,13 @@ describe("POST /api/muse/air/[capability]", () => {
   it("403s a user without a Muse grant and has no side effect", async () => {
     const response = await post("wallet-request", walletBody, "worker-secret");
     expect(response.status).toBe(403);
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     expect(fake.inserts).toHaveLength(0);
     expect(sendWalletTokens).not.toHaveBeenCalled();
   });
 
   it("files an approval decision and never calls executeTransfer", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     fake.rows("muse_grants").push({ user_id: USER, scopes: ["profile", "wallet:request"], revoked_at: null });
     const response = await post("wallet-request", walletBody, "worker-secret");
     expect(response.status).toBe(200);
@@ -100,7 +100,7 @@ describe("POST /api/muse/air/[capability]", () => {
   });
 
   it("403s a grant that lacks the capability's scope", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     fake.rows("muse_grants").push({ user_id: USER, scopes: ["profile"], revoked_at: null });
     const response = await post("wallet-request", walletBody, "worker-secret");
     expect(response.status).toBe(403);

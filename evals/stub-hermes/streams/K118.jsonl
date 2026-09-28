@@ -1,0 +1,4 @@
+{"comment": "K118 \u2014 Austin trip plan; no bookings"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://flights.example.com"}}
+{"sse": {"event": "message.delta", "delta": "Long weekend in Austin: three flight options under $400 from SFO and two downtown hotels \u2014 nothing is reserved; the itinerary sketch is below."}}
+{"sse": {"event": "run.completed"}}

@@ -1,0 +1,9 @@
+{"comment": "K143 \u2014 three urgent replies drafted, all pending"}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: sara@example.com, subject: Re: Contract question"}}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: mike@example.com, subject: Re: Booking Thursday"}}
+{"sse": {"event": "tool.started", "tool": "mcp__wzrdmail__create_draft", "preview": "to: venue@example.com, subject: Re: Load-in time"}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-k143-1-$LANE", "inbox_id": "inbox-eval"}}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-k143-2-$LANE", "inbox_id": "inbox-eval"}}}
+{"call": {"method": "POST", "path": "/api/email/drafts/review", "body": {"draft_id": "d-k143-3-$LANE", "inbox_id": "inbox-eval"}}}
+{"sse": {"event": "message.delta", "delta": "Three drafts are waiting in your review \u2014 each under five lines, in your voice."}}
+{"sse": {"event": "run.completed"}}

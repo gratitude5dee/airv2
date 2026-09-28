@@ -68,6 +68,7 @@ vi.mock("@/lib/provisioning/provision", () => ({
 
 import { GET } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 const userId = "11111111-1111-4111-8111-111111111111";
 const base = `https://air.test/api/admin/health?user_id=${userId}`;
 const authed = (url = base) =>
@@ -299,6 +300,7 @@ describe("GET /api/admin/health", () => {
       error: "health data unavailable",
       sources: ["agent_runs"],
     });
+    expectLog(/admin\ health\ query\ failed/, { level: "error" });
   });
 
   it.each(["box_channels", "template_releases"])(
@@ -318,6 +320,7 @@ describe("GET /api/admin/health", () => {
         error: "health data unavailable",
         sources: [table],
       });
+    expectLog(/admin\ health\ query\ failed/, { level: "error", optional: true });
     }
   );
 

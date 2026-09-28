@@ -60,7 +60,7 @@ export const ICON_ROUTE = "/api/create/icon";
 /* ----------------------------------------------------------------- intake */
 
 /** Mirrors INTAKE_STAGES in lib/create/intake.ts (§5.1); that module reads
- * process.env and cannot ride in the browser bundle. */
+ * server env vars and cannot ride in the browser bundle. */
 export const INTAKE_STAGES = [
   "asking",
   "planning",

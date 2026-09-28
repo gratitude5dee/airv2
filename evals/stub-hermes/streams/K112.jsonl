@@ -1,0 +1,4 @@
+{"comment": "K112 \u2014 delivery address updated; reported factually"}
+{"sse": {"event": "tool.started", "tool": "execute_code", "preview": "air-kernel browser create --site https://doordash.example.com/account/addresses"}}
+{"sse": {"event": "message.delta", "delta": "Updated your DoorDash delivery address to the new apartment."}}
+{"sse": {"event": "run.completed"}}

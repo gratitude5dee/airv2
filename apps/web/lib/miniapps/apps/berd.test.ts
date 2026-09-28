@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MiniAppContext } from "@/lib/miniapps/apps/types";
 import { makeApp } from "@/app/mini/loader-test-utils";
 import { normalizeBerdDoc } from "@/lib/miniapps/berd/state";
-import { FakeDb } from "@/lib/miniapps/testing/fakeSupabase";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import {
   beginBerdPairing,
   berdHeartbeat,
@@ -45,7 +45,14 @@ import { berd } from "@/lib/miniapps/apps/berd";
 
 const DOC_PATH = ".hermes/miniapps/berd/default.json";
 
-let db = new FakeDb();
+function newDb(): FakeSupabase {
+  // Postgres column defaults the impl relies on: links insert as paired.
+  const db = new FakeSupabase();
+  db.defaults["berd_links"] = { status: "paired" };
+  return db;
+}
+
+let db = newDb();
 
 function makeCtx(role = "owner"): MiniAppContext {
   return {
@@ -70,7 +77,7 @@ beforeAll(() => {
 
 afterEach(() => {
   boxFiles.clear();
-  db = new FakeDb();
+  db = newDb();
 });
 
 describe("berd mini-app", () => {

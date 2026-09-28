@@ -16,7 +16,14 @@ import {
   type HostedRoute,
 } from "../box/client";
 import { health, type HermesBoxTarget } from "../hermes/client";
+import { log } from "../log";
 import { mirrorBrandIfStale } from "../brand/mirror";
+import {
+  loadBoxCredentials,
+  type BoxCredentials,
+  recordDashboardRoute,
+  recordHostedRoute,
+} from "../box/credentials";
 import { recordBoxStateEvent } from "../box/events";
 import { boxTarget } from "../compute/runtime";
 import { assertAdmissionOpen } from "../migration/admission";
@@ -39,16 +46,6 @@ export interface UserBox {
   dashboard?: HostedRoute | undefined;
   /** Sealed dashboard basic-auth password (CM1/CC10). Server-side only. */
   dashboardAuthSealed?: string | undefined;
-}
-
-interface BoxRow {
-  provider_box_id: string;
-  hosted_url: string;
-  hosted_token: string;
-  api_server_key: string;
-  dashboard_url: string | null;
-  dashboard_token: string | null;
-  dashboard_auth: string | null;
 }
 
 export const API_SERVER_PORT = 8642;
@@ -91,13 +88,8 @@ export async function afterResume(boxId: string): Promise<void> {
       return;
     } catch (error) {
       if (attempt === AFTER_RESUME_ATTEMPTS) {
-        console.error(
-          JSON.stringify({
-            msg: "post-resume box housekeeping failed",
-            box_id: boxId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
+        log.error("post-resume box housekeeping failed", {box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),});
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, AFTER_RESUME_RETRY_MS));
@@ -115,10 +107,7 @@ async function refreshApiServerRoute(
   boxId: string
 ): Promise<HostedRoute> {
   const apiServer = await hostRoute(boxId, API_SERVER_PORT);
-  await supabase
-    .from("boxes")
-    .update({ hosted_url: apiServer.url, hosted_token: apiServer.token })
-    .eq("provider_box_id", boxId);
+  await recordHostedRoute(supabase, boxId, apiServer);
   return apiServer;
 }
 
@@ -135,19 +124,11 @@ export async function refreshDashboardRoute(
 ): Promise<HostedRoute | null> {
   try {
     const dashboard = await hostRoute(boxId, DASHBOARD_PORT);
-    await supabase
-      .from("boxes")
-      .update({ dashboard_url: dashboard.url, dashboard_token: dashboard.token })
-      .eq("provider_box_id", boxId);
+    await recordDashboardRoute(supabase, boxId, dashboard);
     return dashboard;
   } catch (error) {
-    console.log(
-      JSON.stringify({
-        msg: "dashboard route refresh failed",
-        box_id: boxId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.info("dashboard route refresh failed", {box_id: boxId,
+        error: error instanceof Error ? error.message : String(error),});
     return null;
   }
 }
@@ -164,13 +145,14 @@ export async function prewarmBox(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
+  let boxId = "";
   try {
     const { data } = await supabase
       .from("boxes")
       .select("provider_box_id")
       .eq("user_id", userId)
       .maybeSingle();
-    const boxId = (data?.provider_box_id as string | undefined) ?? "";
+    boxId = (data?.provider_box_id as string | undefined) ?? "";
     if (!boxId) return;
     const box = await getBox(boxId);
     if (box.state === "ready" || box.state === "idle") return;
@@ -180,13 +162,9 @@ export async function prewarmBox(
       .update({ state: "starting", last_active_at: new Date().toISOString() })
       .eq("provider_box_id", boxId);
   } catch (error) {
-    console.log(
-      JSON.stringify({
-        msg: "box prewarm skipped",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.info("box prewarm skipped", {user_id: userId,
+        box_id: boxId || null,
+        error: error instanceof Error ? error.message : String(error),});
   }
 }
 
@@ -233,31 +211,13 @@ export async function peekUserBox(
   supabase: SupabaseClient,
   userId: string
 ): Promise<UserBox | null> {
-  const { data, error } = await supabase
-    .from("boxes")
-    .select(
-      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth, state"
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    throw new Error(`box lookup failed for user ${userId}: ${error.message}`);
-  }
-  if (!data) return null;
-  const row = data as BoxRow & { state: string | null };
-  if (row.state !== "ready") return null;
+  const creds = await loadBoxCredentials(supabase, userId);
+  if (!creds || creds.state !== "ready") return null;
   return {
-    boxId: row.provider_box_id,
-    target: {
-      hostedUrl: row.hosted_url,
-      hostedToken: row.hosted_token,
-      apiServerKey: row.api_server_key,
-    },
-    dashboard:
-      row.dashboard_url && row.dashboard_token !== null
-        ? { url: row.dashboard_url, token: row.dashboard_token }
-        : undefined,
-    dashboardAuthSealed: row.dashboard_auth ?? undefined,
+    boxId: creds.boxId,
+    target: creds.target,
+    dashboard: creds.dashboard,
+    dashboardAuthSealed: creds.dashboardAuthSealed,
   };
 }
 
@@ -291,24 +251,11 @@ export async function ensureBoxAwake(
   // The pause window of a live migration holds box work out; callers should
   // translate MigrationBusyError to a retryable response where they have one.
   await assertAdmissionOpen(supabase, userId);
-  const { data, error: selectError } = await supabase
-    .from("boxes")
-    .select(
-      "provider_box_id, hosted_url, hosted_token, api_server_key, dashboard_url, dashboard_token, dashboard_auth"
-    )
-    .eq("user_id", userId)
-    .maybeSingle();
-  // A failed query (e.g. a migration missing a selected column) is not the
-  // same as a missing row — surface it as its own error so an infra problem
-  // never reads as "this user has no box".
-  if (selectError) {
-    throw new Error(`box lookup failed for user ${userId}: ${selectError.message}`);
-  }
-  if (!data) {
+  const creds = await loadBoxCredentials(supabase, userId);
+  if (!creds) {
     throw new Error(`no box for user ${userId}`);
   }
-  const row = data as BoxRow;
-  const boxId = row.provider_box_id;
+  const boxId = creds.boxId;
 
   await supabase
     .from("boxes")
@@ -317,7 +264,7 @@ export async function ensureBoxAwake(
 
   const inFlight = wakeWaiters.get(boxId);
   if (inFlight) return inFlight;
-  const waiter = wakeBox(supabase, userId, row).finally(() => {
+  const waiter = wakeBox(supabase, userId, creds).finally(() => {
     // Only the entry that is still this waiter may be cleared — a wake that
     // finished and a new one started for the same box must not be deleted
     // out from under the newer caller.
@@ -336,9 +283,9 @@ export async function ensureBoxAwake(
 async function wakeBox(
   supabase: SupabaseClient,
   userId: string,
-  row: BoxRow
+  creds: BoxCredentials
 ): Promise<UserBox> {
-  const boxId = row.provider_box_id;
+  const boxId = creds.boxId;
   let wroteStarting = false;
   try {
   const box = await getBox(boxId);
@@ -380,17 +327,8 @@ async function wakeBox(
     void afterResume(boxId);
   }
 
-  let target: HermesBoxTarget = {
-    hostedUrl: row.hosted_url,
-    hostedToken: row.hosted_token,
-    apiServerKey: row.api_server_key,
-  };
-  // Namespace/Tenki ingress carries no route token (token is ""), so the
-  // route exists whenever a URL does.
-  const dashboard: HostedRoute | undefined =
-    row.dashboard_url && row.dashboard_token !== null
-      ? { url: row.dashboard_url, token: row.dashboard_token }
-      : undefined;
+  let target: HermesBoxTarget = { ...creds.target };
+  const dashboard: HostedRoute | undefined = creds.dashboard;
 
   // The hosted token rotates across stop/resume; hermes-host re-registers on
   // boot but the stored token may be stale. Probe, then refresh once.
@@ -431,13 +369,8 @@ async function wakeBox(
       refreshed = true;
       if (await health(target)) break;
     } catch (error) {
-      console.log(
-        JSON.stringify({
-          msg: "hosted route refresh retrying",
-          box_id: boxId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+      log.info("hosted route refresh retrying", {box_id: boxId,
+          error: error instanceof Error ? error.message : String(error),});
     }
     probe += 1;
     await new Promise((resolve) => setTimeout(resolve, wakeProbeDelayMs(probe)));
@@ -463,13 +396,8 @@ async function wakeBox(
           await import("../provisioning/connectors");
         await writeConnectedToolsFile(supabase, userId, boxTarget(boxId));
       } catch (error) {
-        console.log(
-          JSON.stringify({
-            msg: "post-wake connector convergence failed",
-            box_id: boxId,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        log.info("post-wake connector convergence failed", {box_id: boxId,
+            error: error instanceof Error ? error.message : String(error),});
       }
     })();
   }
@@ -488,13 +416,20 @@ async function wakeBox(
     boxId,
     target,
     dashboard,
-    dashboardAuthSealed: row.dashboard_auth ?? undefined,
+    dashboardAuthSealed: creds.dashboardAuthSealed,
   };
   } catch (error) {
     // The deadline was cleared above and the caller's re-arm will never run
     // for a wake that throws — restore it so the sweeper can still stop the
-    // box.
-    await armStopAfter(supabase, userId).catch(() => undefined);
+    // box. A swallowed failure here keeps the box awake ~30 min — log it so
+    // the leak is visible (R-ARCH-06).
+    await armStopAfter(supabase, userId).catch((error: unknown) =>
+      log.error("arm stop_after after wake failure failed", {
+        user_id: userId,
+        box_id: boxId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
     // A wake that dies after the "starting" write (waitForBox throwing, the
     // health loop deadline) must not park the row in a transitional state
     // the UI has no controls for: persist the provider's real state.

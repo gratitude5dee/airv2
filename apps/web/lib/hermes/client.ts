@@ -51,6 +51,15 @@ export interface RunRequest {
   /** Extra system instructions for this run (Create injects the Kit's
    * system prompt + project context here, §9.2). */
   instructions?: string;
+  /** Turn-author attribution (`author` on /v1/runs → hermes turn_author):
+   * a memory-attribution label for who wrote the user side — set on
+   * non-owner turns so memory writes are never credited to the owner.
+   * It grants nothing; omit it on owner turns. */
+  author?: { id: string; name: string; is_bot: boolean };
+  /** Stable dedup key for the unit of work the run answers: a retried
+   * burst resends the same key so the run endpoint cannot start a second
+   * run while the first is still alive (R-ARCH-06). */
+  idempotencyKey?: string;
 }
 
 const RunResponseSchema = z.object({ run_id: z.string() });
@@ -72,10 +81,19 @@ function url(target: HermesBoxTarget, path: string): string {
 // The hosted proxy authenticates via the _port_auth cookie: passing `?_token`
 // only triggers a 302 that sets the cookie and strips the query, which
 // server-side fetch cannot follow. Send the cookie directly.
+export function hermesAuthHeaders(
+  target: HermesBoxTarget,
+  apiServerKey?: string
+): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiServerKey ?? target.apiServerKey}`,
+    Cookie: `_port_auth=${target.hostedToken}`,
+  };
+}
+
 function headers(target: HermesBoxTarget): HeadersInit {
   return {
-    Authorization: `Bearer ${target.apiServerKey}`,
-    Cookie: `_port_auth=${target.hostedToken}`,
+    ...hermesAuthHeaders(target),
     "Content-Type": "application/json",
   };
 }
@@ -165,8 +183,12 @@ export async function createRun(
       ...(request.sessionId ? { session_id: request.sessionId } : {}),
       ...(history.length > 0 ? { conversation_history: history } : {}),
       ...(request.metadata ? { metadata: request.metadata } : {}),
+      ...(request.author ? { author: request.author } : {}),
       ...(request.model ? { model: request.model } : {}),
       ...(request.instructions ? { instructions: request.instructions } : {}),
+      ...(request.idempotencyKey
+        ? { idempotency_key: request.idempotencyKey }
+        : {}),
     }),
   });
 }

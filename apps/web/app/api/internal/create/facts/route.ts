@@ -20,6 +20,7 @@ import {
 import { getRegistryAppById } from "@/lib/miniapps/registry";
 import { recordCheckScore, QaError } from "@/lib/create/qa";
 import { TestResultsSchema } from "@/lib/create/tests";
+import { log } from "@/lib/log";
 
 export const maxDuration = 60;
 
@@ -135,9 +136,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             await advanceIntake(supabase, job.user_id, app.appname, event, { app_id: job.app_id });
           } catch (error) {
             if (!(error instanceof IntakeError)) throw error;
-            console.log(
-              JSON.stringify({ msg: "create facts intake skipped", event, job_id: job.id })
-            );
+            log.info("create facts intake skipped", {event, job_id: job.id});
           }
         }
       }

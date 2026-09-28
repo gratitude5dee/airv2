@@ -7,23 +7,25 @@
  * Account rows are never touched here (that's /api/admin/provision).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { adminAuthorized } from "@/lib/admin/auth";
+import { guardResponse, requireAdmin } from "@/lib/auth/guard";
 import { provisionComputeWithWelcome } from "@/lib/provisioning/welcome";
 import { serviceClient } from "@/lib/supabase";
+import { z } from "zod";
+import { parseBody } from "@/lib/http/body";
 
 export const runtime = "nodejs";
+const Body = z.object({ user_id: z.string().min(1) });
+
 export const dynamic = "force-dynamic";
 // Same budget as the signup after() path (inbound route maxDuration 800).
 export const maxDuration = 800;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!adminAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const body = (await request.json().catch(() => ({}))) as {
-    user_id?: unknown;
-  };
-  const userId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+  const auth = await requireAdmin(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const userId = parsed.data.user_id.trim();
   if (!userId) {
     return NextResponse.json({ error: "user_id required" }, { status: 400 });
   }

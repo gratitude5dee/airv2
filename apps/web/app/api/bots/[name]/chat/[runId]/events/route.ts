@@ -10,6 +10,7 @@ import { SSE_HEADERS } from "@/lib/chat/relay";
 import { botEventStream } from "@/lib/bots/chat";
 import { getBot } from "@/lib/bots/store";
 import { isValidBotName } from "@/lib/bots/client";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,9 +38,7 @@ export async function GET(
     return new Response(stream, { headers: SSE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    console.error(
-      JSON.stringify({ msg: "bot events proxy failed", user_id: userId, bot: name, error: message })
-    );
+    log.error("bot events proxy failed", {user_id: userId, bot: name, error: message});
     return NextResponse.json({ error: "stream failed" }, { status: 500 });
   }
 }

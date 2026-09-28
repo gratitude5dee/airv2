@@ -15,6 +15,7 @@ import { BoxApiError } from "@/lib/box/client";
 import { createSpectrumSender } from "@/lib/spectrum/sender";
 import { PLAN_DELIVERIES_PER_HOUR, PlanError, deliverPlan } from "@/lib/create/plan";
 import { overLimit, recordOpsEvent } from "@/lib/security/limits";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,15 +47,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await sender.close().catch(() => undefined);
     }
     await recordOpsEvent(supabase, "plan", userId, appname, receipt.bytes);
-    console.log(
-      JSON.stringify({
-        msg: "plan delivered",
-        user_id: userId,
+    log.info("plan delivered", {user_id: userId,
         appname,
         delivered: receipt.delivered,
-        bytes: receipt.bytes,
-      })
-    );
+        bytes: receipt.bytes,});
     return NextResponse.json(receipt);
   } catch (error) {
     if (error instanceof PlanError || error instanceof PublishError) {

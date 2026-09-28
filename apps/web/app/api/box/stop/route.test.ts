@@ -48,6 +48,7 @@ vi.mock("@/lib/box/events", () => events);
 
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 const post = () =>
   new NextRequest("https://air.test/api/box/stop", { method: "POST" });
 
@@ -71,6 +72,7 @@ describe("POST /api/box/stop", () => {
       { state: "stopped", stop_after: null },
     ]);
     expect(events.recordBoxStateEvent).toHaveBeenCalledWith(expect.anything(), "u1", "stopped");
+    expectLog(/migration\ exclusion\ check\ failed\ open/, { level: "error" });
   });
 
   it("keeps the row stopping when the provider is still finishing the stop", async () => {
@@ -82,6 +84,7 @@ describe("POST /api/box/stop", () => {
     expect(await res.json()).toEqual({ state: "stopping" });
     expect(boxUpdates()).toEqual([{ state: "stopping", last_active_at: expect.any(String) }]);
     expect(events.recordBoxStateEvent).not.toHaveBeenCalled();
+    expectLog(/migration\ exclusion\ check\ failed\ open/, { level: "error" });
   });
 
   it("keeps the row stopping while the provider is still archiving", async () => {
@@ -93,6 +96,7 @@ describe("POST /api/box/stop", () => {
     expect(await res.json()).toEqual({ state: "stopping" });
     expect(boxUpdates()).toEqual([{ state: "stopping", last_active_at: expect.any(String) }]);
     expect(events.recordBoxStateEvent).not.toHaveBeenCalled();
+    expectLog(/migration\ exclusion\ check\ failed\ open/, { level: "error" });
   });
 
   it("puts the row back to ready when the provider refuses the stop", async () => {
@@ -105,6 +109,8 @@ describe("POST /api/box/stop", () => {
       { state: "ready" },
     ]);
     expect(events.recordBoxStateEvent).not.toHaveBeenCalled();
+    expectLog(/migration\ exclusion\ check\ failed\ open/, { level: "error" });
+    expectLog(/user\ stop\ refused/, { level: "error" });
   });
 
   it("is a no-op for a row already stopping or stopped", async () => {
@@ -113,5 +119,6 @@ describe("POST /api/box/stop", () => {
     expect(await res.json()).toEqual({ state: "stopping" });
     expect(provider.stop).not.toHaveBeenCalled();
     expect(boxUpdates()).toEqual([]);
+    expectLog(/migration\ exclusion\ check\ failed\ open/, { level: "error" });
   });
 });

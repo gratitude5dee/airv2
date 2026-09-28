@@ -12,6 +12,7 @@ import { compileBrand, validateBrandSource } from "@/lib/brand/compile";
 import { mirrorBrandToBox } from "@/lib/brand/mirror";
 import { getBox } from "@/lib/box/client";
 import { asRecord } from "@/lib/records";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,9 +30,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
-    console.error(
-      JSON.stringify({ msg: "brand kit load failed", user_id: userId, error: error.message })
-    );
+    log.error("brand kit load failed", {user_id: userId, error: error.message});
     return NextResponse.json({ error: "brand load failed" }, { status: 500 });
   }
   if (!data) {
@@ -51,13 +50,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       },
     });
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        msg: "stored brand kit invalid",
-        user_id: userId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    );
+    log.error("stored brand kit invalid", {user_id: userId,
+        error: error instanceof Error ? error.message : String(error),});
     return NextResponse.json({ brand: null });
   }
 }
@@ -121,9 +115,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "conflict — reload and retry" }, { status: 409 });
   }
   if (saveError) {
-    console.error(
-      JSON.stringify({ msg: "brand kit save failed", user_id: userId, error: saveError.message })
-    );
+    log.error("brand kit save failed", {user_id: userId, error: saveError.message});
     return NextResponse.json({ error: "brand save failed" }, { status: 500 });
   }
 
@@ -143,14 +135,9 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
         mirrored = true;
       }
     } catch (error) {
-      console.log(
-        JSON.stringify({
-          msg: "brand mirror on write failed",
-          user_id: userId,
+      log.info("brand mirror on write failed", {user_id: userId,
           box_id: boxRow.provider_box_id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
+          error: error instanceof Error ? error.message : String(error),});
     }
   }
 

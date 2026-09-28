@@ -10,6 +10,7 @@ import { hermesBin, runCommand, type ComputeTarget } from "../compute/runtime";
 import { shellQuote } from "../box/shell";
 import { ensureBoxAwake } from "../orchestrator/boxes";
 import { mailProvider, type MailProvider } from "../mail/client";
+import { log } from "../log";
 
 const QUERY_RE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
 const IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
@@ -76,25 +77,15 @@ export async function installBaseSkills(
         300
       );
       if (result.exitCode !== 0) {
-        console.error(
-          JSON.stringify({
-            msg: "base skill install failed",
-            box_id: boxId,
+        log.error("base skill install failed", {box_id: boxId,
             skill: identifier,
-            error: (result.stderr || result.stdout).slice(0, 200),
-          })
-        );
+            error: (result.stderr || result.stdout).slice(0, 200),});
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
-      console.error(
-        JSON.stringify({
-          msg: "base skill install failed",
-          box_id: boxId,
+      log.error("base skill install failed", {box_id: boxId,
           skill: identifier,
-          error: message,
-        })
-      );
+          error: message,});
     }
   }
 }

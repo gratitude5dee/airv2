@@ -12,6 +12,8 @@ Every trusted inbound iMessage has a feedback path that does not wait for a Herm
 
 The sender connection and fast-response computation begin in parallel before the webhook returns. The reaction does not wait for debouncing, box provisioning, or a model call. Telemetry records elapsed time and whether the target was met; it never records message contents.
 
+Each burst-start first-bubble attempt also lands a durable receipt on `agent_runs` (`outcome` `first_bubble` / `first_bubble_failed`, `ttfk_ms`, `ttfk_met`, `ttfk_lane` = the `initialResponse` source), so the fast-lane vs fixed-template decision can be read from the receipts ledger rather than log lines.
+
 A deterministic arithmetic answer is final and removes that exact inbound row before the scheduled flush, so Hermes does not replay history or send progress messages for an already-solved calculation. A GLM response tagged `FINAL:` behaves the same way; `HOLD:` keeps the full agent turn for tool-dependent work.
 
 ## Provider policy

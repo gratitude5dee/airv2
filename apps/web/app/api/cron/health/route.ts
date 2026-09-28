@@ -5,20 +5,20 @@
  * reconciles platform-reported ad spend against the mirrored budgets.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/cron/auth";
 import { serviceClient } from "@/lib/supabase";
 import { probeConnectionHealth } from "@/lib/publish/health";
 import { reconcileSpend } from "@/lib/ads/reconcile";
 import { creativePreflight } from "@/lib/creative/preflight";
+import { guardResponse, requireCron } from "@/lib/auth/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!cronAuthorized(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const auth = await requireCron(request).catch(guardResponse);
+  if (auth instanceof NextResponse) return auth;
   const supabase = serviceClient();
   const health = await probeConnectionHealth(supabase);
   // Spend reconciliation is daily-grained (spend_reports upserts by date),

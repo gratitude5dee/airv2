@@ -23,7 +23,7 @@ vi.mock("@/lib/box/client", () => ({
 
 import { POST } from "./route";
 import { applyPatchOnBox } from "@/lib/crm/store";
-import { AdminFakeDb } from "@/lib/admin/testing/fakeDb";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
 const URL = "https://air.test/api/crm/update";
 const USER = "user-1";
@@ -51,12 +51,12 @@ const openRun = (senderTier: number | null) => ({
   sender_tier: senderTier,
 });
 
-const decisionInserts = (fake: AdminFakeDb) =>
+const decisionInserts = (fake: FakeSupabase) =>
   fake.inserts.filter((entry) => entry.table === "decisions");
 
 beforeEach(() => {
   vi.clearAllMocks();
-  const fake = new AdminFakeDb();
+  const fake = new FakeSupabase();
   fake.rows("boxes").push({ gateway_token: "box-token", user_id: USER });
   db.fake = fake;
 });
@@ -68,7 +68,7 @@ describe("POST /api/crm/update", () => {
   });
 
   it("files a crm_update decision for a tier-1 open run (R-P0-2)", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     // An open run is not the owner's composer just because it is the newest
     // row: the burst's agent_runs row carries sender_tier = 1, and this one
     // started after the flush job's chain.
@@ -90,7 +90,7 @@ describe("POST /api/crm/update", () => {
   });
 
   it("applies immediately for a tier-0 composer run", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     fake.rows("agent_runs").push(openRun(0));
     const response = await post(PATCH, "box-token");
     expect(response.status).toBe(200);
@@ -100,7 +100,7 @@ describe("POST /api/crm/update", () => {
   });
 
   it("fails closed on an open run with unknown tier", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     fake.rows("agent_runs").push(openRun(null));
     const response = await post(PATCH, "box-token");
     expect((await response.json())["status"]).toBe("pending_approval");
@@ -109,7 +109,7 @@ describe("POST /api/crm/update", () => {
   });
 
   it("fails closed with no resolvable turn at all", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     const response = await post(PATCH, "box-token");
     expect((await response.json())["status"]).toBe("pending_approval");
     expect(decisionInserts(fake)).toHaveLength(1);
@@ -117,7 +117,7 @@ describe("POST /api/crm/update", () => {
   });
 
   it("still resolves the tier from an open flush chain", async () => {
-    const fake = db.fake as AdminFakeDb;
+    const fake = db.fake as FakeSupabase;
     fake.rows("flush_jobs").push({
       user_id: USER,
       hermes_run_id: "run-1",

@@ -24,6 +24,7 @@ import {
   type AspectRatio,
   type RouterPlan,
 } from "./schema";
+import { log } from "../log";
 
 export const ROUTER_MODEL = "openai/gpt-oss-20b";
 
@@ -309,12 +310,7 @@ export async function routeExplicitCommand(
     }
     // Do not turn an unavailable classifier into a raw provider error. The
     // caller renders a written clarification and no paid call happens.
-    console.warn(
-      JSON.stringify({
-        msg: "creative router unavailable",
-        error: error instanceof Error ? error.name : "UnknownError",
-      })
-    );
+    log.warn("creative router unavailable", {error: error instanceof Error ? error.name : "UnknownError",});
     throw new CreativeRouterUnavailableError();
   }
 }

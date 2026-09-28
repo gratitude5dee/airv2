@@ -9,6 +9,7 @@
  * DECISIONS §8.4) stamp revoked_at and the cookie dies with it.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { db } from "../db";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 
@@ -79,11 +80,14 @@ export async function revokeSessionToken(
 ): Promise<void> {
   const claims = verifySessionToken(token);
   if (!claims) return;
-  await supabase
-    .from("sessions")
-    .update({ revoked_at: new Date().toISOString() })
-    .eq("id", claims.sessionId)
-    .is("revoked_at", null);
+  await db.write(
+    supabase
+      .from("sessions")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", claims.sessionId)
+      .is("revoked_at", null),
+    { what: "revoke session", user_id: claims.userId }
+  );
 }
 
 const SIGNUP_TTL_SECONDS = 60 * 10;

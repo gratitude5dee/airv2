@@ -5,36 +5,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 
-const boxRow = { user_id: "owner-1" };
-let destRow: { space_id: string; phone: string } | null = {
-  space_id: "space-1",
-  phone: "+15550001111",
-};
+const db = new FakeSupabase();
 vi.mock("@/lib/supabase", () => ({
-  serviceClient: () => ({
-    from: (table: string) => {
-      if (table === "boxes") {
-        const chain = {
-          select: () => chain,
-          eq: (_col: string, token: string) => ({
-            maybeSingle: async () => ({
-              data: token === "good-token" ? boxRow : null,
-            }),
-          }),
-        };
-        return chain;
-      }
-      if (table === "imessage_destinations") {
-        const chain = {
-          select: () => chain,
-          eq: () => ({ maybeSingle: async () => ({ data: destRow }) }),
-        };
-        return chain;
-      }
-      throw new Error(`fake supabase: unexpected table ${table}`);
-    },
-  }),
+  serviceClient: () => db.client(),
 }));
 
 const sendMiniAppCard = vi.fn(async (..._args: unknown[]) => undefined);
@@ -57,6 +32,7 @@ vi.mock("@/lib/miniapps/cardSends", async (importOriginal) => ({
 
 import { POST } from "./route";
 
+import { expectLog } from "@/lib/testing/expectLog";
 function post(kind: string, token?: string, body?: unknown): [NextRequest, { params: Promise<{ kind: string }> }] {
   return [
     new NextRequest(`https://air.example/api/cards/${kind}`, {
@@ -70,9 +46,13 @@ function post(kind: string, token?: string, body?: unknown): [NextRequest, { par
   ];
 }
 
+const destRow = { space_id: "space-1", phone: "+15550001111", user_id: "owner-1" };
+
 beforeEach(() => {
   vi.clearAllMocks();
-  destRow = { space_id: "space-1", phone: "+15550001111" };
+  db.reset();
+  db.tables["boxes"] = [{ user_id: "owner-1", gateway_token: "good-token" }];
+  db.tables["imessage_destinations"] = [destRow];
   claimCardSend.mockResolvedValue({ release });
   sendOrUpdateCheckoutCard.mockResolvedValue("sent");
 });
@@ -96,7 +76,7 @@ describe("POST /api/cards/[kind]", () => {
   });
 
   it("409s when the owner has no imessage destination", async () => {
-    destRow = null;
+    db.tables["imessage_destinations"] = [];
     const response = await POST(...post("pay", "good-token"));
     expect(response.status).toBe(409);
     expect(claimCardSend).not.toHaveBeenCalled();
@@ -168,6 +148,7 @@ describe("POST /api/cards/[kind]", () => {
     const response = await POST(...post("kanban", "good-token"));
     expect(response.status).toBe(502);
     expect(release).toHaveBeenCalled();
+    expectLog(/card\ send\ failed/, { level: "error" });
   });
 
   it("routes checkout cards through the owner-scoped handoff updater", async () => {

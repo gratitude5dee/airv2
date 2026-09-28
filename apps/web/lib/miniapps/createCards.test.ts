@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SpectrumSender } from "../spectrum/sender";
+import { FakeSupabase } from "@/lib/testing/fakeSupabase";
 import { CARD_MARKER } from "../orchestrator/outbound";
 import {
   createSurfacePath,
@@ -51,6 +52,7 @@ vi.mock("./cardSends", async (importOriginal) => ({
 
 import { createSpectrumSender } from "../spectrum/sender";
 
+import { expectLog } from "../testing/expectLog";
 beforeEach(() => {
   vi.clearAllMocks();
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
@@ -167,20 +169,26 @@ describe("/create slash command", () => {
   });
 });
 
+/** The owner's iMessage destination row — the one table updateMiniAppCard
+ * reads; sessions/sends stay mocked at their module seams. */
+function makeDb(options?: { destination?: boolean }) {
+  const db = new FakeSupabase();
+  db.tables["imessage_destinations"] =
+    options?.destination === false
+      ? []
+      : [
+          {
+            user_id: "user-1",
+            space_id: "space-1",
+            phone: "+15550001111",
+          },
+        ];
+  return db.client();
+}
+
 describe("sendOrUpdateAppCard", () => {
   const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: { space_id: "space-1", phone: "+15550001111" },
-            error: null,
-          }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const supabase = makeDb();
 
   it("sends a fresh card when the owner has none for the slug", async () => {
     const sender = fakeSender();
@@ -231,19 +239,14 @@ describe("sendOrUpdateAppCard", () => {
     expect(sender.sendApp).not.toHaveBeenCalled();
     expect(sends.claimCardSend).not.toHaveBeenCalled();
     expect(sessions.deleteMiniAppCardSession).not.toHaveBeenCalled();
+    expectLog(/mini\-app\ card\ update\ failed/, { level: "error" });
   });
 
   it("fails rather than claiming success when no destination is on file", async () => {
     const sender = fakeSender();
     vi.mocked(createSpectrumSender).mockResolvedValue(sender as unknown as SpectrumSender);
     sessions.readMiniAppCardSession.mockResolvedValue({ sessionId: "s" });
-    const noDestination = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
-        }),
-      }),
-    } as unknown as SupabaseClient;
+    const noDestination = makeDb({ destination: false });
     await expect(sendOrUpdateAppCard(noDestination, owner, "alice-promo")).rejects.toThrow(
       /app card update failed/
     );
@@ -273,18 +276,7 @@ describe("sendOrUpdateAppCard", () => {
 
 describe("sendMarkedCards app markers", () => {
   const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: { space_id: "space-1", phone: "+15550001111" },
-            error: null,
-          }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const supabase = makeDb();
   const app = (owner_user_id: string) =>
     ({
       slug: "alice-promo",
@@ -302,6 +294,7 @@ describe("sendMarkedCards app markers", () => {
     expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(0);
     expect(sender.sendApp).not.toHaveBeenCalled();
     expect(sends.claimCardSend).not.toHaveBeenCalled();
+    expectLog(/card\ send\ failed/, { level: "error" });
   });
 
   it("skips another owner's app", async () => {
@@ -312,6 +305,7 @@ describe("sendMarkedCards app markers", () => {
     expect(await sendMarkedCards(supabase, owner, ["app alice-promo"])).toBe(0);
     expect(sender.sendApp).not.toHaveBeenCalled();
     expect(sender.editApp).not.toHaveBeenCalled();
+    expectLog(/card\ send\ failed/, { level: "error" });
   });
 
   it("sends the owner's own app", async () => {
@@ -326,18 +320,7 @@ describe("sendMarkedCards app markers", () => {
 
 describe("sendOrUpdateCheckoutCard", () => {
   const owner = { userId: "user-1", spaceId: "space-1", phone: "+15550001111" };
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: { space_id: "space-1", phone: "+15550001111" },
-            error: null,
-          }),
-        }),
-      }),
-    }),
-  } as unknown as SupabaseClient;
+  const supabase = makeDb();
 
   it("validates the owner handoff and sends a fresh checkout card", async () => {
     const sender = fakeSender();
