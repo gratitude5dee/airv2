@@ -75,20 +75,25 @@ test -n "$(ls -A hermes_cli/web_dist 2>/dev/null)" || {
 mkdir -p "$HOME_DIR/.hermes"
 cat > "$HOME_DIR/.hermes/config.yaml" <<'YAML'
 approvals:
-  mode: "smart"
-  # V5 social gate: publishing in the human's name always pauses the run
-  # (waiting_for_approval) so the Needs-you social_post card can resume it
-  # via /v1/runs/{id}/approval with the human's approve/dismiss.
-  smart_policy: "ALWAYS ESCALATE any command or browser action that publishes text publicly in the human's name on a social platform (posting, commenting, or replying). Liking/reacting under an enabled standing rule does not need escalation."
+  # R-SEC-03 owner decision: "deny-list" — a fixed list where
+  # publishing-type tools always pause and everything else runs. Pinned
+  # Hermes v0.21.4 supports only manual/smart/off
+  # (tools/approval_context.py::_VALID_MODES), so "manual" carries it: its
+  # fixed gate rules decide what pauses — deterministic, with no injectable
+  # LLM classifier the agent can be talked out of (ARCHITECTURE §8.2). The
+  # V5 social gate still holds: publishing in the human's name pauses the
+  # run (waiting_for_approval) so the Needs-you social_post card can resume
+  # it via /v1/runs/{id}/approval with the human's approve/dismiss.
+  mode: "manual"
 
 terminal:
   backend: "local"
 
 # MA9.1: persistent memory on — ~/.hermes/memories/{MEMORY.md,USER.md} live in
 # this box's filesystem (I1/C4: memory is content, it never leaves for shared
-# Postgres). write_approval stays false to match the box's smart-approvals
+# Postgres). write_approval stays false to match the box's manual-approvals
 # posture: memory writes are local file edits, not public actions, so they do
-# not gate; the smart_policy above still escalates anything that publishes.
+# not gate; the approval rules still pause anything that publishes.
 memory:
   memory_enabled: true
   user_profile_enabled: true
