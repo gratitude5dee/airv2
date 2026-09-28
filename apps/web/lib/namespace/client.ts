@@ -19,6 +19,12 @@
  */
 import { env } from "../env";
 import { requestSignal } from "../http/timeout";
+import type {
+  Box,
+  BoxProvider,
+  BoxState,
+  HostedRoute,
+} from "../box/types";
 
 const COMPUTE_SERVICE = "namespace.cloud.compute.v1beta.ComputeService";
 
@@ -504,3 +510,79 @@ export async function bridgeWriteFile(
     body: JSON.stringify({ path, content }),
   });
 }
+
+// ── BoxProvider surface (R-ARCH-08) ─────────────────────────────────────────
+
+/** Namespace instance status → the Box state vocabulary callers branch on. */
+export function mapInstanceState(state: InstanceState): BoxState {
+  switch (state) {
+    case "RUNNING":
+      return "ready";
+    case "CREATING":
+      return "cloning";
+    case "SUSPENDED":
+      return "stopped";
+    case "DESTROYED":
+    case "FAILED":
+      return "error";
+    default:
+      return "provisioned";
+  }
+}
+
+function toProviderBox(instance: NamespaceInstance): Box {
+  return {
+    id: instance.id,
+    state: mapInstanceState(instance.state),
+    url: instance.url,
+    ...(instance.vcpu !== undefined ? { vcpu: instance.vcpu } : {}),
+    ...(instance.memoryGB !== undefined
+      ? { memoryGB: instance.memoryGB }
+      : {}),
+  };
+}
+
+/**
+ * The Namespace provider behind the same BoxProvider seam ascii and tenki
+ * implement (R-ARCH-08). Its handle is the persisted BridgeControl: lifecycle
+ * calls key off `instanceId`, bridge calls off the control route+token.
+ * Provisioning (createMacInstance/publishMacIngress) stays provider-specific,
+ * off the seam.
+ */
+export const provider: BoxProvider<BridgeControl> = {
+  async getBox(control) {
+    return toProviderBox(await getInstance(control.instanceId));
+  },
+  async resume(control) {
+    await wakeInstance(control.instanceId);
+    return toProviderBox(await getInstance(control.instanceId));
+  },
+  async stop(control) {
+    await suspendInstance(control.instanceId);
+    return toProviderBox(await getInstance(control.instanceId));
+  },
+  async deleteBox(control) {
+    await destroyInstance(control.instanceId);
+  },
+  async requestDesktop(control) {
+    return (await vncConfig(control.instanceId)).endpoint;
+  },
+  command: bridgeCommand,
+  readFile: bridgeReadFile,
+  writeFile: bridgeWriteFile,
+  async hostRoute(control, port): Promise<HostedRoute> {
+    const routes = await publishIngress(control.instanceId, [
+      { name: `port-${port}`, port, open: port !== BRIDGE_PORT },
+    ]);
+    const ingress = routes[port];
+    if (!ingress) {
+      throw new NamespaceApiError(
+        502,
+        `ingress for port ${port} was not allocated`,
+      );
+    }
+    // The bridge keeps ingress auth; the published service ports are open
+    // capability URLs, so there is no rotating `_token` to hand back.
+    return { url: ingress.url, token: "" };
+  },
+};

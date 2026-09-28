@@ -251,7 +251,7 @@ export async function recordFeedback(
 }
 
 /** Keys a receipt row may carry into learning_events (L4 allowlist). */
-const RECEIPT_COLUMNS = [
+export const RECEIPT_COLUMNS = [
   "idempotency_key",
   "event_type",
   "trace_id",

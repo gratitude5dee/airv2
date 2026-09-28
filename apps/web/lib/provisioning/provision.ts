@@ -21,7 +21,7 @@ import {
   hostRoute,
   providerOf,
   waitForBox,
-  type BoxProvider,
+  type BoxProviderKind,
   type HostedRoute,
 } from "../box/client";
 import { isTenkiSnapshotRef } from "../box/tenki";
@@ -96,7 +96,7 @@ export interface ProvisionOptions {
    * which the admin dashboard's provider switch writes. Tenki is
    * ubuntu-only.
    */
-  provider?: BoxProvider | undefined;
+  provider?: BoxProviderKind | undefined;
 }
 
 export interface ProvisionResult {
@@ -423,7 +423,7 @@ export async function replaceBox(
   userId: string,
   boxId: string,
   environment: ComputeEnvironment,
-  provider?: BoxProvider
+  provider?: BoxProviderKind
 ): Promise<ProvisionResult> {
   const claimedAt = new Date().toISOString();
   const staleBefore = new Date(Date.now() - REPLACE_CLAIM_TTL_MS).toISOString();
@@ -507,7 +507,7 @@ export async function switchEnvironment(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
   environment: ComputeEnvironment,
-  provider?: BoxProvider
+  provider?: BoxProviderKind
 ): Promise<ProvisionResult> {
   const { data: existing, error } = await supabase
     .from("boxes")
@@ -633,7 +633,7 @@ export async function ensureComputeProvisioned(
  * ref, so the switch can be flipped before the template env lands without
  * breaking signups.
  */
-export async function defaultBoxProvider(): Promise<BoxProvider> {
+export async function defaultBoxProvider(): Promise<BoxProviderKind> {
   const setting = await readPlatformSetting(BOX_DEFAULT_PROVIDER_KEY);
   if (setting === "tenki") {
     const templateId = env.tenkiTemplateId();
@@ -669,7 +669,7 @@ export async function buildCompute(
   userId: string,
   environment: ComputeEnvironment,
   channel: ChannelName,
-  provider: BoxProvider = "ascii"
+  provider: BoxProviderKind = "ascii"
 ): Promise<ProvisionedCompute> {
   const profile = profileFor(environment);
   const gatewayToken = randomBytes(32).toString("hex");

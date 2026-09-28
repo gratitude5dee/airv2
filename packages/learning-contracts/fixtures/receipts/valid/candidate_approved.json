@@ -1,0 +1,8 @@
+{
+  "schema_version": "air.learning-receipt.v1",
+  "event_type": "candidate_approved",
+  "idempotency_key": "0123456789abcdef0123456789abcdef",
+  "occurred_at": "2026-09-21T15:22:41Z",
+  "candidate_id": "cand_3b8f0e2a91c4",
+  "status": "approved"
+}

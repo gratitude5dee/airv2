@@ -17,3 +17,9 @@ frameworks = [
   "hud==0.6.13",
   "harbor==0.22.0",
 ]
+# Dev-machine only (pip install '.[test]'): the contract tests in tests/
+# validate fixtures against packages/learning-contracts. The daemon itself
+# stays stdlib-only — nothing here installs on an owner box (C24).
+test = [
+  "jsonschema==4.25.1",
+]
