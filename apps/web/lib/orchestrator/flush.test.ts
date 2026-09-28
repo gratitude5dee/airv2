@@ -825,13 +825,6 @@ describe("runFlush history replay", () => {
         sendAttachment,
         close: vi.fn().mockResolvedValue(undefined),
       } as never);
-      vi.mocked(loadConversationTranscript).mockResolvedValue({
-        rows: 2,
-        history: [
-          { role: "user", content: "hi" },
-          { role: "assistant", content: "hey" },
-        ],
-      });
       vi.mocked(runEvents).mockResolvedValue(
         sse([
           {
