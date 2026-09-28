@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function owner(request: NextRequest): Promise<string | NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   return userId ?? NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
 
