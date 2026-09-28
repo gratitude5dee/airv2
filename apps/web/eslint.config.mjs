@@ -16,6 +16,8 @@ const config = [
       "public/creator-os/freeze-studio.js", "public/creator-os/draw-studio.js",
       // Vendored web-component bundle (committed, not lintable source).
       "public/creator-os/fx.js",
+      // Vendored build chunks (committed artifacts, same category as fx.js).
+      "public/creator-os/chunks/**",
       "lib/miniapps/client/backgrounds/**",
     ],
   },
