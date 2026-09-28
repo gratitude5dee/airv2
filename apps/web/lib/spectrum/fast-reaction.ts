@@ -90,6 +90,9 @@ export async function createFastReactionSender(
 ): Promise<FastReactionSender | undefined> {
   const outbox = env.spectrumRecordOutbox();
   if (outbox) return createRecordingFastReactionSender(outbox);
+  // Eval runs record sends through the SpectrumSender seam instead; no
+  // fast-path tokens exist there, so the caller falls back to sender.react.
+  if (env.evalSpectrumRecordUrl()) return undefined;
   const tokenData = await issueTokenData();
   let address =
     env.spectrumImessageAddress() ?? DEFAULT_IMESSAGE_ADDRESS;

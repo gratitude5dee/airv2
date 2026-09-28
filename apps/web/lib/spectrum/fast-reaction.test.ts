@@ -21,6 +21,7 @@ vi.mock("../env", () => ({
     spectrumProjectSecret: () => "project-secret",
     spectrumRecordOutbox: () => null,
     spectrumImessageAddress: () => process.env["SPECTRUM_IMESSAGE_ADDRESS"] ?? null,
+    evalSpectrumRecordUrl: () => null,
   },
 }));
 

@@ -426,6 +426,11 @@ export const env = {
   // outbound action to this JSONL file instead of connecting to Spectrum.
   spectrumRecordOutbox: (): string | null =>
     process.env["SPECTRUM_RECORD_OUTBOX"] ?? null,
+
+  // Eval harness listener: when set, createSpectrumSender returns the
+  // recording fake from lib/spectrum/recording.ts instead of a real client.
+  evalSpectrumRecordUrl: (): string | null =>
+    process.env["EVAL_SPECTRUM_RECORD_URL"] ?? null,
   // Mail provider: wzrdmail is the deployment default; AGENTMAIL_* stays for rollback (see lib/mail/provider.ts).
   mailProvider: (): "agentmail" | "wzrdmail" => {
     const value = optional("MAIL_PROVIDER", "wzrdmail");
@@ -805,9 +810,6 @@ export const env = {
     process.env["KIT_RESTRICTED_VERSION"] ?? null,
   kitRestrictedSha256: (): string | null =>
     process.env["KIT_RESTRICTED_SHA256"] ?? null,
-  // The box's shared command-lane key. Optional: the lane degrades to
-  // unauthenticated-local behavior without it (R-SEC-09 tracks hardening).
-  commandLaneKey: (): string | null => process.env["COMMAND_LANE_KEY"] ?? null,
   stripeLinkEnabled: (): boolean =>
     process.env["STRIPE_LINK_ENABLED"] === "1",
   stripeLinkHosts: (): string => optional("STRIPE_LINK_HOSTS", ""),

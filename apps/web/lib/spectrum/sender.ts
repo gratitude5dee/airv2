@@ -16,7 +16,10 @@ import {
   parseMiniAppCardSession,
   type MiniAppCardSession,
 } from "../miniapps/cardSessions";
-import { createRecordingSpectrumSender } from "./recording";
+import {
+  createRecordingSpectrumSender,
+  createUrlRecordingSpectrumSender,
+} from "./recording";
 
 export interface SpectrumSender {
   /** Fire a typing indicator at the chat — before the box resumes. */
@@ -195,6 +198,8 @@ export async function createSpectrumSender(
 ): Promise<SpectrumSender> {
   const outbox = env.spectrumRecordOutbox();
   if (outbox) return createRecordingSpectrumSender(outbox);
+  const recordUrl = env.evalSpectrumRecordUrl();
+  if (recordUrl) return createUrlRecordingSpectrumSender(recordUrl);
   const startedAt = Date.now();
   const [
     {
