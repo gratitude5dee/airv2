@@ -167,7 +167,7 @@ export async function tickWatchlists(supabase: SupabaseClient): Promise<number> 
       .maybeSingle();
     const sender =
       dest?.space_id && dest.phone
-        ? await createSpectrumSender().catch(() => null)
+        ? await createSpectrumSender("trade-watch").catch(() => null)
         : null;
     if (sender && dest?.space_id && dest.phone) {
       let delivered = false;

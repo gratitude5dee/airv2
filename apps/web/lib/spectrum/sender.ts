@@ -5,23 +5,7 @@
  * the lines row — never the Chat SDK adapter's line inference, which throws
  * NotImplementedError on every cold thread once per-user lines exist.
  */
-import {
-  Spectrum,
-  app as appCard,
-  attachment,
-  edit,
-  reaction,
-  read,
-  reply,
-  richlink,
-  text,
-  typing,
-  type Message,
-} from "spectrum-ts";
-import {
-  customizedMiniApp,
-  imessage,
-} from "spectrum-ts/providers/imessage";
+import type { Message } from "spectrum-ts";
 import type {
   AdvancedIMessage,
   LocationRequestReceipt,
@@ -32,7 +16,10 @@ import {
   parseMiniAppCardSession,
   type MiniAppCardSession,
 } from "../miniapps/cardSessions";
-import { createRecordingSpectrumSender } from "./recording";
+import {
+  createRecordingSpectrumSender,
+  createUrlRecordingSpectrumSender,
+} from "./recording";
 
 export interface SpectrumSender {
   /** Fire a typing indicator at the chat — before the box resumes. */
@@ -146,10 +133,13 @@ export interface AppCardLayout {
  * the extension UI inline in the transcript bubble, while a static card
  * opens the full-screen sheet view on tap — the presentation mini-apps need.
  */
-function buildAppCard(
+async function buildAppCard(
   url: string,
   layout: AppCardLayout | undefined
-): ReturnType<typeof appCard> {
+) {
+  const { customizedMiniApp } = await import(
+    "spectrum-ts/providers/imessage"
+  );
   const extension = env.imessageMiniAppExtension();
   return customizedMiniApp({
     appName: extension.appName,
@@ -195,19 +185,54 @@ export function advancedClientForLine(
   return selected?.client;
 }
 
-export async function createSpectrumSender(): Promise<SpectrumSender> {
-  // Eval seam: a recording fake replaces the real client when the harness
-  // listener URL is configured, so every send site reports its bubbles.
+/**
+ * One init per iMessage turn is the target (the webhook's warm sender is
+ * shared through the flush job and card delivery). `site` names the
+ * construction point in the trace so a turn with a leaked second sender is
+ * attributable; `init_seq` counts inits per process.
+ */
+let spectrumSenderInitSeq = 0;
+
+export async function createSpectrumSender(
+  site?: string
+): Promise<SpectrumSender> {
+  const outbox = env.spectrumRecordOutbox();
+  if (outbox) return createRecordingSpectrumSender(outbox);
   const recordUrl = env.evalSpectrumRecordUrl();
-  if (recordUrl) {
-    return createRecordingSpectrumSender(recordUrl);
-  }
+  if (recordUrl) return createUrlRecordingSpectrumSender(recordUrl);
+  const startedAt = Date.now();
+  const [
+    {
+      Spectrum,
+      attachment,
+      edit,
+      reaction,
+      read,
+      reply,
+      richlink,
+      text,
+      typing,
+    },
+    { imessage },
+  ] = await Promise.all([
+    import("spectrum-ts"),
+    import("spectrum-ts/providers/imessage"),
+  ]);
   const app = await Spectrum({
     projectId: env.spectrumProjectId(),
     projectSecret: env.spectrumProjectSecret(),
     // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
     providers: [imessage.config()],
   });
+  spectrumSenderInitSeq += 1;
+  console.info(
+    JSON.stringify({
+      msg: "spectrum sender init",
+      site: site ?? "unknown",
+      init_seq: spectrumSenderInitSeq,
+      init_ms: Date.now() - startedAt,
+    })
+  );
   const im = imessage(app);
   const space = async (spaceId: string, phone: string) =>
     // @ts-expect-error spectrum-ts provider generics are not exactOptionalPropertyTypes-compatible; runtime is correct.
@@ -251,7 +276,7 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
     },
     sendApp: async (spaceId, phone, url, layout) => {
       return (await space(spaceId, phone)).send(
-        buildAppCard(await url(), layout)
+        await buildAppCard(await url(), layout)
       );
     },
     editApp: async (spaceId, phone, session, url, layout) => {
@@ -277,7 +302,7 @@ export async function createSpectrumSender(): Promise<SpectrumSender> {
       const target = Object.assign(message, {
         miniAppCardSession: session,
       });
-      await s.send(edit(buildAppCard(await url(), layout), target));
+      await s.send(edit(await buildAppCard(await url(), layout), target));
       return parseMiniAppCardSession(target.miniAppCardSession);
     },
     requestLocation: async (spaceId, phone, address, clientMessageId) => {
