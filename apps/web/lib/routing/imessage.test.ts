@@ -31,7 +31,9 @@ const message: InboundMessage = {
   body: "thanks!",
 };
 
-const supabase = {} as SupabaseClient;
+const supabase = {
+  from: () => ({ insert: async () => ({ error: null }) }),
+} as unknown as SupabaseClient;
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
