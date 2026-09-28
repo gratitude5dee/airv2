@@ -14,7 +14,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { serviceClient } from "@/lib/supabase";
+import { parseBody } from "@/lib/http/body";
 import { armStopAfter } from "@/lib/orchestrator/boxes";
 import {
   applyPatchOnBox,
@@ -26,6 +28,11 @@ import { guardResponse, requireBox } from "@/lib/auth/guard";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** The patch is an open-ended CRM document — sanitizePatch (PatchRow) does
+ * the field-level validation; the route-level schema only requires an
+ * object (a null/scalar body is not a patch). */
+const Body = z.record(z.string(), z.unknown());
 
 
 /** The active turn's sender tier, resolved server-side: an open flush chain
@@ -73,13 +80,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = await requireBox(supabase, request).catch(guardResponse);
   if (auth instanceof NextResponse) return auth;
   const userId = auth.userId;
-  const body = (await request.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!body) {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
-  }
+  const parsed = await parseBody(request, Body);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
   const patch: CrmPatch = sanitizePatch(body);
   if (
     !patch.person_id &&
