@@ -25,7 +25,7 @@ describe("session tokens", () => {
 
   it("round-trips a token it issued", () => {
     const issued = createSessionToken("user-1", "sess-1");
-    expect(verifySessionToken(issued)).toEqual({
+    expect(verifySessionToken(issued)).toStrictEqual({
       userId: "user-1",
       sessionId: "sess-1",
     });

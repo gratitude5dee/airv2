@@ -21,9 +21,9 @@
     "motion"
   ],
   "weightKb": {
-    "js": 0.7,
+    "js": 0.8,
     "css": 0.1,
-    "jsFull": 43.2
+    "jsFull": 43.3
   },
   "lite": true,
   "liteReason": null,
