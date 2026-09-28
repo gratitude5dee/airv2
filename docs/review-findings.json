@@ -692,9 +692,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "16d9a26a test(evals): EVAL_SESSION env to target isolated chat sessions"
+      ],
+      "notes": "Opt-in per-run session only; per-case eval:<id> sessions, seeded history and first-call prompt-token reporting are not done; still runs against the live box via /api/chat."
     },
     {
       "id": "MEM-30",
@@ -1894,9 +1896,11 @@
         "no-personal-key-spend-fallback"
       ],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "3b72284c recover orphaned imessage work"
+      ],
+      "notes": "Astra timeouts recover to GLM inside dispatch(); non-GMI network errors (DNS/TLS/socket) still re-throw to a bare 500 with no synthesized upstream_unreachable."
     },
     {
       "id": "WEB-21",
@@ -2302,9 +2306,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "ce8d6bf0 onboarding: fix the extension kill, the entry slide, and the deck's weight"
+      ],
+      "notes": "Wordmark now served as 15KB 320w / 45KB 640w srcset; the 790KB 1600px asset is no longer referenced by the shell header."
     },
     {
       "id": "MS-04",
@@ -3026,9 +3032,12 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "7055991d schedule_deliveries ledger",
+        "8e4a5278 schedule POST accepts callingBox Bearer = boxes.gateway_token"
+      ],
+      "notes": "Skills (watch_for, tour-planning) now reference the endpoint."
     },
     {
       "id": "TC-05",
@@ -3746,9 +3755,11 @@
         "disable-taskrouter"
       ],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "92942d4a append routing hint to turn input"
+      ],
+      "notes": "Chat relay passes Jev routingInstructions to createRun (relay.ts:47-55); the iMessage flush path (flush.ts:1348) still sends no instructions."
     },
     {
       "id": "WZ-01",
@@ -3936,8 +3947,12 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "11eb4987 ensureMailboxOnBox provisions and installs a mailbox when no address row exists (finishSetup, provision.ts:1089)",
+        "d2fa6379 re-mint dangling addresses when both providers 404; installExistingMailbox falls back across providers",
+        "913a3be0 POST /api/admin/mailboxes/ensure sweep"
+      ],
       "notes": ""
     },
     {
@@ -5828,9 +5843,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "5048eab1 bound imessage completion latency"
+      ],
+      "notes": "agent_runs row now inserted at createRun in flush.ts:1373-1381 (iMessage lane) as relay.ts already did; calendar sweep still inserts post-delivery."
     },
     {
       "id": "CA-05",
@@ -6021,9 +6038,13 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "implemented",
+      "evidence": [
+        "1ce2547c",
+        "5048eab1 bound imessage completion latency",
+        "d27f1323"
+      ],
+      "notes": "createRun and stream run under beforeDeadline; failures notifyFirstRetry, stopRun, write agent_runs outcome first_response_failed (flush.ts:1476) and retry via carryMessages+rescheduleWithBackoff."
     },
     {
       "id": "CA-22",
@@ -6341,9 +6362,11 @@
       "co_ship_with": [],
       "review_defaults": [],
       "external_evidence_needed": [],
-      "implementation_status": "not_verified",
-      "evidence": [],
-      "notes": ""
+      "implementation_status": "in_progress",
+      "evidence": [
+        "5048eab1 bound imessage completion latency"
+      ],
+      "notes": "Row opens at createRun and failures write first_response_failed; cancelled turns still carryMessages+return with no terminal receipt (flush.ts:1577)."
     },
     {
       "id": "CA-25",
@@ -6577,6 +6600,1816 @@
       "implementation_status": "not_verified",
       "evidence": [],
       "notes": ""
+    },
+    {
+      "id": "R-P0-1",
+      "severity": "P0",
+      "effort": "S",
+      "area": "security",
+      "finding": "Muse wallet send skips the decision gate and has no cap",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 446
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-1"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-2",
+      "severity": "P0",
+      "effort": "S",
+      "area": "security",
+      "finding": "Open-run timestamp inference makes a tier-1 run owner-initiated",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 447
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-2"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-3",
+      "severity": "P0",
+      "effort": "S",
+      "area": "security",
+      "finding": "send-file admits `~/.hermes/.env`; not tier-gated",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 448
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-3"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-4",
+      "severity": "P0",
+      "effort": "S",
+      "area": "supply chain",
+      "finding": "`next` critical advisory; no audit gate",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 449
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-4"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-5",
+      "severity": "P0",
+      "effort": "M",
+      "area": "data",
+      "finding": "Migrations to prod with no shadow apply; six tables without RLS",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 450
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-5"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-P0-6",
+      "severity": "P0",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Workers deploy untested on Node 20 from a cancellable job",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 451
+      },
+      "workstream": "p0",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-P0-6"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "in_progress",
+      "evidence": [],
+      "notes": "In flight on parallel PRs per the work order."
+    },
+    {
+      "id": "R-CI-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Run Python suites; fail on skips",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 452
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Coverage floor and per-module floors",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 453
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Lint ignores for built bundles; `--max-warnings 0`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 454
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "ci",
+      "finding": "One Node version",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 455
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-05",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "shellcheck and systemd-analyze",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 456
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Run or remove the 72 skill tests",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 457
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "create-kit typechecks all components",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 458
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "ci",
+      "finding": "Typecheck and test the eval harness",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 459
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-09",
+      "severity": "P2",
+      "effort": "M",
+      "area": "ci",
+      "finding": "Test collection time",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 460
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-CI-10",
+      "severity": "P3",
+      "effort": "S",
+      "area": "process",
+      "finding": "Stale PRs",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 461
+      },
+      "workstream": "w1-ci",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-CI-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "tests",
+      "finding": "One filter-recording Supabase fake",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 462
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Fail on unexpected stderr",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 463
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "tests",
+      "finding": "Route tests for the three untested webhooks",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 464
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Test auth primitives and `resolveTrustTier` directly",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 465
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Fix the millisecond flake; fake timers",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 466
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-06",
+      "severity": "P2",
+      "effort": "M",
+      "area": "tests",
+      "finding": "Route tests for money and secrets",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 467
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Cron and internal route tests; shared cron guard",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 468
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Replace source-grep tests",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 469
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-09",
+      "severity": "P2",
+      "effort": "M",
+      "area": "tests",
+      "finding": "Smoke tests for the five largest client files",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 470
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-TQ-10",
+      "severity": "P3",
+      "effort": "S",
+      "area": "tests",
+      "finding": "Mitosis probe: test or delete",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 471
+      },
+      "workstream": "w2-tests",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-TQ-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Report `gating_expected`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 472
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Execution on tool events only; negation-aware `must_not_do`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 473
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Honesty regex and judge; `must_cite`",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 474
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Remove routing freebies",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 475
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Scorer tests in CI; fix lexical sort",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 476
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-06",
+      "severity": "P1",
+      "effort": "M",
+      "area": "evals",
+      "finding": "`suite.json`, committed raw results, seed script, per-case sessions",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 477
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-07",
+      "severity": "P1",
+      "effort": "L",
+      "area": "evals",
+      "finding": "Contract tier on PRs; model tier nightly",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 478
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-08",
+      "severity": "P1",
+      "effort": "M",
+      "area": "evals",
+      "finding": "iMessage-path eval with first-bubble timing",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 479
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Run K-cases; hold-out set",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 480
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-10",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Explain the routing jump",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 481
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-11",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Memory recall eval",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 482
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-11"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-12",
+      "severity": "P2",
+      "effort": "S",
+      "area": "evals",
+      "finding": "Create suite report writer and grader fixes",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 483
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-12"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-EV-13",
+      "severity": "P3",
+      "effort": "S",
+      "area": "evals",
+      "finding": "model-bench validity",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 484
+      },
+      "workstream": "w3-evals",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-EV-13"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "latency",
+      "finding": "Stream non-OpenAI SSE",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 485
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "latency",
+      "finding": "Served-model headers",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 486
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "latency",
+      "finding": "Drop the per-turn transcript replay",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 487
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "latency",
+      "finding": "One Spectrum sender per turn",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 488
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-05",
+      "severity": "P2",
+      "effort": "S",
+      "area": "latency",
+      "finding": "Health-driven wake waiter",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 489
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "cost",
+      "finding": "Cron cadence from measured work",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 490
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "latency",
+      "finding": "Mini-app bundle sizes",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 491
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-08",
+      "severity": "P2",
+      "effort": "M",
+      "area": "latency",
+      "finding": "Fast-lane ack policy from data",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 492
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-PERF-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-PERF-09",
+      "severity": "P3",
+      "effort": "S",
+      "area": "dx",
+      "finding": "Test wall time (= R-CI-09)",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 493
+      },
+      "workstream": "w4-latency-cost",
+      "phase": "work-order",
+      "kind": "alias",
+      "canonical_ids": [
+        "R-CI-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "trust",
+      "finding": "Tier to Hermes; contact sessions",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 494
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Mixed-sender bursts take minimum trust",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 495
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "trust",
+      "finding": "Hermes approval mode: decide and enforce",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 496
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Nonce on the Create bridge",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 497
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-05",
+      "severity": "P1",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Approval relay failures surface",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 498
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-06",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Authenticate the Onairos relay",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 499
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-07",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Revocable sessions",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 500
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Token off the command line",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 501
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-09",
+      "severity": "P2",
+      "effort": "S",
+      "area": "trust",
+      "finding": "`COMMAND_LANE_KEY` required",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 502
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-SEC-10",
+      "severity": "P3",
+      "effort": "S",
+      "area": "trust",
+      "finding": "Admin operator identity",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 503
+      },
+      "workstream": "w5-trust",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-SEC-10"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-01",
+      "severity": "P1",
+      "effort": "S",
+      "area": "process",
+      "finding": "Re-sync the ledger",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 504
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "process",
+      "finding": "IDs in commits, enforced",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 505
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "ffbbf0b70eee7bedbda051ec21dd05473b82e789 scripts/check-commit-ids.sh + commit-ids job in ci.yml"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-03",
+      "severity": "P1",
+      "effort": "S",
+      "area": "process",
+      "finding": "This document in the ledger",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 506
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-04",
+      "severity": "P2",
+      "effort": "S",
+      "area": "process",
+      "finding": "Freeze: honour or lift",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 507
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-LED-05",
+      "severity": "P3",
+      "effort": "S",
+      "area": "process",
+      "finding": "README claims",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 508
+      },
+      "workstream": "w6-process",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-LED-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "implemented",
+      "evidence": [
+        "b3523c17bab5fbd7429061f7c608b15b7bd78257 devin/1790354511-w6-ledger"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-01",
+      "severity": "P1",
+      "effort": "M",
+      "area": "shape",
+      "finding": "One auth module",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 509
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-01"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-02",
+      "severity": "P1",
+      "effort": "S",
+      "area": "shape",
+      "finding": "Env validated at boot",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 510
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-02"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-03",
+      "severity": "P1",
+      "effort": "M",
+      "area": "shape",
+      "finding": "Schema on every body",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 511
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-03"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-04",
+      "severity": "P1",
+      "effort": "S",
+      "area": "shape",
+      "finding": "A logger with required ids",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 512
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-04"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-05",
+      "severity": "P1",
+      "effort": "M",
+      "area": "shape",
+      "finding": "Check every Supabase write",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 513
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-05"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-06",
+      "severity": "P1",
+      "effort": "S",
+      "area": "shape",
+      "finding": "The swallowed promises that matter; run idempotency",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 514
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-06"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-07",
+      "severity": "P2",
+      "effort": "M",
+      "area": "shape",
+      "finding": "Thin the route handlers",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 515
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-07"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-08",
+      "severity": "P2",
+      "effort": "S",
+      "area": "shape",
+      "finding": "One box seam",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 516
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-08"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "R-ARCH-09",
+      "severity": "P3",
+      "effort": "S",
+      "area": "shape",
+      "finding": "Enforce learning contracts",
+      "review_verification": "n/a",
+      "source": {
+        "path": "review.md",
+        "line": 517
+      },
+      "workstream": "w7-shape",
+      "phase": "work-order",
+      "kind": "engineering",
+      "canonical_ids": [
+        "R-ARCH-09"
+      ],
+      "depends_on": [],
+      "co_ship_with": [],
+      "review_defaults": [],
+      "external_evidence_needed": [],
+      "implementation_status": "not_verified",
+      "evidence": [],
+      "notes": ""
     }
-  ]
+  ],
+  "work_order": "review.md",
+  "resynced_commit": "0f80c2c44b89c5650c27874d980d207db6ac08a3"
 }
