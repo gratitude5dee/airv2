@@ -17,6 +17,12 @@ beforeAll(() => {
   process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
 });
 
+// R-SEC-06: native-Onairos renders mint the relay's API cookie, which
+// needs the C15 signing key.
+beforeAll(() => {
+  process.env["MINIAPP_SIGNING_KEY"] = "test-signing-key";
+});
+
 const boxFiles = new Map<string, string>();
 
 vi.mock("@/lib/box/client", () => ({
