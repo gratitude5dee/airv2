@@ -20,7 +20,7 @@ export async function requestSession(
   supabase: SupabaseClient,
   request: NextRequest
 ): Promise<SurfaceSession | undefined> {
-  const cookieUser = sessionUserId(request);
+  const cookieUser = await sessionUserId(request);
   if (cookieUser) return { userId: cookieUser, surface: "web" };
   if (!bearerToken(request)) return undefined;
   const device = await desktopSession(supabase, request);

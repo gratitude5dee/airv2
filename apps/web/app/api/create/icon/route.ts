@@ -122,7 +122,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!sessionUser) {
       // Called from the Box: the owner is in Messages, so the preview goes there.
       try {
-        const sender = await createSpectrumSender();
+        const sender = await createSpectrumSender("create-icon");
         try {
           previewed = await sendIconPreview(supabase, sender, userId, appname, generated.bytes);
         } finally {

@@ -2,14 +2,30 @@ import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { routing, inbound, nextAfter } = vi.hoisted(() => ({
-  routing: {
-    resolveAgentAddress: vi.fn(async () => ({ userId: "user-1" })),
-    dedupeInboundEvent: vi.fn(async () => ({ alreadySeen: false })),
-  },
-  inbound: { processInboundEmail: vi.fn(async () => undefined) },
-  nextAfter: vi.fn((fn: () => Promise<void>) => void fn()),
-}));
+const { seen, routing, inbound, nextAfter } = vi.hoisted(() => {
+  // Not hardcoded to false: the mock tracks (webhookId, messageId) so a
+  // redelivery exercises the route's duplicate branch for real.
+  const seen = new Set<string>();
+  return {
+    seen,
+    routing: {
+      resolveAgentAddress: vi.fn(async () => ({ userId: "user-1" })),
+      dedupeInboundEvent: vi.fn(
+        async (
+          _supabase: unknown,
+          key: { webhookId: string; messageId: string }
+        ) => {
+          const id = `${key.webhookId}|${key.messageId}`;
+          if (seen.has(id)) return { alreadySeen: true };
+          seen.add(id);
+          return { alreadySeen: false };
+        }
+      ),
+    },
+    inbound: { processInboundEmail: vi.fn(async () => undefined) },
+    nextAfter: vi.fn((fn: () => Promise<void>) => void fn()),
+  };
+});
 
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => ({}) }));
 vi.mock("@/lib/routing/inbound", () => routing);
@@ -65,6 +81,8 @@ const wzrdmailEvent = {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
   process.env["WZRDMAIL_WEBHOOK_SECRET"] = `whsec_${WZRD_KEY.toString("base64")}`;
   process.env["AGENTMAIL_WEBHOOK_SECRET"] = `whsec_${AGENTMAIL_KEY.toString("base64")}`;
 });
@@ -72,6 +90,8 @@ beforeEach(() => {
 afterEach(() => {
   process.env = { ...ORIGINAL };
   vi.clearAllMocks();
+  seen.clear();
+  vi.useRealTimers();
 });
 
 describe("POST /api/inbound/email with MAIL_PROVIDER=wzrdmail", () => {
@@ -89,6 +109,15 @@ describe("POST /api/inbound/email with MAIL_PROVIDER=wzrdmail", () => {
       "user-1"
     );
     expect(inbound.processInboundEmail).toHaveBeenCalledWith({}, "user-1", "sam@wzrd.tech", "m1");
+  });
+
+  it("dedupes a redelivered message: the duplicate branch acks without work", async () => {
+    const first = await POST(signed(wzrdmailEvent, WZRD_KEY));
+    expect(first.status).toBe(200);
+    const second = await POST(signed(wzrdmailEvent, WZRD_KEY));
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ ok: true, deduped: true });
+    expect(inbound.processInboundEmail).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a body signed with the AgentMail secret", async () => {
