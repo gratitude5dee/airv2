@@ -16,10 +16,7 @@ import {
   parseMiniAppCardSession,
   type MiniAppCardSession,
 } from "../miniapps/cardSessions";
-import {
-  createRecordingSpectrumSender,
-  createUrlRecordingSpectrumSender,
-} from "./recording";
+import { createRecordingSpectrumSender } from "./recording";
 
 export interface SpectrumSender {
   /** Fire a typing indicator at the chat — before the box resumes. */
@@ -196,10 +193,10 @@ let spectrumSenderInitSeq = 0;
 export async function createSpectrumSender(
   site?: string
 ): Promise<SpectrumSender> {
-  const outbox = env.spectrumRecordOutbox();
-  if (outbox) return createRecordingSpectrumSender(outbox);
+  // Eval seam: a recording fake replaces the real client when the harness
+  // listener URL is configured, so every send site reports its bubbles.
   const recordUrl = env.evalSpectrumRecordUrl();
-  if (recordUrl) return createUrlRecordingSpectrumSender(recordUrl);
+  if (recordUrl) return createRecordingSpectrumSender(recordUrl);
   const startedAt = Date.now();
   const [
     {
