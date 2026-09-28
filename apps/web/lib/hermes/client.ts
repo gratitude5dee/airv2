@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { fetchWithHeaderTimeout, requestSignal } from "../http/timeout";
+import { log } from "../log";
 import {
   parseRawMessages,
   sanitizeConversation,
@@ -56,6 +57,10 @@ export interface RunRequest {
    * non-owner turns so memory writes are never credited to the owner.
    * It grants nothing; omit it on owner turns. */
   author?: { id: string; name: string; is_bot: boolean };
+  /** Stable dedup key for the unit of work the run answers: a retried
+   * burst resends the same key so the run endpoint cannot start a second
+   * run while the first is still alive (R-ARCH-06). */
+  idempotencyKey?: string;
 }
 
 const RunResponseSchema = z.object({ run_id: z.string() });
@@ -150,6 +155,26 @@ export async function loadConversationTranscript(
   if (!response.ok) {
     const body = await response.text();
     throw new HermesApiError(response.status, body.slice(0, 500));
+  try {
+    const response = await fetch(
+      url(target, `/api/sessions/${encodeURIComponent(sessionId)}/messages`),
+      {
+        signal: requestSignal(HERMES_REQUEST_TIMEOUT_MS),
+        headers: headers(target),
+      }
+    );
+    if (!response.ok) return { rows: 0, history: [] };
+    const raw = parseRawMessages(await response.json());
+    return { rows: raw.length, history: sanitizeConversation(raw) };
+  } catch (error) {
+    // An empty history here is silent amnesia for the turn — log it so the
+    // amnesia shows up in the control plane (R-ARCH-06).
+    log.error("conversation transcript load failed", {
+      box_id: null,
+      session_id: sessionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { rows: 0, history: [] };
   }
   const raw = parseRawMessages(await response.json());
   return { rows: raw.length, history: sanitizeConversation(raw) };
@@ -182,6 +207,9 @@ export async function createRun(
       ...(request.author ? { author: request.author } : {}),
       ...(request.model ? { model: request.model } : {}),
       ...(request.instructions ? { instructions: request.instructions } : {}),
+      ...(request.idempotencyKey
+        ? { idempotency_key: request.idempotencyKey }
+        : {}),
     }),
   });
 }
