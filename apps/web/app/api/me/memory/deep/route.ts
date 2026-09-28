@@ -38,7 +38,7 @@ function busy(): NextResponse {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * `{ action: "clear", scope: "resources" | "memories" | "all", confirm: true }`
  * — wipe the indexed context, the derived memories, or both. */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const userId = sessionUserId(request);
+  const userId = await sessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

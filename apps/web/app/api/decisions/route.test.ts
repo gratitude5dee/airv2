@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 type Row = Record<string, unknown>;
 
@@ -13,6 +13,8 @@ let decisions: Row[] = [];
 let updateError: { message: string } | null = null;
 /** Runs after the route's pending check and before its conditional update. */
 let beforeUpdate: (() => void) | null = null;
+
+const sessionUserId = vi.hoisted(() => vi.fn(() => "user-1" as string | null));
 
 function fakeSupabase() {
   function builder() {
@@ -27,6 +29,20 @@ function fakeSupabase() {
       },
       eq(column: string, value: unknown) {
         filters.push((row) => row[column] === value);
+        return chain;
+      },
+      in(column: string, values: unknown[]) {
+        filters.push((row) => values.includes(row[column]));
+        return chain;
+      },
+      gte(column: string, value: unknown) {
+        filters.push((row) => (row[column] as string) >= (value as string));
+        return chain;
+      },
+      order() {
+        return chain;
+      },
+      limit() {
         return chain;
       },
       async maybeSingle() {
@@ -52,7 +68,7 @@ function fakeSupabase() {
 }
 
 vi.mock("@/lib/supabase", () => ({ serviceClient: () => fakeSupabase() }));
-vi.mock("@/lib/auth/user", () => ({ sessionUserId: () => "user-1" }));
+vi.mock("@/lib/auth/user", () => ({ sessionUserId }));
 // V12 §9.3: the publish branch flips status and runs the finalize hook.
 const publish = vi.hoisted(() => ({
   setPublishStatus: vi.fn(async (): Promise<void> => undefined),
@@ -81,6 +97,7 @@ function post(action: "approve" | "dismiss"): NextRequest {
 
 describe("POST /api/decisions generic resolution", () => {
   beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
     decisions = [
       {
         id: "decision-1",
@@ -139,6 +156,7 @@ describe("POST /api/decisions generic resolution", () => {
 
 describe("POST /api/decisions — miniapp_publish (V12 §9.3)", () => {
   beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
     vi.clearAllMocks();
     publish.setPublishStatus.mockResolvedValue(undefined);
     decisions = [
@@ -207,5 +225,93 @@ describe("POST /api/decisions — miniapp_publish (V12 §9.3)", () => {
       error: expect.stringContaining("upload a bundle"),
     });
     expect(finalize.onPublishDecision).not.toHaveBeenCalled();
+  });
+});
+
+// R-TQ-06: auth + ownership on the Needs-you queue — the session user is the
+// only selector ever applied to the decisions table.
+describe("GET /api/decisions", () => {
+  beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
+    decisions = [
+      {
+        id: "d-pending",
+        user_id: "user-1",
+        kind: "note",
+        status: "pending",
+        created_at: "2026-09-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        id: "d-other-user",
+        user_id: "user-2",
+        kind: "note",
+        status: "pending",
+        created_at: "2026-09-01T00:00:00.000Z",
+        payload: {},
+      },
+      {
+        id: "d-resolved",
+        user_id: "user-1",
+        kind: "note",
+        status: "approved",
+        created_at: "2026-09-01T00:00:00.000Z",
+        resolved_at: new Date().toISOString(),
+        payload: {},
+      },
+    ];
+  });
+
+  it("rejects unauthenticated callers with 401", async () => {
+    sessionUserId.mockReturnValue(null);
+    const response = await GET(new NextRequest("https://air.test/api/decisions"));
+    expect(response.status).toBe(401);
+  });
+
+  it("lists only the session user's pending decisions", async () => {
+    const response = await GET(new NextRequest("https://air.test/api/decisions"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.decisions.map((d: Row) => d["id"])).toEqual(["d-pending"]);
+  });
+
+  it("?status=resolved returns approved/dismissed receipts, not pending rows", async () => {
+    const response = await GET(
+      new NextRequest("https://air.test/api/decisions?status=resolved"),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.decisions.map((d: Row) => d["id"])).toEqual(["d-resolved"]);
+  });
+});
+
+describe("POST /api/decisions — auth and ownership", () => {
+  beforeEach(() => {
+    sessionUserId.mockReturnValue("user-1");
+    decisions = [
+      {
+        id: "decision-1",
+        user_id: "user-2",
+        kind: "note",
+        ref: null,
+        status: "pending",
+        payload: {},
+      },
+    ];
+    updateError = null;
+    beforeUpdate = null;
+  });
+
+  it("rejects unauthenticated callers with 401", async () => {
+    sessionUserId.mockReturnValue(null);
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(401);
+    expect(decisions[0]).toMatchObject({ status: "pending" });
+  });
+
+  it("404s another user's decision and never resolves it", async () => {
+    const response = await POST(post("approve"));
+    expect(response.status).toBe(404);
+    expect(decisions[0]).toMatchObject({ status: "pending" });
   });
 });
