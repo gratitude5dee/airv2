@@ -24,22 +24,25 @@ describe("session tokens", () => {
   });
 
   it("round-trips a token it issued", () => {
-    const issued = createSessionToken("user-1");
-    expect(verifySessionToken(issued)).toBe("user-1");
+    const issued = createSessionToken("user-1", "sess-1");
+    expect(verifySessionToken(issued)).toEqual({
+      userId: "user-1",
+      sessionId: "sess-1",
+    });
   });
 
   it("rejects a token after it expires", () => {
-    const issued = createSessionToken("user-1");
+    const issued = createSessionToken("user-1", "sess-1");
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 31 * 86_400_000);
     expect(verifySessionToken(issued)).toBeUndefined();
   });
 
   it("rejects a tampered signature", () => {
-    const issued = createSessionToken("user-1");
+    const issued = createSessionToken("user-1", "sess-1");
     const forged = token(
       { alg: "HS256", typ: "JWT" },
-      { sub: "user-9", exp },
+      { sub: "user-9", sid: "sess-9", exp },
       "b".repeat(32)
     );
     expect(verifySessionToken(forged)).toBeUndefined();
@@ -50,9 +53,12 @@ describe("session tokens", () => {
   });
 
   it("rejects a wrong algorithm header even when correctly signed", () => {
-    const none = token({ alg: "none" }, { sub: "user-1", exp });
+    const none = token({ alg: "none" }, { sub: "user-1", sid: "sess-1", exp });
     expect(verifySessionToken(none)).toBeUndefined();
-    const hs512 = token({ alg: "HS512" }, { sub: "user-1", exp });
+    const hs512 = token(
+      { alg: "HS512" },
+      { sub: "user-1", sid: "sess-1", exp }
+    );
     expect(verifySessionToken(hs512)).toBeUndefined();
   });
 
