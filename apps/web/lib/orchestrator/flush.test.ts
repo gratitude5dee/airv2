@@ -20,6 +20,7 @@ import {
 import {
   createRun,
   ensureSession,
+  loadConversationTranscript,
   runEvents,
   stopRun,
 } from "../hermes/client";
@@ -34,6 +35,7 @@ vi.mock("../box/client", () => ({ command: vi.fn(), writeFile: vi.fn() }));
 vi.mock("../hermes/client", () => ({
   createRun: vi.fn(),
   ensureSession: vi.fn(),
+  loadConversationTranscript: vi.fn(),
   MAIN_SESSION: "air-main",
   MAIN_SESSION_TITLE: "Air",
   runEvents: vi.fn(),
