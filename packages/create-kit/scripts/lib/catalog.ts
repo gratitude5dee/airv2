@@ -88,9 +88,15 @@ const LODASH_DEBOUNCE: Patch = {
   file: "index.tsx",
   find: 'import { debounce } from "lodash"\n',
   replace:
-    "\nfunction debounce<A extends unknown[]>(fn: (...args: A) => void, wait: number) {\n" +
+    "\nfunction debounce<A extends unknown[]>(fn: (...args: A) => void, wait: number, options?: { leading?: boolean; trailing?: boolean }) {\n" +
+    "  const { leading = false, trailing = true } = options ?? {}\n" +
     "  let t: ReturnType<typeof setTimeout> | undefined\n" +
-    "  return (...args: A) => {\n    if (t) clearTimeout(t)\n    t = setTimeout(() => fn(...args), wait)\n  }\n}\n",
+    "  let firedLeading = false\n" +
+    "  return (...args: A) => {\n" +
+    "    const burstStart = t === undefined\n" +
+    "    if (t) clearTimeout(t)\n" +
+    "    if (leading && burstStart) {\n      firedLeading = true\n      fn(...args)\n    } else {\n      firedLeading = false\n    }\n" +
+    "    t = setTimeout(() => {\n      t = undefined\n      if (trailing && !firedLeading) fn(...args)\n      firedLeading = false\n    }, wait)\n  }\n}\n",
 };
 
 export const FANCY: readonly ComponentSpec[] = [

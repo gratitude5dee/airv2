@@ -2,11 +2,24 @@
 
 import { useState } from "react"
 
-function debounce<A extends unknown[]>(fn: (...args: A) => void, wait: number) {
+function debounce<A extends unknown[]>(fn: (...args: A) => void, wait: number, options?: { leading?: boolean; trailing?: boolean }) {
+  const { leading = false, trailing = true } = options ?? {}
   let t: ReturnType<typeof setTimeout> | undefined
+  let firedLeading = false
   return (...args: A) => {
+    const burstStart = t === undefined
     if (t) clearTimeout(t)
-    t = setTimeout(() => fn(...args), wait)
+    if (leading && burstStart) {
+      firedLeading = true
+      fn(...args)
+    } else {
+      firedLeading = false
+    }
+    t = setTimeout(() => {
+      t = undefined
+      if (trailing && !firedLeading) fn(...args)
+      firedLeading = false
+    }, wait)
   }
 }
 import { AnimationOptions, motion, useAnimate } from "motion/react"

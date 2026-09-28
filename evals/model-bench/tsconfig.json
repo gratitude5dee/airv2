@@ -1,0 +1,4 @@
+{
+  "extends": "../agent-suite/tsconfig.json",
+  "include": ["*.ts"]
+}
