@@ -1,0 +1,769 @@
+{
+  "spec": "R-EV-09",
+  "run": "deferred — model-tier run needs a funded control plane and a live box after R-EV-01…06 land",
+  "holdout_rule": "numeric case id % 3 === 0 — held out of all prompt and route-description tuning",
+  "in_sample_rule": "≥2 distinctive tokens shared between the case message and its expected_skill's ROUTE_OPTIONS description (len≥4 alpha, stopwords removed)",
+  "cases": {
+    "K105": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "reorder"
+      ]
+    },
+    "K106": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "bought"
+      ]
+    },
+    "K107": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K108": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K109": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "email",
+        "fill",
+        "link"
+      ]
+    },
+    "K110": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K111": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "stock"
+      ]
+    },
+    "K112": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K113": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "real"
+      ]
+    },
+    "K114": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K115": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "cancel"
+      ]
+    },
+    "K116": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "requirements"
+      ]
+    },
+    "K117": {
+      "expected_skill": "kernel-payments",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "card"
+      ]
+    },
+    "K118": {
+      "expected_skill": "tour-planning",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "plan"
+      ]
+    },
+    "K119": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K120": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K121": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "book"
+      ]
+    },
+    "K122": {
+      "expected_skill": "tour-planning",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "packing",
+        "trip"
+      ]
+    },
+    "K123": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K124": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K125": {
+      "expected_skill": "comms",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "calendar",
+        "emails",
+        "inbox"
+      ]
+    },
+    "K126": {
+      "expected_skill": "kernel-browser",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "requirements"
+      ]
+    },
+    "K127": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "pick"
+      ]
+    },
+    "K128": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "watch"
+      ]
+    },
+    "K129": {
+      "expected_skill": "email-draft-review",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "email"
+      ]
+    },
+    "K130": {
+      "expected_skill": "create-miniapp",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "build",
+        "mini"
+      ]
+    },
+    "K131": {
+      "expected_skill": "create-miniapp",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K132": {
+      "expected_skill": "none",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K133": {
+      "expected_skill": "storefront-commerce",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "shop",
+        "storefront"
+      ]
+    },
+    "K134": {
+      "expected_skill": "create-miniapp",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "build"
+      ]
+    },
+    "K135": {
+      "expected_skill": "create-miniapp",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K136": {
+      "expected_skill": "none",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K137": {
+      "expected_skill": "storefront-commerce",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K138": {
+      "expected_skill": "create-miniapp",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "build"
+      ]
+    },
+    "K139": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "site",
+        "status",
+        "watches"
+      ]
+    },
+    "K140": {
+      "expected_skill": "none",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "batch"
+      ]
+    },
+    "K141": {
+      "expected_skill": "storefront-commerce",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "report",
+        "sales",
+        "storefront"
+      ]
+    },
+    "K142": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "inbox",
+        "triage"
+      ]
+    },
+    "K143": {
+      "expected_skill": "email-draft-review",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "replies"
+      ]
+    },
+    "K144": {
+      "expected_skill": "email-draft-review",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "email"
+      ]
+    },
+    "K145": {
+      "expected_skill": "social-engage",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "band",
+        "channel",
+        "chat",
+        "group",
+        "post",
+        "venue"
+      ]
+    },
+    "K146": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K147": {
+      "expected_skill": "onairos-connect",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "agent",
+        "reach"
+      ]
+    },
+    "K148": {
+      "expected_skill": "email-draft-review",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K149": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "email"
+      ]
+    },
+    "K150": {
+      "expected_skill": "calendar-native",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "schedule"
+      ]
+    },
+    "K151": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "email",
+        "forward",
+        "invoice"
+      ]
+    },
+    "K152": {
+      "expected_skill": "kernel-browser",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "unsubscribe"
+      ]
+    },
+    "K153": {
+      "expected_skill": "watch_for",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "restocks"
+      ]
+    },
+    "K154": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "site",
+        "watch"
+      ]
+    },
+    "K155": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "drops"
+      ]
+    },
+    "K156": {
+      "expected_skill": "watch_for",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K157": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "restocks",
+        "watch"
+      ]
+    },
+    "K158": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "site"
+      ]
+    },
+    "K159": {
+      "expected_skill": "watch_for",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "watch"
+      ]
+    },
+    "K160": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "flag"
+      ]
+    },
+    "K161": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K162": {
+      "expected_skill": "watch_for",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K163": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "hacker",
+        "mentions",
+        "news"
+      ]
+    },
+    "K164": {
+      "expected_skill": "watch_for",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "watches"
+      ]
+    },
+    "K165": {
+      "expected_skill": "calendar-native",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K166": {
+      "expected_skill": "calendar-native",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "time"
+      ]
+    },
+    "K167": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "told"
+      ]
+    },
+    "K168": {
+      "expected_skill": "calendar-native",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "reminder"
+      ]
+    },
+    "K169": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "time"
+      ]
+    },
+    "K170": {
+      "expected_skill": "email-draft-review",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "follow"
+      ]
+    },
+    "K171": {
+      "expected_skill": "openviking-memory",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "promised",
+        "sent"
+      ]
+    },
+    "K172": {
+      "expected_skill": "calendar-native",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "reminder"
+      ]
+    },
+    "K173": {
+      "expected_skill": "calendar-native",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K174": {
+      "expected_skill": "watch_for",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "closing",
+        "return"
+      ]
+    },
+    "K175": {
+      "expected_skill": "onairos-connect",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "agent"
+      ]
+    },
+    "K176": {
+      "expected_skill": "onairos-connect",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "instinct",
+        "person"
+      ]
+    },
+    "K177": {
+      "expected_skill": "onairos-connect",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "instinct"
+      ]
+    },
+    "K178": {
+      "expected_skill": "onairos-connect",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "availability"
+      ]
+    },
+    "K179": {
+      "expected_skill": "onairos-connect",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "agent"
+      ]
+    },
+    "K180": {
+      "expected_skill": "onairos-connect",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "instinct"
+      ]
+    },
+    "K181": {
+      "expected_skill": "onairos-connect",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "agent"
+      ]
+    },
+    "K182": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "inbox",
+        "read"
+      ]
+    },
+    "K183": {
+      "expected_skill": "email-draft-review",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "email",
+        "refund",
+        "reply"
+      ]
+    },
+    "K184": {
+      "expected_skill": "email-draft-review",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K185": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "unsubscribe"
+      ]
+    },
+    "K186": {
+      "expected_skill": "email",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "email"
+      ]
+    },
+    "K187": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "email",
+        "folder",
+        "invoice"
+      ]
+    },
+    "K188": {
+      "expected_skill": "email-draft-review",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "email",
+        "follow",
+        "reply"
+      ]
+    },
+    "K189": {
+      "expected_skill": "email",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "folder",
+        "spam"
+      ]
+    },
+    "K190": {
+      "expected_skill": "email",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "auto",
+        "forward"
+      ]
+    },
+    "K191": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": true,
+      "shared": [
+        "remember",
+        "time"
+      ]
+    },
+    "K192": {
+      "expected_skill": "openviking-memory",
+      "holdout": true,
+      "in_sample": false,
+      "shared": []
+    },
+    "K193": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K194": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "remember"
+      ]
+    },
+    "K195": {
+      "expected_skill": "openviking-memory",
+      "holdout": true,
+      "in_sample": true,
+      "shared": [
+        "mail",
+        "sent"
+      ]
+    },
+    "K196": {
+      "expected_skill": "vault-use",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "number"
+      ]
+    },
+    "K197": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "preferences"
+      ]
+    },
+    "K198": {
+      "expected_skill": "openviking-memory",
+      "holdout": true,
+      "in_sample": false,
+      "shared": [
+        "told"
+      ]
+    },
+    "K199": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": []
+    },
+    "K200": {
+      "expected_skill": "openviking-memory",
+      "holdout": false,
+      "in_sample": false,
+      "shared": [
+        "vault"
+      ]
+    }
+  },
+  "totals": {
+    "cases": 96,
+    "holdout": 32,
+    "in_sample": 25
+  }
+}

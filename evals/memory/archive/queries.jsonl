@@ -1,0 +1,30 @@
+{"id":"M01","query":"what do I usually order for espresso beans?","expected":["m-coffee-order"]}
+{"id":"M02","query":"what's the door code for my place now?","expected":["m-door-code"]}
+{"id":"M03","query":"guest wifi password at home?","expected":["m-wifi-pass"]}
+{"id":"M04","query":"when does Priya land and what's her flight confirmation?","expected":["m-priya-flight","m-priya-conf"]}
+{"id":"M05","query":"Priya's flight confirmation code?","expected":["m-priya-conf"]}
+{"id":"M06","query":"when does the monitor return window close?","expected":["m-monitor-return"]}
+{"id":"M07","query":"when is my driver's license renewal due?","expected":["m-license-renewal"]}
+{"id":"M08","query":"what size On Cloud runners do I wear?","expected":["m-shoe-size"]}
+{"id":"M09","query":"what day are rehearsals moving to?","expected":["m-rehearsal-day"]}
+{"id":"M10","query":"what's my dental appointment reference?","expected":["m-dentist-ref"]}
+{"id":"M11","query":"which chain lube did Riley put on?","expected":["m-chain-lube"]}
+{"id":"M12","query":"what hold fee did Dana quote for The Independent?","expected":["m-dana-venue"]}
+{"id":"M13","query":"what did Alex name the baby?","expected":["m-alex-baby"]}
+{"id":"M14","query":"what goes in mum's lentil soup?","expected":["m-mum-recipe"]}
+{"id":"M15","query":"how much does Priya owe me for the merch run?","expected":["m-priya-reimburse"]}
+{"id":"M16","query":"when is the anniversary dinner and where?","expected":["m-sam-anniversary"]}
+{"id":"M17","query":"when is the plumber coming?","expected":["m-landlord-plumber"]}
+{"id":"M18","query":"when is dad's cardiology follow-up?","expected":["m-mum-meds"]}
+{"id":"M19","query":"what are the tour splits Dana confirmed?","expected":["m-dana-splits"]}
+{"id":"M20","query":"what frame size does Riley have me at?","expected":["m-riley-size"]}
+{"id":"M21","query":"what were Alex's final mix notes?","expected":["m-alex-mix"]}
+{"id":"M22","query":"what extra coffee did Sam ask for?","expected":["m-sam-decaf"]}
+{"id":"M23","query":"what dental insurance is on file?","expected":["m-dentist-insurance"]}
+{"id":"M24","query":"what did Priya want to lock before the SJ show?","expected":["m-priya-call"]}
+{"id":"M25","query":"when do the lease renewal papers go out?","expected":["m-landlord-lease"]}
+{"id":"M26","query":"when is the van booked for brake pads?","expected":["m-alex-van"]}
+{"id":"M27","query":"what's our set time and soundcheck?","expected":["m-dana-settime"]}
+{"id":"M28","query":"when is aunt's 70th and where?","expected":["m-mum-birthday"]}
+{"id":"M29","query":"how far did Riley move my cleats?","expected":["m-riley-fit"]}
+{"id":"M30","query":"when does my passport expire?","expected":["m-sam-passport"]}

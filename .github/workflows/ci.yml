@@ -51,6 +51,153 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+  migrations:
+    # Shadow-apply the full migration chain to scratch Postgres on every PR
+    # (R-P0-5). A migration can no longer reach production unexercised.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql + jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client jq
+      - name: Shim Supabase builtins (auth.uid, storage.buckets, service_role)
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            do \$\$ begin create role service_role nologin; exception when duplicate_object then null; end \$\$;
+            create schema if not exists auth;
+            create or replace function auth.uid() returns uuid
+              language sql stable as 'select null::uuid';
+            create schema if not exists storage;
+            create table if not exists storage.buckets
+              (id text primary key, name text not null, public boolean not null default false);
+          "
+      - name: Apply all migrations to scratch Postgres
+        run: bash scripts/apply-migrations.sh
+      - name: Re-run — second apply must be a no-op
+        run: |
+          bash scripts/apply-migrations.sh | tee /dev/stderr | grep -q 'Done: 0 migration'
+      - name: Run SQL tests
+        run: |
+          for f in supabase/tests/*.sql; do
+            echo "== $f"
+            # agent_run_box_seconds.sql carries its own fixtures and expects an
+            # empty database (the metering job runs it the same way).
+            if [ "$f" = "supabase/tests/agent_run_box_seconds.sql" ]; then
+              psql "$DATABASE_URL" -qc "create database migtest_empty"
+              psql "postgresql://postgres@localhost:5432/migtest_empty" -v ON_ERROR_STOP=1 -qf "$f"
+            else
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -qf "$f"
+            fi
+          done
+      - name: Hash check fails on an edited applied file
+        run: bash scripts/test-apply-migrations.sh
+  migration-diff:
+    # Which commits a main push brought in; lets deploy-migrations skip
+    # (without requesting the production approval) when nothing changed.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          if git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -q '^supabase/migrations/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+  deploy-migrations:
+    # Production apply: only after green CI, only when a main push touched
+    # supabase/migrations, and only with the production environment's
+    # required-reviewer approval (R-P0-5).
+    needs: [migration-diff, metering, migrations, web]
+    if: needs.migration-diff.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply pending migrations to production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: imkbxdsxfgmkylbgaygv
+        run: bash scripts/apply-migrations.sh
+  python:
+    # Box-template + scripts python suites (R-CI-01). The air-vault plugin
+    # tests import `agent.secret_sources` / `agent.redact` from Hermes, so the
+    # pinned Hermes revision is checked out and put on PYTHONPATH. Any skipped
+    # test fails the job — the suites are expected to run end to end.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 -m pip install pytest cryptography
+      - name: Resolve pinned Hermes ref
+        id: hermes
+        # Single source of truth: the HERMES_REF pinned by the box template.
+        run: |
+          ref=$(sed -n 's/^HERMES_REF="${HERMES_REF:-\([^"]*\)}"$/\1/p' infra/template/setup.sh | tr -d '[:space:]')
+          test -n "$ref" || { echo "::error::could not parse HERMES_REF from infra/template/setup.sh"; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Fetch Hermes at the pinned ref
+        run: |
+          dir="$RUNNER_TEMP/hermes-agent"
+          git init "$dir"
+          git -C "$dir" remote add origin https://github.com/NousResearch/hermes-agent.git
+          git -C "$dir" fetch --depth 1 origin "${{ steps.hermes.outputs.ref }}"
+          git -C "$dir" checkout --force FETCH_HEAD
+      - name: Run python suites (no skips allowed)
+        env:
+          PYTHONPATH: ${{ runner.temp }}/hermes-agent
+        run: |
+          set -o pipefail
+          python3 -m pytest infra/template scripts/tests -p no:cacheprovider --strict-markers -ra | tee pytest.log
+          if grep -Eq '[0-9]+ skipped' pytest.log; then
+            echo "::error::python suites reported skipped tests — see the -ra summary above"
+            exit 1
+          fi
+  coverage:
+    # Vitest coverage gate (R-CI-02). Floors live in apps/web/vitest.config.ts:
+    # global lines ratchet +2 points/week toward 65%, per-module floors at the
+    # measured baseline (85% target).
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Coverage report
+        working-directory: apps/web
+        run: npx vitest run --coverage
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage/
   audit:
     # Fail on new high/critical production advisories (R-P0-4).
     runs-on: ubuntu-latest
