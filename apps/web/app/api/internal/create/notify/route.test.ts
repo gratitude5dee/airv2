@@ -16,8 +16,9 @@ const state = vi.hoisted(() => {
       ops["delete"] = () => ({
         lt: async () => ({ data: [], error: null }),
       });
-      ops["upsert"] = (row: { sig: string }) => {
-        calls.push({ table, method: "upsert", args: [row] });
+      ops["upsert"] = (...args: unknown[]) => {
+        const row = args[0] as { sig: string };
+        calls.push({ table, method: "upsert", args });
         return {
           select: async () => {
             const fresh = !claimedNonces.has(row.sig);
