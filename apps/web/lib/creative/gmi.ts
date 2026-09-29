@@ -36,6 +36,8 @@ export interface MediaInput {
   mimeType?: string;
   /** Server-resolved @identity reference; preferred for one-image edit lanes. */
   identityReference?: boolean;
+  /** Server-resolved @entity ref (logo); forces reference slots over first frame. */
+  entityRef?: boolean;
   durationSeconds?: number;
   /** For audio lifted out of a clip: the URL of that clip. */
   soundtrackOf?: string;

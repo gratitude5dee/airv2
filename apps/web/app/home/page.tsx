@@ -202,6 +202,7 @@ function HomeShell() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [botNames, setBotNames] = useState<string[]>([]);
+  const [entityRefNames, setEntityRefNames] = useState<string[]>([]);
   // Needs You badge on the rail — globally reachable (spec §8).
   const [needsCount, setNeedsCount] = useState(0);
   // Bots mounts as a drawer inside AIR (spec §2).
@@ -352,6 +353,17 @@ function HomeShell() {
             .filter((b) => b.status === "ready")
             .map((b) => b.name)
         );
+      })
+      .catch(() => {});
+    // Registered @entity refs feed the palette's References group;
+    // best-effort like the bots fetch.
+    fetch("/api/entity-refs")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          refs?: { name: string }[];
+        };
+        setEntityRefNames((data.refs ?? []).map((ref) => ref.name));
       })
       .catch(() => {});
   }, [router]);
@@ -1201,6 +1213,7 @@ function HomeShell() {
                   voiceUsedRef.current = true;
                 }}
                 botNames={botNames}
+                entityRefs={entityRefNames}
                 attachments={staged}
                 onPickFiles={(files) => void pickFiles(files)}
                 onRemoveAttachment={(index) =>

@@ -264,7 +264,15 @@ export function buildFalZapRequest(
     enable_safety_checker: true,
   };
 
-  if (videos.length > 0 || audio.length > 0) {
+  // Any entity ref puts the whole turn on reference-to-video: a logo is a
+  // reference the video incorporates, never an opening frame, and
+  // image-to-video has no reference slots. Same reason clips/audio ride
+  // this branch — every image goes to reference_image_urls.
+  if (
+    videos.length > 0 ||
+    audio.length > 0 ||
+    turn.mediaInputs.some((media) => media.entityRef)
+  ) {
     // Reference clips carry their own framing; only an explicit ratio
     // overrides the endpoint's "adaptive" default.
     const ratio = plan.params.aspect_ratio;

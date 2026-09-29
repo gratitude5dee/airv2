@@ -9,7 +9,7 @@ export const PROMPT_VERSIONS = {
   chat: "chat.route.v2",
   imagine: "generation.imagine.v2",
   vision: "vision.describe.v2",
-  zap: "generation.zap.v6",
+  zap: "generation.zap.v7",
 } as const;
 
 const SAFETY = `## Safety
@@ -83,6 +83,18 @@ closing frame, any others are visual context. Attached video cannot be an
 input, so describe the shot in full rather than as an edit instruction. Be
 generous with concrete detail — the model accepts long briefs — but do not
 use negative prompting or comma-separated tag lists.`;
+
+/**
+ * Metaprompt addendum for /zap turns carrying @entity refs (logos). The
+ * prompt text already names each ref as "the <name> logo in Image N" — this
+ * tells the compiler to keep it a reference with an explicit job, never a
+ * first/last frame, and to keep the user's own words as the direction.
+ */
+export const ZAP_ENTITY_GUIDE = `## Entity references
+The prompt names registered entity refs inline ("the acme-logo logo in Image 2"). In expanded_prompt:
+- Give every such Image N an explicit job tied to its entity — "the Image 2 brand mark closes the shot", "the logo from Image 1 stays pinned top-left".
+- Keep the user's own words as the creative direction; expand them with H3 language (camera, film grammar, timed beats, directed audio) only.
+- An entity ref is never a first or last frame — always a reference the video incorporates.`;
 
 export const GENERATION_SYSTEMS = {
   animate: ANIMATE_GENERATION_SYSTEM,

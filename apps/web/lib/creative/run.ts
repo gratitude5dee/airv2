@@ -34,12 +34,14 @@ import {
 import { CreativeUnconfiguredError } from "./groq";
 import { insertRenderCostEvent, updateCreativeJob, underDailyLimit, DAILY_LIMIT_LINE } from "./jobs";
 import { fetchSafeGeneratedMedia } from "./media-url";
-import { DEFAULT_LANE_MODELS, loadCreativePrefs } from "./model-prefs";
+import { DEFAULT_LANE_MODELS, guideForModel, loadCreativePrefs } from "./model-prefs";
 import { getProviderKey } from "../providers/keys";
-import { PROMPT_VERSIONS } from "./prompts";
+import { PROMPT_VERSIONS, ZAP_ENTITY_GUIDE } from "./prompts";
 import {
+  CreativeRouterUnavailableError,
   directCreativePlan,
   directZapPlan,
+  routeExplicitCommand,
   type CreativeCommandTurn,
 } from "./router";
 import type { RouterPlan } from "./schema";
@@ -81,6 +83,31 @@ export interface CreativeJobOptions {
    * and the personal key are unchanged; GMI lanes only.
    */
   model?: string;
+}
+
+/**
+ * The zap plan for a turn. Entity-ref turns compile through the Groq
+ * metaprompt with the H3 guide plus the entity addendum, so every named
+ * reference lands an explicit job in expanded_prompt. The compile is a
+ * nicety, never a dependency — a router failure falls back to today's
+ * direct plan and withReferenceLegend still gives the refs a job.
+ */
+async function zapPlanFor(turn: CreativeCommandTurn): Promise<RouterPlan> {
+  if (!turn.mediaInputs.some((media) => media.entityRef)) {
+    return directZapPlan(turn);
+  }
+  const guide = `${guideForModel(DEFAULT_LANE_MODELS.zap) ?? ""}\n\n${ZAP_ENTITY_GUIDE}`;
+  try {
+    return await routeExplicitCommand(turn, null, undefined, guide);
+  } catch (error) {
+    if (
+      error instanceof CreativeRouterUnavailableError ||
+      error instanceof CreativeUnconfiguredError
+    ) {
+      return directZapPlan(turn);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -132,7 +159,7 @@ export async function executeCreativeJob(
     }
     // A caller-built plan (/freeze's camera-trajectory render) skips the
     // default zap plan the same way the GMI lanes do.
-    plan = options?.plan ?? directZapPlan(turn);
+    plan = options?.plan ?? (await zapPlanFor(turn));
   } else {
     // The user's lane model choices (Settings) and, when saved, their
     // personal GMI key. Both degrade to platform defaults on any failure.
