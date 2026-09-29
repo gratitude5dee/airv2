@@ -323,3 +323,23 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - Adapter gate testing needs two env vars in the `next start` env: `CREATE_BRIDGE_SECRET` (any value — the adapter routes sign/verify `x-air-sig` HMAC over `ts.method.path.sha256(body)`, ±300s) and `ADMIN_API_KEY` (Bearer for `/api/admin/create/*`). Unsigned adapter calls must 503 when the var is absent and 401 when present but wrong/stale — set it to probe the 400-payload branch (signature genuinely verified, not just presence).
 - `scripts/create-v13-m0.ts` exits 0 with 14 local + 8 credential-gated live probes and rewrites `docs/reports/create-v13-m0.md` (timestamped — expect diff noise if the tree is dirty).
 - create-kit regen: `infra/template/skills/create-miniapp/SKILL.md` is GENERATED — edit `packages/create-kit/prompts/src/skill.md` + `buildSkill` frontmatter in `scripts/lib/design.ts`, then `npx tsx packages/create-kit/scripts/harvest.ts` and confirm `scripts/verify.ts` ok. CI's `verify` job fails on any hand-edit.
+
+## Drive the already-running Devin Chrome over CDP (preferred over a second browser)
+- The Devin-managed Chrome on DISPLAY :0 is launched with `--remote-debugging-port=<port>` — grab it with `ss -ltnp | grep chrome` or `ps aux | grep remote-debugging-port` (it is NOT always 9222). `sync_playwright().chromium.connect_over_cdp("http://localhost:<port>")` gives `context.add_cookies` (works for HttpOnly `air_session`/`mini_*` cookies), `page.set_input_files` (works on hidden file inputs), and screenshots on THE SAME window the screen recorder and `computer` tool see — no second browser, no Xvfb.
+
+## Render the onboarding deck without a box (mirror-row seeding)
+- `loadSnapshot` reads `onboarding_status_mirror` FIRST: if `state` is present it renders entirely from Postgres — no `ensureComputeAwake`, no box wake. Seed one row per test user via `POST {SUPABASE_URL}/rest/v1/onboarding_status_mirror` (service key, `Prefer: resolution=merge-duplicates`) with `{"user_id": "<uid>", "state": {"steps": {<every ONBOARDING_STEPS id>: "done"|"skipped"|"todo"}}, "refreshed_at": "<iso>"}`. Caveats: `markSafely` (skip/mark_done/upload) still tries `markOnboardingStep` → box write, and non-StartLimitError box errors RE-THROW as 500s; actions that only `respond()` are box-free. Delete the seeded row afterwards — it fabricates progress for later tests. If the test user's box is merely idle, a real `BOX_API_KEY` wakes it fine and the mirror is unnecessary.
+
+## Apply pending migrations to the real Supabase project
+- New-table migrations are NOT auto-applied locally: probe `GET /rest/v1/<table>?limit=1` — `PGRST205` means missing. Apply via `POST https://api.supabase.com/v1/projects/imkbxdsxfgmkylbgaygv/database/query` (Bearer `SUPABASE_ACCESS_TOKEN`) with `{"query": <migration SQL>}`; the PostgREST schema cache refreshes within ~5s.
+
+## entity-refs / Create Brand Guide panel notes
+- Booth slide stepper: `?step=brand` lands on the "Create Brand Guide" panel (last section of Your digital twin). The "Save logo" button is `.uploader-fallback` — visually hidden no-JS fallback; real submission is implicit Enter inside the `ref name` input (or `form.requestSubmit()`), not a button click.
+- `air_session` needs a live `sessions` row: insert `{user_id}` via service role, then sign HS256 `{sub, sid, exp}` with the local SESSION_SECRET. Mini tokens: `base64url({userId,app:"onboarding",resourceId:"default",jti,exp}) + "." + base64url(HMAC_SHA256(MINIAPP_SIGNING_KEY))`; `GET /onboarding?t=<token>` on the MINI host exchanges to a `mini_onboarding` cookie (Max-Age 900s — re-mint if it lapses).
+- `GET /api/entity-refs` (session) and `/api/admin/entity-refs` (`Authorization: Bearer $ADMIN_API_KEY` + `x-admin-operator: <name>` matching `^[A-Za-z0-9._@-]{1,64}$`) are cheap contract probes.
+- `creative_assets.kind` stores the FILE EXT ("png"/"jpg"/"mp4"), never a semantic "image" — code checking `kind === "image"` on this table never matches.
+- fal queue debugging: `GET https://queue.fal.run/fal-ai/<app>/requests/<provider_request_id>/status` and `GET …/requests/<id>` with `Authorization: Key $FAL_KEY` — GETs only. POSTing to a guessed `…/requests/<id>/status` URL SUBMITS a new render (bills a job); use only the exact `status_url`/`response_url` shapes fal returns.
+- The composer's `@` palette lives on `/home?s=air.chat` (not `air.home`); groups render as `[role="menuitem"]` items + menu-label headers.
+
+### Devin Secrets Needed (additions)
+- `THIRDWEB_SECRET_KEY`, `NEXT_PUBLIC_THIRDWEB_CLIENT_ID` (build-time), `ADMIN_API_KEY`, `BOX_API_KEY`, `AGENTMAIL_API_KEY`, `COMPOSIO_API_KEY`, `SPECTRUM_*`, `FAL_KEY`, `GROQ_API_KEY` — real fal/groq keys make /zap render end-to-end locally (small render fee per run).
