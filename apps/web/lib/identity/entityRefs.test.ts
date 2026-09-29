@@ -29,12 +29,13 @@ import {
 const db = new FakeSupabase();
 const supabase = db.client();
 
-const asset = (id: string, owner: string) => ({
+// Mirrors ingestBytes: creative_assets stores the file ext in both kind and ext.
+const asset = (id: string, owner: string, ext = "png") => ({
   id,
   user_id: owner,
-  kind: "image",
-  storage_key: `${owner}/${id}.png`,
-  ext: "png",
+  kind: ext,
+  storage_key: `${owner}/${id}.${ext}`,
+  ext,
   bytes: 100,
   sha256: id,
   box_asset_id: null,
@@ -55,7 +56,11 @@ beforeEach(() => {
       created_at: "2026-09-01T00:00:00Z",
     },
   ];
-  db.tables["creative_assets"] = [asset("a-logo", "u-1"), asset("a-foreign", "u-2")];
+  db.tables["creative_assets"] = [
+    asset("a-logo", "u-1"),
+    asset("a-foreign", "u-2"),
+    asset("a-clip", "u-1", "mp4"),
+  ];
 });
 
 describe("parseEntityRefs", () => {
@@ -158,6 +163,12 @@ describe("registerEntityRef", () => {
       assetId: "a-logo",
     });
     expect(bad).toMatchObject({ ok: false });
+
+    const video = await registerEntityRef(supabase, "u-1", {
+      name: "clip-logo",
+      assetId: "a-clip",
+    });
+    expect(video).toMatchObject({ ok: false });
   });
 });
 

@@ -161,6 +161,15 @@ export type RegisterEntityRefResult =
   | { ok: true; name: string }
   | { ok: false; error: string };
 
+// creative_assets stores the file extension in both ext and kind (see
+// ingestBytes); only image extensions may back an entity ref.
+const IMAGE_ASSET_EXTS = new Set(["gif", "jpeg", "jpg", "png", "webp"]);
+
+const isImageAsset = (asset: { kind?: unknown; ext?: unknown }): boolean =>
+  asset.kind === "image" ||
+  (typeof asset.ext === "string" && IMAGE_ASSET_EXTS.has(asset.ext)) ||
+  (typeof asset.kind === "string" && IMAGE_ASSET_EXTS.has(asset.kind));
+
 export const ENTITY_REF_NAME_LINE =
   "Names are 2-32 characters: lowercase letters, digits and hyphens.";
 
@@ -180,11 +189,11 @@ export async function registerEntityRef(
   }
   const { data: asset } = await supabase
     .from("creative_assets")
-    .select("id, kind")
+    .select("id, kind, ext")
     .eq("id", options.assetId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (!asset || (asset as { kind?: unknown }).kind !== "image") {
+  if (!asset || !isImageAsset(asset as { kind?: unknown; ext?: unknown })) {
     return { ok: false, error: "That asset isn't an image you own." };
   }
   const label = options.label?.trim() ? options.label.trim() : null;
