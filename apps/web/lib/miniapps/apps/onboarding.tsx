@@ -165,12 +165,21 @@ import {
   uploadTwinConsent,
   type DigitalTwin,
 } from "@/lib/identity/twin";
+import {
+  deleteEntityRef,
+  entityRefViews,
+  isEntityRefName,
+  registerEntityRef,
+  type EntityRefView,
+} from "@/lib/identity/entityRefs";
 import { elevenlabsAvailable } from "@/lib/identity/voice";
 import {
   createUserVoiceClone,
   revokeUserVoiceClone,
 } from "@/lib/identity/voiceClone";
 import { ASSETS_BUCKET, DELIVERY_TTL_SECONDS } from "@/lib/assets/keys";
+import { ingestUploadedMedia } from "@/lib/creative/store";
+import { guardMediaUpload, MediaGuardError } from "@/lib/storage/guard";
 import {
   checkLinkAuth,
   defaultLinkAuthDoc,
@@ -274,6 +283,7 @@ const SECTION_STEPS: Record<SlideSectionKey, readonly OnboardingStepId[]> = {
   twin: ["twin"],
   twin_create: ["twin"],
   avatar: ["avatar"],
+  brand: ["brand"],
   twin_summary: ["agent"],
   imessage: ["imessage"],
   browser: ["import"],
@@ -319,6 +329,7 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
       { key: "voice", label: "Voice" },
       { key: "twin_create", label: "Video avatar" },
       { key: "avatar", label: "Representing image" },
+      { key: "brand", label: "Create Brand Guide" },
     ],
   },
   {
@@ -504,6 +515,8 @@ export interface OnboardingSnapshot {
   awakeBoxId: string | null;
   /** A pairing phrase/URL exists box-side but isn't in `link` yet. */
   linkPairing: boolean;
+  /** Registered @entity refs (logos) for the Create Brand Guide panel. */
+  entityRefs: EntityRefView[];
   /** Legacy thread labels awaiting the owner's decision. Content: read live
    * from the Box for the iMessage slide only, never mirrored to Postgres. */
   resolutions: ResolutionView | null;
@@ -522,6 +535,7 @@ interface SnapshotParts {
   consents: boolean;
   managers: boolean;
   merchant: boolean;
+  entityRefs: boolean;
 }
 
 /** What a render needs beyond the always-loaded parts. */
@@ -573,6 +587,11 @@ async function loadSnapshot(
           .from("connections")
           .select("provider, toolkit, status, connected_at")
           .eq("user_id", userId)
+      ),
+      timedPart(parts, "entity_refs", () =>
+        rendering("booth")
+          ? entityRefViews(supabase, userId).catch(() => [] as EntityRefView[])
+          : Promise.resolve([] as EntityRefView[])
       ),
       timedPart(parts, "vault_count", () =>
         supabase
@@ -713,6 +732,7 @@ async function loadSnapshot(
       user,
       { data: addressRow },
       { data: connectionRows },
+      entityRefs,
       { count },
       { data: entitlement },
       { count: pluginCount },
@@ -777,6 +797,7 @@ async function loadSnapshot(
           ? boxRow.provider_box_id
           : null,
       linkPairing,
+      entityRefs,
       resolutions: null,
       loaded: {
         identityUrls: rendering("booth") || rendering("start"),
@@ -784,6 +805,7 @@ async function loadSnapshot(
         consents: consentsNeeded,
         managers: managersNeeded,
         merchant: merchantNeeded,
+        entityRefs: rendering("booth"),
       },
     };
   });
@@ -857,6 +879,16 @@ async function hydrateSlide(
         listConsents(supabase, userId)
           .then((consents) => {
             snapshot.consents = consents;
+          })
+          .catch(() => undefined)
+      );
+    }
+    if (!loaded.entityRefs) {
+      loaded.entityRefs = true;
+      jobs.push(
+        entityRefViews(supabase, userId)
+          .then((refs) => {
+            snapshot.entityRefs = refs;
           })
           .catch(() => undefined)
       );
@@ -1015,6 +1047,8 @@ export function effectiveStatus(
         : "todo";
     case "avatar":
       return snapshot.avatarAssetId ? "done" : "todo";
+    case "brand":
+      return snapshot.entityRefs.length > 0 ? "done" : "todo";
     case "connect":
       return snapshot.connections.some((c) => c.status === "active")
         ? "done"
@@ -1492,6 +1526,18 @@ function stepBody(
       ? `<form method="post" class="inline"><input type="hidden" name="action" value="generate_alt_image"><button class="ghost">Generate a new look</button></form>`
       : "";
     return `<p class="muted">Optional — pick the image that represents @${esc(snapshot.username ?? "you")} on your public card and in chat. Your approved profile image is the usual choice.</p>${trainedBlock}${gallery}<div class="row actions">${generate}${skipForm("avatar")}</div>`;
+  }
+  if (step === "brand") {
+    const existing = snapshot.entityRefs
+      .map(
+        (ref) =>
+          `<li class="media-row">${ref.thumbUrl ? `<img class="idthumb" src="${esc(ref.thumbUrl)}" width="48" height="48" loading="lazy" decoding="async" alt="${esc(ref.label ?? ref.name)}">` : ""}<div class="media-meta"><span class="chip">@${esc(ref.name)}</span>${ref.label ? `<span class="chip">${esc(ref.label)}</span>` : ""}</div><div class="media-actions"><form method="post" class="inline"><input type="hidden" name="action" value="delete_entity_ref"><input type="hidden" name="ref_name" value="${esc(ref.name)}"><button class="ghost" aria-label="Remove @${esc(ref.name)}">Remove</button></form></div></li>`
+      )
+      .join("");
+    const list = existing
+      ? `<ul class="media-list">${existing}</ul><p class="muted">Upload again with the same name to replace a logo.</p>`
+      : "";
+    return `<p class="muted">Optional — upload your logo to start your brand guide. It becomes a named reference you can call with <strong>@</strong> in /zap and creative prompts — <code>/zap @acme-logo neon intro</code>.</p>${list}<form method="post" enctype="multipart/form-data" class="uploader-form"><input type="hidden" name="action" value="upload_logo"><label class="uploader" for="brand-logo-file"><span class="uploader-icon" aria-hidden="true">${UPLOAD_ICONS.library}</span><span class="uploader-copy"><strong>Upload your logo</strong><span class="uploader-hint">PNG, JPG, or WebP — up to 8 MB.</span></span><input id="brand-logo-file" type="file" name="file" accept="image/png,image/jpeg,image/webp"></label><div class="row"><input type="text" name="name" placeholder="ref name — acme-logo" maxlength="32" pattern="[a-z0-9][a-z0-9-]{1,31}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required><input type="text" name="label" placeholder="label (optional)" maxlength="64" autocomplete="off"></div><button class="ghost uploader-fallback">Save logo</button></form><div class="row actions">${skipForm("brand")}</div>`;
   }
   if (step === "connect") {
     // Same webview constraint as the Onairos slide: Google refuses OAuth
@@ -3327,6 +3373,63 @@ export const onboarding: MiniAppModule = {
         wasVoice ? "voice" : "selfies",
         ok ? "Deleted — the original is gone from your vault." : "Nothing to delete."
       );
+    }
+
+    // Create Brand Guide: the logo is a plain creative_assets row linked
+    // only through entity_refs — never an identity role (it must stay out
+    // of vault galleries and twin-reference selection), and never a consent
+    // read (a brand mark isn't likeness or voice).
+    if (action === "upload_logo") {
+      const file = form.get("file");
+      if (!(file instanceof File) || file.size === 0) {
+        return respond(ctx, "brand", "Choose an image first.");
+      }
+      const name = String(form.get("name") ?? "").trim().toLowerCase();
+      const rawLabel = String(form.get("label") ?? "").trim();
+      const owner = await currentUsername(supabase, userId);
+      if (owner && name === owner.toLowerCase()) {
+        return respond(
+          ctx,
+          "brand",
+          `that's you — pick a brand name like ${owner}-logo.`
+        );
+      }
+      let bytes: Buffer;
+      try {
+        bytes = guardMediaUpload(
+          Buffer.from(await file.arrayBuffer()),
+          file.type || "application/octet-stream"
+        );
+      } catch (error) {
+        return respond(
+          ctx,
+          "brand",
+          error instanceof MediaGuardError
+            ? error.message
+            : "That image can't be used."
+        );
+      }
+      const asset = await ingestUploadedMedia(supabase, userId, bytes, file.type);
+      const result = await registerEntityRef(supabase, userId, {
+        kind: "logo",
+        name,
+        assetId: asset.id,
+        label: rawLabel || null,
+      });
+      if (!result.ok) return respond(ctx, "brand", result.error);
+      await markSafely(supabase, userId, "brand", "done");
+      return respond(
+        ctx,
+        "brand",
+        `Saved — @${name} works in /zap and creative prompts.`
+      );
+    }
+
+    if (action === "delete_entity_ref") {
+      const name = String(form.get("ref_name") ?? "").trim().toLowerCase();
+      if (!isEntityRefName(name)) return forbidden("bad ref name");
+      await deleteEntityRef(supabase, userId, "logo", name);
+      return respond(ctx, "brand", `Removed @${name}.`);
     }
 
     if (action === "generate_character_sheet") {

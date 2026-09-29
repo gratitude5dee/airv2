@@ -73,6 +73,8 @@ export interface PromptInputProps {
   onVoiceTranscript?: () => void;
   /** V8: ready bot names for the @mention palette. */
   botNames?: string[];
+  /** @entity refs (logos) for the palette's References group. */
+  entityRefs?: string[];
   /** V8: pending upload chips; presence enables the attach button. */
   attachments?: PendingAttachment[];
   onPickFiles?: (files: File[]) => void;
@@ -110,6 +112,7 @@ export function PromptInput({
   tierModels,
   onVoiceTranscript,
   botNames,
+  entityRefs,
   attachments,
   onPickFiles,
   onRemoveAttachment,
@@ -158,8 +161,17 @@ export function PromptInput({
         `@${name}`.startsWith(value.toLowerCase())
       )
     : [];
+  const entityMatches = /^@[a-z0-9-]*$/i.test(value)
+    ? (entityRefs ?? []).filter(
+        (name) =>
+          `@${name}`.startsWith(value.toLowerCase()) &&
+          !mentionMatches.includes(name)
+      )
+    : [];
   const paletteOpen = !paletteDismissed && paletteMatches.length > 0;
-  const mentionOpen = !paletteDismissed && mentionMatches.length > 0;
+  const mentionOpen =
+    !paletteDismissed &&
+    (mentionMatches.length > 0 || entityMatches.length > 0);
 
   useEffect(() => {
     if (!/^[/@][a-z0-9-]*$/i.test(value)) setPaletteDismissed(false);
@@ -206,10 +218,10 @@ export function PromptInput({
       onChange(`${first.id} `);
       return;
     }
-    const firstBot = mentionMatches[0];
-    if (mentionOpen && firstBot && (e.key === "Tab" || e.key === "Enter")) {
+    const firstMention = mentionMatches[0] ?? entityMatches[0];
+    if (mentionOpen && firstMention && (e.key === "Tab" || e.key === "Enter")) {
       e.preventDefault();
-      onChange(`@${firstBot} `);
+      onChange(`@${firstMention} `);
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -395,6 +407,23 @@ export function PromptInput({
               Bots
             </div>
             {mentionMatches.map((name) => (
+              <button
+                key={name}
+                type="button"
+                role="menuitem"
+                className={styles["menuItem"]}
+                onClick={() => {
+                  onChange(`@${name} `);
+                  fieldRef.current?.focus();
+                }}
+              >
+                <span className={styles["menuName"]}>@{name}</span>
+              </button>
+            ))}
+            {entityMatches.length > 0 && (
+              <div className={styles["menuLabel"]}>References</div>
+            )}
+            {entityMatches.map((name) => (
               <button
                 key={name}
                 type="button"

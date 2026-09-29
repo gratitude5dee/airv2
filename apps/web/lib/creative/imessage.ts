@@ -19,6 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ASSETS_BUCKET } from "../assets/keys";
 import type { CreativeAsset } from "../assets/pipeline";
+import { attachEntityReferences } from "../identity/entityRefs";
 import { attachIdentityReferences } from "../identity/resolve";
 import { recordReferenceUses } from "../identity/twin";
 import type { SpectrumSender } from "../spectrum/sender";
@@ -140,15 +141,27 @@ export async function maybeRunCreativeLane(
   }
   logCreativeLatency(job, "inputs_staged", startedAtMs);
 
-  // @username references resolve to the twin's approved images and join the
-  // turn as ordinary image inputs; the mention becomes "the person in Image
-  // N". A name the user may not use stops the turn before any provider call.
-  const attached = await attachIdentityReferences(supabase, job.userId, {
+  // Registered @entity names (logos) resolve first — unclaimed names fall
+  // through to @username twin references, which resolve to the twin's
+  // approved images and join the turn as ordinary image inputs; the mention
+  // becomes "the person in Image N". A name the user may not use stops the
+  // turn before any provider call.
+  const entityAttached = await attachEntityReferences(supabase, job.userId, {
     mode: command.mode,
     cleanedText: command.cleanedText,
     text,
     mediaInputs,
   });
+  if (entityAttached.problem) {
+    await removeStagedInputs(supabase, stagedKeys);
+    await sender.sendText(job.spaceId, job.phone, entityAttached.problem);
+    return true;
+  }
+  const attached = await attachIdentityReferences(
+    supabase,
+    job.userId,
+    entityAttached.turn,
+  );
   if (attached.problem) {
     await removeStagedInputs(supabase, stagedKeys);
     await sender.sendText(job.spaceId, job.phone, attached.problem);
@@ -161,7 +174,10 @@ export async function maybeRunCreativeLane(
     "imessage",
     command.mode,
   );
-  await recordReferenceUses(supabase, creativeJob.id, job.userId, attached.uses);
+  await recordReferenceUses(supabase, creativeJob.id, job.userId, [
+    ...entityAttached.uses,
+    ...attached.uses,
+  ]);
   let result: Awaited<ReturnType<typeof executeCreativeJob>>;
   try {
     result = await executeCreativeJob(

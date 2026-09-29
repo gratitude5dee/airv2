@@ -121,6 +121,7 @@ const snapshot: OnboardingSnapshot = {
   mailboxDomain: "wzrd.tech",
   identityMedia,
   identityReferenceAssetIds: [],
+  entityRefs: [],
   avatarAssetId: built ? "a-profile" : null,
   twin,
   twinAvailable: false,

@@ -15,6 +15,7 @@ import {
 } from "@/lib/creative/parse";
 import { createCreativeJob, updateCreativeJob } from "@/lib/creative/jobs";
 import { executeCreativeJob } from "@/lib/creative/run";
+import { attachEntityReferences } from "@/lib/identity/entityRefs";
 import { attachIdentityReferences } from "@/lib/identity/resolve";
 import { recordReferenceUses } from "@/lib/identity/twin";
 import {
@@ -176,18 +177,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           "Attached files can't be used with /imagine, /animate, or /zap yet — send the command on its own and describe what you want.",
       });
     }
-    const attached = await attachIdentityReferences(supabase, userId, {
+    // Registered @entity names (logos) resolve first — they carry the same
+    // character space as handles, so an unclaimed name falls through to the
+    // twin layer unchanged.
+    const entityAttached = await attachEntityReferences(supabase, userId, {
       mode: command.mode,
       cleanedText: command.cleanedText,
       text: typed,
       mediaInputs: [],
     });
+    if (entityAttached.problem) {
+      return NextResponse.json({ creative_line: entityAttached.problem });
+    }
+    const attached = await attachIdentityReferences(supabase, userId, entityAttached.turn);
     if (attached.problem) {
       return NextResponse.json({ creative_line: attached.problem });
     }
     try {
       const job = await createCreativeJob(supabase, userId, "web", command.mode);
-      await recordReferenceUses(supabase, job.id, userId, attached.uses);
+      await recordReferenceUses(supabase, job.id, userId, [
+        ...entityAttached.uses,
+        ...attached.uses,
+      ]);
       after(async () => {
         await executeCreativeJob(supabase, job.id, userId, attached.turn).catch((error: unknown) => {
           log.error("creative job execution failed", {user_id: userId,

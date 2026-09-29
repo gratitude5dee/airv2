@@ -26,6 +26,7 @@ export const ONBOARDING_STEPS = [
   "voice",
   "twin",
   "avatar",
+  "brand",
   "imessage",
   "import",
   "onairos",
