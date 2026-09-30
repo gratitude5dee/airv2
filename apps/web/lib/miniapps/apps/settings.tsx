@@ -945,10 +945,13 @@ export const settings: MiniAppModule = {
       const slug = String(form.get("byo_model") ?? "");
       const { data: entitlement } = await ctx.supabase
         .from("entitlements")
-        .select("token_provider")
+        .select("token_provider, byo_model")
         .eq("user_id", userId)
         .maybeSingle();
       const provider = String(entitlement?.token_provider ?? "wzrd");
+      const previous = entitlement?.byo_model
+        ? String(entitlement.byo_model)
+        : null;
       if (slug === "") {
         const ok = await clearByoModel(ctx.supabase, userId);
         return respond(ctx, ok ? "Back to the default model." : "Update failed.");
@@ -970,6 +973,11 @@ export const settings: MiniAppModule = {
           slug
         );
         if (!rebound) {
+          if (previous) {
+            await setByoModel(ctx.supabase, userId, previous);
+          } else {
+            await clearByoModel(ctx.supabase, userId);
+          }
           return respond(ctx, "Couldn't switch your agent's model — try again.");
         }
       }

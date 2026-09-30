@@ -3038,8 +3038,17 @@ async function markSafely(
     refreshOnboardingCard(supabase, userId, state);
     return true;
   } catch (error) {
-    if (error instanceof StartLimitError) return false;
-    throw error;
+    // Box transients (mid-archive/restore, start limit) must not 500 the
+    // response — the caller's write already persisted, and the mirror
+    // re-converges on the next mark.
+    if (!(error instanceof StartLimitError)) {
+      log.warn("onboarding step mark deferred", {
+        user_id: userId,
+        step,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+    return false;
   }
 }
 
@@ -3542,7 +3551,15 @@ export const onboarding: MiniAppModule = {
       if (!slug) {
         const ok = await clearByoModel(supabase, userId);
         if (ok && snapshot.tokenProvider === "anthropic") {
-          await applyTokenProvider(supabase, userId, "anthropic");
+          const bound = await applyTokenProvider(supabase, userId, "anthropic");
+          if (!bound && snapshot.byoModel) {
+            await setByoModel(supabase, userId, snapshot.byoModel);
+            return respond(
+              ctx,
+              "model",
+              "Cleared the pin, but the computer didn't switch back — try again."
+            );
+          }
         }
         return respond(ctx, "model", ok ? "Back on the provider default." : "Update failed — try again.");
       }
@@ -3550,7 +3567,19 @@ export const onboarding: MiniAppModule = {
       const ok = await setByoModel(supabase, userId, slug);
       // The anthropic pin is box-side config, not just an entitlement.
       if (ok && snapshot.tokenProvider === "anthropic") {
-        await applyTokenProvider(supabase, userId, "anthropic", slug);
+        const bound = await applyTokenProvider(supabase, userId, "anthropic", slug);
+        if (!bound) {
+          if (snapshot.byoModel) {
+            await setByoModel(supabase, userId, snapshot.byoModel);
+          } else {
+            await clearByoModel(supabase, userId);
+          }
+          return respond(
+            ctx,
+            "model",
+            "Couldn't set that model on your computer — try again."
+          );
+        }
       }
       if (ok) await markSafely(supabase, userId, "model", "done");
       return respond(
