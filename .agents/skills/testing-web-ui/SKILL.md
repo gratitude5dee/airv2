@@ -323,3 +323,9 @@ Real Supabase creds can be fetched at runtime — no `.env` needed and no OTP lo
 - Adapter gate testing needs two env vars in the `next start` env: `CREATE_BRIDGE_SECRET` (any value — the adapter routes sign/verify `x-air-sig` HMAC over `ts.method.path.sha256(body)`, ±300s) and `ADMIN_API_KEY` (Bearer for `/api/admin/create/*`). Unsigned adapter calls must 503 when the var is absent and 401 when present but wrong/stale — set it to probe the 400-payload branch (signature genuinely verified, not just presence).
 - `scripts/create-v13-m0.ts` exits 0 with 14 local + 8 credential-gated live probes and rewrites `docs/reports/create-v13-m0.md` (timestamped — expect diff noise if the tree is dirty).
 - create-kit regen: `infra/template/skills/create-miniapp/SKILL.md` is GENERATED — edit `packages/create-kit/prompts/src/skill.md` + `buildSkill` frontmatter in `scripts/lib/design.ts`, then `npx tsx packages/create-kit/scripts/harvest.ts` and confirm `scripts/verify.ts` ok. CI's `verify` job fails on any hand-edit.
+
+## BYOK provider testing (token_provider / provider_oauth)
+- `PROVIDER_VAULT_KEY` accepts any locally generated 64-hex string — set it on `next start` to enable the SIWC begin path (unset → `begin_provider` renders "not enabled"). `sealSecret` produces `v1:ivhex:taghex:cthex` AES-256-GCM; python `cryptography` reproduces the format for seeding `provider_oauth_attempts` rows.
+- Seeding connected state needs only `provider_oauth.{account_label,models_cache}` — status reads never unseal `bundle_sealed` for display.
+- The settings mini-app needs a mini token minted with `app:"settings"` (each app has its own cookie).
+- Box-archive pitfall: `boxes.archive_after` in the past makes the box re-archive ~2min after every resume — box-touching POSTs (applyTokenProvider, markOnboardingStep) race it. Fire the click then poll instead of `page.waitForNavigation` (40–60s POST latency is legitimate when the box resumes inside the request).
