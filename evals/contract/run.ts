@@ -125,8 +125,12 @@ async function stubFetch(path: string, init?: RequestInit): Promise<Response> {
 
 async function registerFixture(caseId: string, lane: string, steps: Step[]): Promise<void> {
   // $LANE lets one fixture file serve both drives while keeping ids unique
-  // (draft refs, idempotency keys).
-  const substituted = JSON.stringify(steps).replaceAll("$LANE", lane);
+  // (draft refs, idempotency keys). $STARTS_AT_FUTURE is an ISO instant ~26h
+  // ahead — fixtures can't hardcode event dates, routes reject past times.
+  const startsAtFuture = new Date(Date.now() + 26 * 3600_000).toISOString();
+  const substituted = JSON.stringify(steps)
+    .replaceAll("$LANE", lane)
+    .replaceAll("$STARTS_AT_FUTURE", startsAtFuture);
   const res = await stubFetch("/__eval__/fixture", {
     method: "POST",
     headers: { "content-type": "application/json" },
