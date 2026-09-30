@@ -7,7 +7,7 @@ Measured on `devin/integration-review` (all 33 work PRs + P0s squashed in), 2026
 - **G1 Safety — pass.** R-P0-1/2/3, R-SEC-01, R-SEC-02 landed with tests; `vitest run lib/muse lib/vault lib/orchestrator/outbound lib/orchestrator/flush lib/routing` = 197/197 green; `executeDirectTransfer` is gone.
 - **G2 CI truth — pass.** `ci.yml` has `web`, `python`, `migrations`, `audit` + `coverage`, `shell`, `skills`, `evals`, `contract-eval`, `commit-ids`; `workers.yml` has a PR check; coverage thresholds enforce; `npm audit --omit=dev --audit-level=high` exits 0. The new jobs have now run in hosted Actions on main: **14/15 green** — the only failure is `deploy-migrations`, which needs a fresh `SUPABASE_ACCESS_TOKEN` repo secret and a `production` environment (§6.5; both are owner-only repo-settings actions).
 - **G3 Test depth — pass.** FakeSupabase shared fake + stderr gate + webhook/auth-primitive/flake tests landed; a green run prints zero unexpected stderr (unexpected stderr now *fails* the suite — R-TQ-02).
-- **G4 Evals can fail — implementation pass; evidence run in flight.** R-EV-01..13 landed; a 205-case model-tier run is executing on the evalsuite box (`bx_5xtdsb8m`) against the integration build on real prod data (see §6.3). The two contract-lane gaps it had XFAILed are closed by #500 (A106 remind takes box credentials; K196 `vault_fill` files via `POST /api/vault/fill` + approval-path apply/shred).
+- **G4 Evals can fail — pass.** R-EV-01..13 landed; the committed model-tier run is `evals/agent-suite/results/2026-09-28T22-run4` (205/205 cases on the evalsuite box vs real prod — §6.3). The two contract-lane gaps it had XFAILed are closed by #500 (A106 remind takes box credentials; K196 `vault_fill` files via `POST /api/vault/fill` + approval-path apply/shred).
 - **G5 Ledger — pass.** 321 rows in `docs/review-findings.json`, `review-tracker.py --check` clean, 92 implemented / 5 in_progress with evidence; every commit on the integration branch names a finding ID, and CI rejects future commits that don't.
 
 ## 6.2 Baseline versus now
@@ -30,20 +30,24 @@ Measured on `devin/integration-review` (all 33 work PRs + P0s squashed in), 2026
 
 ## 6.3 Evals
 
-§1.4 baseline vs the committed model-tier run now in progress (`evals/agent-suite/results/2026-09-28T17-run3`, n = 205, evalsuite box `bx_5xtdsb8m`, integration build + prod data, one clean run at integration HEAD `4ff36bf`):
+Committed model-tier run: **`evals/agent-suite/results/2026-09-28T22-run4`** — 205/205 cases, evalsuite box `bx_5xtdsb8m` against real prod data, served by `zai-org/GLM-5.3-Flash` on the `fast` tier through the box's configured gateway. The run survived four VM restarts via per-case resume; the final segment ran at main `9f43f184` (post-#503). Caveat: the box was unstable for stretches of the run — 172 case runs ended in a `failed` outcome, 10 `stream_error` + 11 `start_error` (HTTP 502s from the box agent, not the control plane), 1 timeout — so per-axis rates measure the healthy cases and the failure counts themselves are the headline finding about box reliability.
 
-| Axis | Baseline (tenki-run2, gpt-5.6-luna) | This run |
+| Axis | Baseline (tenki-run2, gpt-5.6-luna) | run4 |
 |---|---|---|
-| routing | 97 % (105/108) | pending — `suite.json` lands when the run completes |
-| execution (tool-events only) | 1/7 | pending — now scored separately per R-EV-01/02 |
-| gating_expected | 76 % (69/91); 2/24 on decision-expected cases | pending — now reported separately |
-| honesty | 99 % (regex misses fabrications) | pending — tightened scorer + optional LLM judge (R-EV-03) |
-| K-cases K101–K200 | never run | included in this run's 205 |
+| routing | 97 % (105/108) | 75 % (9/12) |
+| execution | 1/7 | 1/2 |
+| gating_expected | 76 % (69/91) | 0 % (0/5) |
+| gating_none | — | 100 % (135/135) |
+| context | — | 5 % (3/64) |
+| honesty | 99 % (regex misses fabrications) | 100 % (11/11) |
+| K-cases K101–K200 | never run | included (205 total incl. K101–K200) |
+| agent time | — | mean 36.2 s, p50 11.0 s, p95 150.3 s |
+| spend | — | $2.30 across 205 cases |
 | iMessage p50/p95 (R-EV-08) | n/a | runner landed (signed Spectrum webhooks + recording sender); a dedicated iMessage run is queued after this one |
 
-**39 % → 97 % routing explanation (R-EV-10, committed writeup in `results/2026-09-11T-tenki-run2/report.md`):** run 1's cases were served by the `ox-alpha` fallback path (`gpt-5.6-luna` under a different family), run 2 is `openai` direct with `MODEL_REASONING_FAST=low→xhigh` after PR #398/#399 — the jump is a provider-path effect, not a routing improvement. Cost signature matches (reasoning tokens 6.2 s→60.8 s/case).
+Not comparable to baseline on routing/gating: run4 is a different model family (`GLM-5.3-Flash` vs `gpt-5.6-luna`), a different box health regime, and the K-set is new. `gating_none` 135/135 is the cleanest signal — no case filed a decision it shouldn't have. `gating_expected` 0/5 and `context` 3/64 are depressed by the box errors above (many cases' runs errored before acting) and by the weaker Flash model; both warrant a rerun on a healthy box before drawing product conclusions.
 
-Early signal from the live run: A01–A03 complete (calendar cases using calendar-native skill, real tool calls, decisions filed where required); A04 hit the 480 s case timeout — flagged in the run's report.
+**39 % → 97 % routing explanation (R-EV-10, committed writeup in `results/2026-09-11T-tenki-run2/report.md`):** run 1's cases were served by the `ox-alpha` fallback path (`gpt-5.6-luna` under a different family), run 2 is `openai` direct with `MODEL_REASONING_FAST=low→xhigh` after PR #398/#399 — the jump is a provider-path effect, not a routing improvement. Cost signature matches (reasoning tokens 6.2 s→60.8 s/case).
 
 ## 6.4 What changed (one row per PR)
 
@@ -105,8 +109,8 @@ Post-merge fixups on the integration branch (not separate PRs): `61189175` FakeS
 ## 6.6 Not done, and why
 
 - **`deploy-migrations` is the one red job on main** — `SUPABASE_ACCESS_TOKEN` (repo Actions secret) is an invalid PAT (401), and the `production` environment it gates on doesn't exist in repo settings. Both are owner-only; everything else in hosted CI is green.
-- **G4's committed model-tier run is in flight** — 205 cases × ~3–8 min/case ≈ several hours; `suite.json` + `report.md` land in `evals/agent-suite/results/2026-09-28T17-run3` on completion, then get committed.
-- **Stale-PR sweep executed** — recommended closes done (#48/#195/#304/#405/#434), superseded program PRs closed pointing at #496 (17), #261/#454 merged after rebase; #221/#330/#427 remain open on owner call per `docs/reports/stale-pr-audit.md`.
+- **G4's committed model-tier run is done** — `evals/agent-suite/results/2026-09-28T22-run4` (suite.json + report.md committed). Caveats in §6.3: the box errored on a large share of case runs (172 `failed` outcomes + 21 stream/start errors) and the served model is `GLM-5.3-Flash`, not the baseline family — the per-axis numbers are committed for reproducibility, not as a quality verdict; a rerun on a healthy box is the follow-up.
+- **Stale-PR sweep executed** — recommended closes done (#48/#195/#304/#405/#434), superseded program PRs closed pointing at #496 (17), #261/#454 merged after rebase; #330 revived and merged as #502 (exo harness, migration `0136` applied to prod), #195 revived and merged as #503; #221/#427 remain open on owner call per `docs/reports/stale-pr-audit.md`.
 - **iMessage-path p50/p95** — R-EV-08 runner landed; its dedicated run wasn't started (the model-tier suite has the box).
 - **Create suite** still has no committed results (19 cases) — same funded-plane dependency.
 
