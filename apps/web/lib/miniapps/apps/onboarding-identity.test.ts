@@ -1019,13 +1019,15 @@ describe("onboarding card refresh", () => {
 
   it("counts settled slides, not raw steps, and names the next one", () => {
     expect(progressLine(stateWith([]))).toBe("0 of 6 done · next: Computer");
-    // The Computer slide owns environment + username + email; it is not
-    // settled until all three are.
+    // The Computer slide owns provider + environment + username + email;
+    // it is not settled until all four are.
     expect(progressLine(stateWith(["environment", "username"]))).toBe(
       "0 of 6 done · next: Computer"
     );
     expect(
-      progressLine(stateWith(["environment", "username", "email", "model"]))
+      progressLine(
+        stateWith(["provider", "environment", "username", "email", "model"])
+      )
     ).toBe("1 of 6 done · next: Digital Twin");
   });
 

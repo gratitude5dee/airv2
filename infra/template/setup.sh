@@ -449,6 +449,16 @@ echo "CREATIVE_PLUGIN_VERSION=$(python3 -c "import json;print(json.load(open('$S
 rm -rf "$HOME_DIR/.hermes/plugins/air-vault"
 cp -r "$SCRIPT_DIR/plugins/air-vault" "$HOME_DIR/.hermes/plugins/air-vault"
 rm -rf "$HOME_DIR/.hermes/plugins/air-vault/tests"
+# ── 3d3. Claude subscription provider (BYO Claude) ──────────────────────────
+# "Sign in with Claude" rides the owner's Pro/Max subscription through the
+# official claude CLI — Anthropic OAuth is licensed to their client only, so
+# the credential lives in ~/.claude on the box and never touches the control
+# plane. The DirectSDK plugin (kind: model-provider) is auto-discovered from
+# $HERMES_HOME/plugins/ — no plugins.enabled entry needed.
+npm install -g @anthropic-ai/claude-code --no-audit --no-fund
+rm -rf "$HOME_DIR/.hermes/plugins/claude-subscription-directsdk-experimental"
+git clone --depth 1 https://github.com/NousResearch/hermes-plugin-claude-subscription-directsdk \
+  "$HOME_DIR/.hermes/plugins/claude-subscription-directsdk-experimental"
 # The CLI is invoked by the control plane as plain `air-vault ...` over the
 # box command API.
 # It reads ONLY AIR_VAULT_KEY out of ~/.hermes/.env (never `source`s it —

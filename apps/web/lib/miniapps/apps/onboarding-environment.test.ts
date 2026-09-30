@@ -175,9 +175,12 @@ function setEnvironmentForm(environment: string) {
 }
 
 describe("onboarding environment step", () => {
-  it("is the first real step after the welcome intro, before username", () => {
+  it("opens with the token-provider sub-step, then environment, before username", () => {
     expect(ONBOARDING_STEPS[0]).toBe("welcome");
-    expect(ONBOARDING_STEPS[1]).toBe("environment");
+    expect(ONBOARDING_STEPS[1]).toBe("provider");
+    expect(ONBOARDING_STEPS.indexOf("provider")).toBeLessThan(
+      ONBOARDING_STEPS.indexOf("environment")
+    );
     expect(ONBOARDING_STEPS.indexOf("environment")).toBeLessThan(
       ONBOARDING_STEPS.indexOf("username")
     );

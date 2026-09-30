@@ -151,6 +151,22 @@ const snapshot: OnboardingSnapshot = {
   speedTier: "balanced",
   modelFamily: "openai",
   gmiModel: null,
+  tokenProvider: "wzrd",
+  byoModel: null,
+  oauth: {
+    openai: {
+      connected: false,
+      accountLabel: null,
+      models: [],
+      pendingUrl: null,
+    },
+    anthropic: {
+      connected: false,
+      accountLabel: null,
+      models: [],
+      pendingUrl: null,
+    },
+  },
   merchant: null,
   link: {
     installed: true,

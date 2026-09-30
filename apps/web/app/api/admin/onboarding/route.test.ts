@@ -95,7 +95,7 @@ describe("GET /api/admin/onboarding", () => {
       done: 1,
       skipped: 1,
       todo: ONBOARDING_STEPS.length - 2,
-      next_step: "username",
+      next_step: "provider",
       card_sent_at: "2026-02-01T00:00:00Z",
     });
     const u2 = body.users.find((row) => row["user_id"] === "u2");

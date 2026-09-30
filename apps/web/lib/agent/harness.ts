@@ -77,7 +77,7 @@ export const HERMES_REF = "fcbd1076a93841fa88855acce810e342a5b78101";
 export const HARNESS_PROFILES: Record<AgentHarness, HarnessProfile> = {
   hermes: {
     harness: "hermes",
-    label: "Hermes",
+    label: "air",
     blurb: "The default agent — most tested, every skill and plugin.",
     templateDir: "infra/template",
     templateRef: HERMES_REF,

@@ -62,6 +62,12 @@ vi.mock("@/lib/settings/account", async (importOriginal) => {
     isSpeedTier: actual.isSpeedTier,
     MODEL_FAMILIES: actual.MODEL_FAMILIES,
     MODEL_FAMILY_LABELS: actual.MODEL_FAMILY_LABELS,
+    TOKEN_PROVIDERS: actual.TOKEN_PROVIDERS,
+    TOKEN_PROVIDER_LABELS: actual.TOKEN_PROVIDER_LABELS,
+    isTokenProvider: actual.isTokenProvider,
+    setTokenProvider: vi.fn(async () => true),
+    setByoModel: vi.fn(async () => true),
+    clearByoModel: vi.fn(async () => true),
     setModelFamily: vi.fn(async () => true),
     setUsername: vi.fn(async () => ({
       ok: true as const,

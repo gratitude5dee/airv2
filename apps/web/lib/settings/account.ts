@@ -336,3 +336,62 @@ export async function setVeniceModel(
     .eq("user_id", userId);
   return !error;
 }
+
+/**
+ * Which side pays for the user's chat turns: 'wzrd' is the platform router
+ * (metered), 'openai' the user's ChatGPT plan via SIWC, 'anthropic' their
+ * Claude subscription via the box-side claude CLI.
+ */
+export const TOKEN_PROVIDERS = ["wzrd", "openai", "anthropic"] as const;
+export type TokenProvider = (typeof TOKEN_PROVIDERS)[number];
+
+export function isTokenProvider(value: string): value is TokenProvider {
+  return (TOKEN_PROVIDERS as readonly string[]).includes(value);
+}
+
+export const TOKEN_PROVIDER_LABELS: Record<TokenProvider, string> = {
+  wzrd: "WZRD Router",
+  openai: "ChatGPT",
+  anthropic: "Claude",
+};
+
+/** Writes entitlements.token_provider — the BYO providers are gated on a
+ * connected credential, which the caller verifies before writing. */
+export async function setTokenProvider(
+  supabase: SupabaseClient,
+  userId: string,
+  provider: TokenProvider
+): Promise<boolean> {
+  if (!isTokenProvider(provider)) return false;
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ token_provider: provider })
+    .eq("user_id", userId);
+  return !error;
+}
+
+/** Writes entitlements.byo_model — the user's pinned subscription model,
+ * validated against the discovered catalog at write and at the gateway. */
+export async function setByoModel(
+  supabase: SupabaseClient,
+  userId: string,
+  slug: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ byo_model: slug })
+    .eq("user_id", userId);
+  return !error;
+}
+
+/** Clears the subscription pin (the provider's default model serves). */
+export async function clearByoModel(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("entitlements")
+    .update({ byo_model: null })
+    .eq("user_id", userId);
+  return !error;
+}

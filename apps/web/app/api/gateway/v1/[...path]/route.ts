@@ -53,6 +53,7 @@ import {
 } from "@/lib/gateway/metering";
 import { currentPeriodSpend } from "@/lib/entitlements/spend";
 import { getProviderKey, PROVIDER_LABELS } from "@/lib/providers/keys";
+import { siwcAccessToken } from "@/lib/providers/siwc";
 import {
   budgetExhausted,
   createRunAttributable,
@@ -172,7 +173,7 @@ export async function POST(
   const { data: entitlement } = await supabase
     .from("entitlements")
     .select(
-      "speed_tier, model_family, openrouter_model, venice_model, gmi_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason"
+      "speed_tier, model_family, openrouter_model, venice_model, gmi_model, monthly_cap_usd, spend_mtd_usd, spend_period_start, suspended_reason, token_provider, byo_model"
     )
     .eq("user_id", userId)
     .maybeSingle();
@@ -333,6 +334,26 @@ export async function POST(
     }
   }
 
+  // BYO ChatGPT (SIWC): the owner's own ChatGPT plan serves the turn — the
+  // gateway only swaps the upstream Bearer/base_url/model and metering
+  // records zero cost via servedOnPersonalKey. Box-and-owner chat turns
+  // only: Functions and Create stays platform-paid by design (their budgets
+  // are platform contracts), and a fleet override keeps the fleet lane.
+  const byoOpenai =
+    !app &&
+    familyOverride === null &&
+    createTier === null &&
+    String(entitlement.token_provider ?? "wzrd") === "openai";
+  const byo = byoOpenai
+    ? await siwcAccessToken(supabase, userId).catch(() => null)
+    : null;
+  const byoModels = byo?.models ?? [];
+  const byoPin = (entitlement.byo_model as string | null) ?? null;
+  const byoModel =
+    byoPin && byoModels.includes(byoPin)
+      ? byoPin
+      : (byoModels[0] ?? "gpt-5.4");
+
   // Reserve-then-dispatch (CR8): admission and the hold are one statement,
   // so two calls racing under the cap cannot both pass on a stale read. The
   // hold is handed to meter() (settled to the real cost) or released.
@@ -386,8 +407,9 @@ export async function POST(
     // box's config — the real model ID is resolved here and only here.
     const body: Record<string, unknown> = { ...rawBody };
     const provider = createProvider ?? providerForFamily(toFamily);
-    body["model"] =
-      provider === "gmi" && gmiRecoveryModel
+    body["model"] = byoOpenai
+      ? byoModel
+      : provider === "gmi" && gmiRecoveryModel
         ? gmiRecoveryModel
         : createTier !== null
           ? modelForCreateTier(tier)
@@ -396,20 +418,24 @@ export async function POST(
     servedViaResponses = false;
     // service_tier is OpenAI-only, like reasoning_effort.
     const openRouter = provider === "openrouter";
-    const serviceTier = provider === "openai" ? serviceTierForTier(tier) : undefined;
+    const serviceTier =
+      provider === "openai" && !byoOpenai ? serviceTierForTier(tier) : undefined;
     if (serviceTier && body["service_tier"] === undefined) {
       body["service_tier"] = serviceTier;
     }
     const reasoningModel = isReasoningModel(String(body["model"]));
-    if (provider === "openai" && reasoningModel && preferResponses) {
+    // BYO ChatGPT rides /responses unconditionally — the SIWC grant only
+    // covers that endpoint (never /chat/completions).
+    if (provider === "openai" && (reasoningModel || byoOpenai) && preferResponses) {
       // /responses accepts tools + reasoning.effort together, which
       // /chat/completions does not — every agent turn carries tools, so the
       // OpenAI lane is always served through it. A caller-set
       // reasoning_effort wins over the tier default, as on the chat lane.
-      servedReasoning =
-        (typeof body["reasoning_effort"] === "string"
-          ? (body["reasoning_effort"] as string)
-          : reasoningForTier(tier)) ?? null;
+      servedReasoning = reasoningModel
+        ? ((typeof body["reasoning_effort"] === "string"
+            ? (body["reasoning_effort"] as string)
+            : reasoningForTier(tier)) ?? null)
+        : null;
       servedViaResponses = true;
     } else {
       // gpt-5.6 on /v1/chat/completions rejects function tools with any
@@ -518,10 +544,20 @@ export async function POST(
         providerLabel = PROVIDER_LABELS.openrouter;
         break;
       case "openai":
-        baseUrl = env.modelProviderBaseUrl();
-        personalKey = null;
-        platformKey = env.modelProviderApiKey();
-        providerLabel = "OpenAI";
+        if (byoOpenai) {
+          // The owner's ChatGPT token is the credential — never the platform
+          // key. An absent/expired grant 503s rather than silently metering
+          // platform spend the owner thought they weren't paying for.
+          baseUrl = env.siwcApiBase();
+          personalKey = byo?.accessToken ?? null;
+          platformKey = null;
+          providerLabel = "ChatGPT";
+        } else {
+          baseUrl = env.modelProviderBaseUrl();
+          personalKey = null;
+          platformKey = env.modelProviderApiKey();
+          providerLabel = "OpenAI";
+        }
         break;
     }
     const apiKey = personalKey ?? platformKey;
@@ -585,6 +621,7 @@ export async function POST(
     if (
       preferResponses &&
       servedViaResponses &&
+      !byoOpenai &&
       !upstream.ok &&
       [400, 404, 405, 422].includes(upstream.status)
     ) {
@@ -603,7 +640,11 @@ export async function POST(
   const proxy = async (): Promise<Response> => {
     // A Create turn runs on its slug's provider (§7.1): the owner's chat
     // family never applies.
-    let servedFamily: ModelFamily = createTier !== null ? createFamily : family;
+    // The BYO lane is pinned to OpenAI whatever the owner's chat family is —
+    // the subscription only answers OpenAI models.
+    const effectiveFamily: ModelFamily = byoOpenai ? "openai" : family;
+    let servedFamily: ModelFamily =
+      createTier !== null ? createFamily : effectiveFamily;
     /**
      * Which model actually served — emitted on every post-dispatch response
      * so evals and the admin trace see silent provider fallbacks that
@@ -616,7 +657,7 @@ export async function POST(
         "X-Air-Served-Model": servedModel,
         "X-Air-Served-Family": servedFamily,
       };
-      if (servedFamily !== (createTier !== null ? createFamily : family)) {
+      if (servedFamily !== (createTier !== null ? createFamily : effectiveFamily)) {
         headers["X-Air-Fallback"] = "1";
       }
       return headers;
