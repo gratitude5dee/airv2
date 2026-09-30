@@ -17,6 +17,7 @@ import { asRecord } from "../records";
 
 export const ONBOARDING_STEPS = [
   "welcome",
+  "provider",
   "environment",
   "username",
   "email",

@@ -30,7 +30,8 @@ const PROGRESS_UPDATE_TIMEOUT_MS = 1_200;
 const PROGRESS_UPDATE_MAX_TOKENS = 32;
 
 export const QUICK_ACK_SYSTEM_PROMPT = [
-  "You are air by WZRD.tech, the user's personal creative assistant.",
+  "You are air, a proprietary product of WZRD tech, a neolab for human",
+  "flourishing — the user's personal creative assistant.",
   "Classify and respond in exactly one short line. Start with FINAL: when you",
   "can completely answer the request now without tools. Start with HOLD: when",
   "the request requires tools, private context, research, or more work. After",
@@ -39,7 +40,8 @@ export const QUICK_ACK_SYSTEM_PROMPT = [
 ].join(" ");
 
 const PROGRESS_UPDATE_SYSTEM_PROMPT = [
-  "You are air by WZRD.tech, the user's personal creative assistant.",
+  "You are air, a proprietary product of WZRD tech, a neolab for human",
+  "flourishing — the user's personal creative assistant.",
   "The user already received an initial acknowledgment and a full answer is",
   "being prepared. Write exactly one short, concrete progress update. Do not",
   "answer the original request, ask a question, make up completed work, or",
@@ -47,7 +49,8 @@ const PROGRESS_UPDATE_SYSTEM_PROMPT = [
 ].join(" ");
 
 export const BRIDGE_SYSTEM_PROMPT = [
-  "You are air by WZRD.tech, the user's personal creative assistant.",
+  "You are air, a proprietary product of WZRD tech, a neolab for human",
+  "flourishing — the user's personal creative assistant.",
   "Your computer is starting up, so you have NO tools right now: no browser,",
   "no files, no mini-apps, no purchases — only this short text reply.",
   "If you can fully answer from general knowledge in 1-3 sentences, do so.",

@@ -188,6 +188,10 @@ export const OPTIONAL_ENV = [
   "R2_PUBLIC_BASE_URL",
   "R2_SECRET_ACCESS_KEY",
   "SHOPPING_DRY_RUN_HOSTS",
+  "SIWC_API_BASE",
+  "SIWC_AUTH_BASE",
+  "SIWC_JWKS_URL",
+  "SIWC_REDIRECT_URI",
   "SPECTRUM_API_BASE",
   "SPECTRUM_IMESSAGE_ADDRESS",
   "SPECTRUM_RECORD_OUTBOX",
@@ -362,6 +366,18 @@ export const env = {
   // disabled until it is set, and it rotates independently of every other
   // secret. Rotating it invalidates previously sealed keys.
   providerVaultKey: (): string | null => process.env["PROVIDER_VAULT_KEY"] || null,
+  // Sign in with ChatGPT (SIWC): the OAuth issuer host, the resource API,
+  // its JWKS endpoint, and the loopback redirect URI (SIWC allows loopback
+  // callbacks only; only the port may vary). Defaults match the public
+  // endpoints — the overrides exist for tests and staged proxies.
+  siwcAuthBase: (): string =>
+    optional("SIWC_AUTH_BASE", "https://auth.openai.com"),
+  siwcApiBase: (): string =>
+    optional("SIWC_API_BASE", "https://api.openai.com/v1"),
+  siwcJwksUrl: (): string =>
+    optional("SIWC_JWKS_URL", "https://auth.openai.com/.well-known/jwks.json"),
+  siwcRedirectUri: (): string =>
+    optional("SIWC_REDIRECT_URI", "http://127.0.0.1:1455/auth/callback"),
   // TypeSafe's System One endpoint + key for the Jev turn router
   // (lib/jev). Optional: without the key every chat turn goes unrouted,
   // exactly as before.

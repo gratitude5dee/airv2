@@ -159,6 +159,20 @@ button.envcard:active{transform:scale(0.99)}
 .envtag.soon{color:var(--ink-muted);border-color:var(--ring)}
 .envblurb{font-family:var(--font-body);font-size:0.85rem;line-height:1.45;color:var(--ink-muted)}
 .grow{flex:1}
+/* Sign in your AI: provider cards carry a brand letter tile + status. */
+.provmark{display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border-radius:0.45rem;font-family:var(--font-ui);font-size:0.68rem;letter-spacing:0.04em;color:#fff;flex:none}
+.provmark.openai{background:#10a37f}
+.provmark.anthropic{background:#d97757}
+.provmark.wzrd{background:var(--accent);color:var(--on-accent)}
+.provwell{border:1px solid var(--accent);border-radius:var(--radius-well);background:var(--well-bg);padding:0.8rem 0.95rem;margin:0.5rem 0 0.7rem;display:grid;gap:0.55rem}
+.provwell .chip{color:var(--ink)}
+.provwell p{margin:0;font-size:0.9rem;line-height:1.5;color:var(--ink-muted)}
+/* Choose Model provider tabs — segmented control over the body. */
+.provtabs{display:flex;gap:0.4rem;flex-wrap:wrap;border:1px solid var(--ring);border-radius:var(--radius-pill);padding:0.3rem;background:var(--well-bg);margin:0.4rem 0 0.8rem}
+.provtabs form{display:inline-flex}
+.provtabs button{border:none;border-radius:var(--radius-pill);background:transparent;color:var(--ink-muted);padding:0.45rem 0.95rem;font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;min-height:0}
+.provtabs button.on{background:var(--ink);color:var(--on-ink)}
+.provtabs .provacct{font-family:var(--font-body);font-size:0.72rem;letter-spacing:0;text-transform:none;color:var(--ink-muted);align-self:center;padding:0 0.55rem}
 /* Personality engine: status well (dot + chip + line) over the sign-in well. */
 .oa-status{display:flex;align-items:center;flex-wrap:wrap;gap:0.55rem;border:1px solid var(--ring);border-radius:var(--radius-well);background:var(--well-bg);padding:0.8rem 0.95rem;margin-bottom:0.7rem;font-size:0.95rem}
 .oa-status p{flex-basis:100%;margin:0.2rem 0 0;font-size:0.95rem;line-height:1.5}

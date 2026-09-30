@@ -13,9 +13,12 @@ import type { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import {
+  clearByoModel,
   isSpeedTier,
+  isTokenProvider,
   MODEL_FAMILIES,
   MODEL_FAMILY_LABELS,
+  setByoModel,
   setMiniappBackground,
   setMiniappTheme,
   clearGmiModel,
@@ -23,10 +26,30 @@ import {
   setModelFamily,
   setOpenRouterModel,
   setSpeedTier,
+  setTokenProvider,
   setUsername,
   setVeniceModel,
   SPEED_TIERS,
+  TOKEN_PROVIDER_LABELS,
+  TOKEN_PROVIDERS,
+  type TokenProvider,
 } from "@/lib/settings/account";
+import {
+  beginSiwc,
+  finishSiwc,
+  disconnectSiwc,
+  siwcStatus,
+  type SiwcStatus,
+} from "@/lib/providers/siwc";
+import {
+  applyTokenProvider,
+  beginClaudeLogin,
+  CLAUDE_MODELS,
+  claudeStatus,
+  disconnectClaude,
+  finishClaudeLogin,
+  type ClaudeStatus,
+} from "@/lib/providers/claude";
 import {
   DEFAULT_MODEL_FAMILY,
   DEFAULT_VENICE_MODEL,
@@ -123,6 +146,9 @@ interface SettingsData {
   openrouterModel: string | null;
   veniceModel: string | null;
   gmiModel: string | null;
+  tokenProvider: TokenProvider;
+  byoModel: string | null;
+  oauth: { openai: SiwcStatus; anthropic: ClaudeStatus };
   creativePrefs: CreativePrefs;
   providerKeys: ProviderKeyStatus[];
   providerVault: boolean;
@@ -156,6 +182,8 @@ async function loadSettings(
     twin,
     creativePrefs,
     providerKeys,
+    openaiStatus,
+    claudeConn,
   ] = await Promise.all([
     supabase
       .from("users")
@@ -165,7 +193,7 @@ async function loadSettings(
     supabase
       .from("entitlements")
       .select(
-        "plan, speed_tier, model_family, openrouter_model, venice_model, gmi_model"
+        "plan, speed_tier, model_family, openrouter_model, venice_model, gmi_model, token_provider, byo_model"
       )
       .eq("user_id", userId)
       .maybeSingle(),
@@ -192,6 +220,18 @@ async function loadSettings(
     getDigitalTwin(supabase, userId).catch(() => null),
     loadCreativePrefs(supabase, userId),
     listProviderKeyStatuses(supabase, userId).catch(() => []),
+    siwcStatus(supabase, userId).catch(() => ({
+      connected: false,
+      accountLabel: null,
+      models: [] as string[],
+      pendingUrl: null,
+    })),
+    claudeStatus(supabase, userId).catch(() => ({
+      connected: false,
+      accountLabel: null,
+      models: [] as string[],
+      pendingUrl: null,
+    })),
   ]);
   let twinVideoUrl: string | null = null;
   if (twin?.video_asset_id) {
@@ -227,6 +267,11 @@ async function loadSettings(
       (entitlement?.openrouter_model as string | null) ?? null,
     veniceModel: (entitlement?.venice_model as string | null) ?? null,
     gmiModel: (entitlement?.gmi_model as string | null) ?? null,
+    tokenProvider: isTokenProvider(String(entitlement?.token_provider ?? ""))
+      ? (String(entitlement?.token_provider) as TokenProvider)
+      : "wzrd",
+    byoModel: (entitlement?.byo_model as string | null) ?? null,
+    oauth: { openai: openaiStatus, anthropic: claudeConn },
     creativePrefs,
     providerKeys,
     providerVault: providerVaultAvailable(),
@@ -400,6 +445,41 @@ function renderSettings(
       return `<div class="card"><h2>${esc(label)}</h2><p class="muted">${state}</p><form method="post" class="row"><input type="hidden" name="action" value="save_provider_key"><input type="hidden" name="provider" value="${esc(status.provider)}"><input type="password" name="api_key" placeholder="${esc(label)} API key" autocomplete="off"><button>Save</button></form>${clear}</div>`;
     })
     .join("");
+  const subTabButtons = TOKEN_PROVIDERS.map(
+    (provider) =>
+      `<form method="post" class="inline"><input type="hidden" name="action" value="set_token_provider"><input type="hidden" name="provider" value="${esc(provider)}"><button${provider === data.tokenProvider ? "" : ' class="ghost"'}>${esc(TOKEN_PROVIDER_LABELS[provider])}</button></form>`
+  ).join("");
+  const subCard = (provider: "openai" | "anthropic"): string => {
+    const status = data.oauth[provider];
+    const label = TOKEN_PROVIDER_LABELS[provider];
+    const models =
+      provider === "openai"
+        ? status.connected
+          ? status.models.map((id) => ({ id, label: id }))
+          : []
+        : CLAUDE_MODELS;
+    const modelRows = models
+      .map(
+        (model) =>
+          `<option value="${esc(model.id)}"${model.id === data.byoModel ? " selected" : ""}>${esc(model.label)}</option>`
+      )
+      .join("");
+    const flow =
+      !status.connected && status.pendingUrl
+        ? `<p class="muted"><a href="${esc(status.pendingUrl)}" target="_blank" rel="noopener">Continue sign-in</a> — finish, then paste ${provider === "openai" ? "the localhost page address" : "the sign-in code"} back here:</p><form method="post" class="row"><input type="hidden" name="action" value="finish_provider"><input type="hidden" name="provider" value="${esc(provider)}"><input type="text" name="${provider === "openai" ? "callback" : "code"}" placeholder="${provider === "openai" ? "http://127.0.0.1:1455/auth/callback?…" : "code"}" required autocomplete="off"><button>Finish</button></form><form method="post" class="row"><input type="hidden" name="action" value="cancel_provider"><input type="hidden" name="provider" value="${esc(provider)}"><button class="ghost">Cancel</button></form>`
+        : !status.connected
+          ? `<p class="muted">Not connected — sign in with your ${esc(label)} account to run turns on your own subscription.</p><form method="post" class="row"><input type="hidden" name="action" value="begin_provider"><input type="hidden" name="provider" value="${esc(provider)}"><button>Continue with ${esc(label)}</button></form>`
+          : `<p class="muted">Connected${status.accountLabel ? ` as <strong>${esc(status.accountLabel)}</strong>` : ""} — turns run on your own subscription.</p><form method="post" class="row"><input type="hidden" name="action" value="disconnect_provider"><input type="hidden" name="provider" value="${esc(provider)}"><button class="ghost">Disconnect</button></form>`;
+    const select =
+      status.connected && modelRows
+        ? `<form method="post" class="row"><input type="hidden" name="action" value="set_byo_model"><select name="byo_model"><option value="">Default model</option>${modelRows}</select><button${data.tokenProvider === provider ? "" : ' class="ghost"'}>Use</button></form>`
+        : "";
+    return `<div class="card"><h2>${esc(label)}</h2>${flow}${select}</div>`;
+  };
+  const subscriptionSection = section(
+    "SIGN-IN PROVIDER",
+    `<div class="card"><div class="row">${subTabButtons}</div><p class="muted">WZRD Router is the default platform pool. ChatGPT and Claude use your own subscription — your agent's model lane switches to that account.</p></div>${subCard("openai")}${subCard("anthropic")}`
+  );
   const providerSection = section(
     "PROVIDER KEYS",
     data.providerVault
@@ -457,7 +537,7 @@ function renderSettings(
       "Export and deletion are operator-run today — ask and it happens (full export / cascade delete already exist server-side). Self-serve buttons land here."
     )
   );
-  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${creativeSection}${providerSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${connectivitySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
+  const body = `<section class="panel">${usernameSection}${themeSection}${speedSection}${modelSection}${subscriptionSection}${creativeSection}${providerSection}${emailSection}${contactSection}${identitySection}${timezoneSection}${memorySection}${connectivitySection}${onairosSection}${pluginSection}${storageSection}${traceSection}${dataSection}
 ${promptBar("Ask your agent — e.g. change my speed tier to fast…")}</section>`;
   return renderShell({
     title: "Settings",
@@ -740,6 +820,160 @@ export const settings: MiniAppModule = {
           ? `${PROVIDER_LABELS[provider]} key removed — back to platform credentials.`
           : "Nothing to remove."
       );
+    }
+
+    if (action === "begin_provider") {
+      const provider = String(form.get("provider") ?? "");
+      const result =
+        provider === "openai"
+          ? await beginSiwc(ctx.supabase, userId).then((r) =>
+              r.ok ? r : { ok: false as const, error: r.error }
+            )
+          : provider === "anthropic"
+            ? await beginClaudeLogin(ctx.supabase, userId)
+            : { ok: false as const, error: "invalid provider" };
+      return respond(
+        ctx,
+        result.ok
+          ? "Sign-in opened — use the link on the card to finish."
+          : result.error
+      );
+    }
+
+    if (action === "finish_provider") {
+      const provider = String(form.get("provider") ?? "");
+      const result =
+        provider === "openai"
+          ? await finishSiwc(
+              ctx.supabase,
+              userId,
+              String(form.get("callback") ?? "")
+            )
+          : provider === "anthropic"
+            ? await finishClaudeLogin(
+                ctx.supabase,
+                userId,
+                String(form.get("code") ?? "")
+              )
+            : { ok: false as const, error: "invalid provider" };
+      return respond(
+        ctx,
+        result.ok ? "Connected — your own subscription is live." : result.error
+      );
+    }
+
+    if (action === "cancel_provider") {
+      const provider = String(form.get("provider") ?? "");
+      if (provider !== "openai" && provider !== "anthropic") {
+        return forbidden("invalid provider");
+      }
+      await ctx.supabase
+        .from("provider_oauth_attempts")
+        .delete()
+        .eq("user_id", userId)
+        .eq("provider", provider);
+      return respond(ctx, "Sign-in cancelled.");
+    }
+
+    if (action === "disconnect_provider") {
+      const provider = String(form.get("provider") ?? "");
+      const ok =
+        provider === "openai"
+          ? await disconnectSiwc(ctx.supabase, userId)
+          : provider === "anthropic"
+            ? await disconnectClaude(ctx.supabase, userId)
+            : false;
+      if (!ok) return respond(ctx, "Update failed.");
+      const { data: entitlement } = await ctx.supabase
+        .from("entitlements")
+        .select("token_provider")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (entitlement?.token_provider === provider) {
+        await setTokenProvider(ctx.supabase, userId, "wzrd");
+        await clearByoModel(ctx.supabase, userId);
+      }
+      return respond(ctx, "Disconnected — back on WZRD Router.");
+    }
+
+    if (action === "set_token_provider") {
+      const provider = String(form.get("provider") ?? "");
+      if (!isTokenProvider(provider)) return forbidden("invalid provider");
+      if (provider === "openai") {
+        const status = await siwcStatus(ctx.supabase, userId);
+        if (!status.connected) {
+          return respond(ctx, "Sign in with ChatGPT first.");
+        }
+      }
+      if (provider === "anthropic") {
+        const status = await claudeStatus(ctx.supabase, userId);
+        if (!status.connected) {
+          return respond(ctx, "Sign in with Claude first.");
+        }
+      }
+      const { data: entitlement } = await ctx.supabase
+        .from("entitlements")
+        .select("token_provider")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const current = String(entitlement?.token_provider ?? "wzrd");
+      const ok = await setTokenProvider(ctx.supabase, userId, provider);
+      if (!ok) return respond(ctx, "Update failed.");
+      // Only the Claude lane rewrites the box config — other switches are
+      // gateway-side and instant.
+      if (provider === "anthropic" || current === "anthropic") {
+        const rebound = await applyTokenProvider(
+          ctx.supabase,
+          userId,
+          provider
+        );
+        if (!rebound) {
+          await setTokenProvider(ctx.supabase, userId, "wzrd");
+          return respond(
+            ctx,
+            "Couldn't switch your agent's model lane — try again."
+          );
+        }
+      }
+      return respond(
+        ctx,
+        `Token provider set to ${TOKEN_PROVIDER_LABELS[provider]}.`
+      );
+    }
+
+    if (action === "set_byo_model") {
+      const slug = String(form.get("byo_model") ?? "");
+      const { data: entitlement } = await ctx.supabase
+        .from("entitlements")
+        .select("token_provider")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const provider = String(entitlement?.token_provider ?? "wzrd");
+      if (slug === "") {
+        const ok = await clearByoModel(ctx.supabase, userId);
+        return respond(ctx, ok ? "Back to the default model." : "Update failed.");
+      }
+      const allowed =
+        provider === "openai"
+          ? (await siwcStatus(ctx.supabase, userId)).models
+          : provider === "anthropic"
+            ? CLAUDE_MODELS.map((model) => model.id)
+            : [];
+      if (!allowed.includes(slug)) return forbidden("invalid model");
+      const ok = await setByoModel(ctx.supabase, userId, slug);
+      if (!ok) return respond(ctx, "Update failed.");
+      if (provider === "anthropic") {
+        const rebound = await applyTokenProvider(
+          ctx.supabase,
+          userId,
+          provider,
+          slug
+        );
+        if (!rebound) {
+          return respond(ctx, "Couldn't switch your agent's model — try again.");
+        }
+      }
+      return respond(ctx, "Model saved.");
     }
 
     if (action === "upload_selfie") {

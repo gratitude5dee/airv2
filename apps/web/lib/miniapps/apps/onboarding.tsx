@@ -27,16 +27,36 @@ import {
 } from "@/lib/vault/managers";
 import {
   availableHarnesses,
+  clearByoModel,
   isSpeedTier,
+  isTokenProvider,
   MODEL_FAMILY_LABELS,
   clearGmiModel,
+  setByoModel,
   setGmiModel,
   setHarness,
   setModelFamily,
   setSpeedTier,
+  setTokenProvider,
   setUsername,
   SPEED_TIERS,
+  TOKEN_PROVIDER_LABELS,
+  type TokenProvider,
 } from "@/lib/settings/account";
+import {
+  beginSiwc,
+  disconnectSiwc,
+  finishSiwc,
+  siwcStatus,
+} from "@/lib/providers/siwc";
+import {
+  applyTokenProvider,
+  beginClaudeLogin,
+  claudeStatus,
+  CLAUDE_MODELS,
+  disconnectClaude,
+  finishClaudeLogin,
+} from "@/lib/providers/claude";
 import {
   AGENT_HARNESSES,
   HARNESS_PROFILES,
@@ -270,6 +290,7 @@ export interface OnboardingSlide {
 /** Which steps a section's body reads and writes. */
 const SECTION_STEPS: Record<SlideSectionKey, readonly OnboardingStepId[]> = {
   welcome: ["welcome"],
+  provider: ["provider"],
   computer: ["environment", "username", "email"],
   environment: ["environment"],
   username: ["username"],
@@ -311,6 +332,7 @@ export const SLIDE_GROUPS: readonly [OnboardingSlide, ...OnboardingSlide[]] = [
     kicker: "Computer",
     split: true,
     sections: [
+      { key: "provider", label: "Sign in your AI" },
       { key: "computer", label: "Pick a machine" },
       { key: "model", label: "Choose model" },
     ],
@@ -497,6 +519,14 @@ export interface OnboardingSnapshot {
   speedTier: string | null;
   modelFamily: ModelFamily;
   gmiModel: string | null;
+  /** Who pays for the turn — the WZRD router or the owner's own
+   * ChatGPT/Claude subscription (BYO). */
+  tokenProvider: TokenProvider;
+  /** The subscription model the owner pinned (id from the provider's
+   * discovered catalog); null serves the provider default. */
+  byoModel: string | null;
+  /** Per-provider BYO sign-in status for the Sign-in-your-AI section. */
+  oauth: Record<"openai" | "anthropic", ProviderOauthStatus>;
   harness: AgentHarness;
   /** Harnesses with a registered template for the current environment. */
   harnessAvailable: Record<AgentHarness, boolean>;
@@ -526,6 +556,34 @@ export interface OnboardingSnapshot {
    * once the active slide is known. Absent means "everything".
    */
   loaded?: SnapshotParts;
+}
+
+export interface ProviderOauthStatus {
+  connected: boolean;
+  accountLabel: string | null;
+  /** Model ids the connected account can serve. */
+  models: string[];
+  /** Sign-in URL to open while a flow is mid-flight. */
+  pendingUrl: string | null;
+}
+
+/** Both BYO lanes' status in one read — the Sign-in-your-AI section and the
+ * Choose Model tabs render from this. */
+async function providerOauthStatus(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<Record<"openai" | "anthropic", ProviderOauthStatus>> {
+  const empty: ProviderOauthStatus = {
+    connected: false,
+    accountLabel: null,
+    models: [],
+    pendingUrl: null,
+  };
+  const [openai, anthropic] = await Promise.all([
+    siwcStatus(supabase, userId).catch(() => empty),
+    claudeStatus(supabase, userId).catch(() => empty),
+  ]);
+  return { openai, anthropic };
 }
 
 interface SnapshotParts {
@@ -603,10 +661,11 @@ async function loadSnapshot(
       timedPart(parts, "entitlement", () =>
         supabase
           .from("entitlements")
-          .select("speed_tier, model_family, gmi_model")
+          .select("speed_tier, model_family, gmi_model, token_provider, byo_model")
           .eq("user_id", userId)
           .maybeSingle()
       ),
+      timedPart(parts, "oauth", () => providerOauthStatus(supabase, userId)),
       timedPart(parts, "plugin_count", () =>
         supabase
           .from("plugin_tokens")
@@ -735,6 +794,7 @@ async function loadSnapshot(
       entityRefs,
       { count },
       { data: entitlement },
+      oauth,
       { count: pluginCount },
       identityMedia,
       identityReferenceAssetIds,
@@ -781,6 +841,11 @@ async function loadSnapshot(
         ? (entitlement?.model_family as ModelFamily)
         : DEFAULT_MODEL_FAMILY,
       gmiModel: (entitlement?.gmi_model as string | null) ?? null,
+      tokenProvider: isTokenProvider(String(entitlement?.token_provider ?? ""))
+        ? (entitlement?.token_provider as TokenProvider)
+        : "wzrd",
+      byoModel: (entitlement?.byo_model as string | null) ?? null,
+      oauth,
       merchant,
       link,
       pluginSessions: pluginCount ?? 0,
@@ -1072,6 +1137,18 @@ export function effectiveStatus(
       return "todo";
     case "import":
       return snapshot.imports?.dictionary_built_at ? "done" : "todo";
+    case "provider":
+      // Explicit "Use WZRD Router" records done directly; any live BYO
+      // connection counts even if the mark never landed. Accounts set up
+      // before this step existed (progress past it) read as skipped —
+      // they're on the default WZRD lane, never bounced back to pick again.
+      return snapshot.tokenProvider !== "wzrd" ||
+        snapshot.oauth.openai.connected ||
+        snapshot.oauth.anthropic.connected
+        ? "done"
+        : legacyProgressAfter(snapshot, "provider")
+          ? "skipped"
+          : "todo";
   }
 }
 
@@ -1376,6 +1453,66 @@ function computerBody(snapshot: OnboardingSnapshot): string {
   return `<p class="muted">Your agent gets its own computer. Pick where it lives — you can switch later, but its files start fresh on the new machine.</p>${environmentCards(snapshot)}${harnessCards(snapshot)}${mailbox}${form}${gateNote}`;
 }
 
+/**
+ * "Sign in your AI" — who pays for the turn. Three cards:
+ *   ChatGPT — the owner's own ChatGPT plan via OpenAI's SIWC flow. Their
+ *     access token lives sealed server-side; the gateway rides it to
+ *     api.openai.com. Paste-back because SIWC's redirect is loopback-only.
+ *   Claude — the owner's Claude subscription via the official claude CLI on
+ *     their own box (the only sanctioned replay of that credential); the
+ *     plugin serves inference box-side, credentials never leave the box.
+ *   WZRD Router — the platform router; metered platform spend, unchanged.
+ * In a Messages card (webview) OAuth can't run — the section leads with the
+ * signed jump into the real browser exactly like Onairos does.
+ */
+function providerBody(
+  snapshot: OnboardingSnapshot,
+  browserSignin: string | null
+): string {
+  const openai = snapshot.oauth.openai;
+  const claude = snapshot.oauth.anthropic;
+  const note =
+    "Who answers your prompts — use the router's model buffet, or sign in so your own ChatGPT or Claude subscription pays instead.";
+
+  const wzrdTag =
+    snapshot.tokenProvider === "wzrd"
+      ? '<span class="envtag">Current</span>'
+      : "";
+  const wzrdCard = `<form method="post" class="envform"><input type="hidden" name="action" value="set_token_provider"><input type="hidden" name="provider" value="wzrd"><button class="envcard${snapshot.tokenProvider === "wzrd" ? " current" : ""}"><span class="envname"><span class="provmark wzrd">W</span>WZRD Router${wzrdTag}</span><span class="envblurb">Platform inference — every model family, metered to your plan.</span></button></form>`;
+
+  const cardJump = browserSignin
+    ? `<div class="provwell"><span class="chip">Finish in your browser</span><p>OAuth can't run inside Messages — open this step in your browser, sign in there, then come back here.</p><a href="${esc(browserSignin)}" target="_blank" rel="noopener"><button>Open this step in your browser</button></a></div>`
+    : "";
+  if (browserSignin) {
+    // Webview sessions can't run the OAuth flows — the jump is the UI.
+    return `<p class="muted">${note}</p>${cardJump}<div class="row actions">${skipForm("provider")}</div>`;
+  }
+
+  let openaiBody: string;
+  if (openai.connected) {
+    const selected = snapshot.tokenProvider === "openai";
+    openaiBody = `<span class="envtag">Connected</span><span class="envblurb">Signed in as ${esc(openai.accountLabel ?? "your ChatGPT account")} — GPT models on your plan, metering paused.</span><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="disconnect_provider"><input type="hidden" name="provider" value="openai"><button class="ghost">Disconnect</button></form>${selected ? "" : `<form method="post" class="inline"><input type="hidden" name="action" value="set_token_provider"><input type="hidden" name="provider" value="openai"><button>Use this subscription</button></form>`}</div>`;
+  } else if (openai.pendingUrl) {
+    openaiBody = `<span class="envtag soon">Waiting</span><span class="envblurb">Finish sign-in — open the link, approve, then paste the full address bar URL your browser lands on (it starts http://127.0.0.1 and won't load — that's expected).</span><div class="provwell"><a href="${esc(openai.pendingUrl)}" target="_blank" rel="noopener"><button>Open ChatGPT sign-in</button></a><form method="post" class="row"><input type="hidden" name="action" value="finish_provider"><input type="hidden" name="provider" value="openai"><input type="text" name="callback" placeholder="Paste the 127.0.0.1 URL here" autocomplete="off" spellcheck="false"><button>Finish</button></form><form method="post" class="inline"><input type="hidden" name="action" value="cancel_provider"><input type="hidden" name="provider" value="openai"><button class="ghost">Cancel</button></form></div>`;
+  } else {
+    openaiBody = `<span class="envblurb">Use your own ChatGPT subscription — sign in once and your GPT models run on your plan, not on ours.</span><form method="post" class="inline"><input type="hidden" name="action" value="begin_provider"><input type="hidden" name="provider" value="openai"><button>Continue with ChatGPT</button></form>`;
+  }
+  const openaiCard = `<div class="envcard"><span class="envname"><span class="provmark openai">G</span>ChatGPT</span>${openaiBody}</div>`;
+
+  let claudeBody: string;
+  if (claude.connected) {
+    const selected = snapshot.tokenProvider === "anthropic";
+    claudeBody = `<span class="envtag">Connected</span><span class="envblurb">Signed in as ${esc(claude.accountLabel ?? "your Claude account")} — Claude models on your subscription, served on your own computer.</span><div class="row"><form method="post" class="inline"><input type="hidden" name="action" value="disconnect_provider"><input type="hidden" name="provider" value="anthropic"><button class="ghost">Disconnect</button></form>${selected ? "" : `<form method="post" class="inline"><input type="hidden" name="action" value="set_token_provider"><input type="hidden" name="provider" value="anthropic"><button>Use this subscription</button></form>`}</div>`;
+  } else if (claude.pendingUrl) {
+    claudeBody = `<span class="envtag soon">Waiting</span><span class="envblurb">Finish sign-in — open the link, approve, then paste the code Anthropic shows you.</span><div class="provwell"><a href="${esc(claude.pendingUrl)}" target="_blank" rel="noopener"><button>Open Claude sign-in</button></a><form method="post" class="row"><input type="hidden" name="action" value="finish_provider"><input type="hidden" name="provider" value="anthropic"><input type="text" name="code" placeholder="Paste the code here" autocomplete="off" spellcheck="false"><button>Finish</button></form><form method="post" class="inline"><input type="hidden" name="action" value="cancel_provider"><input type="hidden" name="provider" value="anthropic"><button class="ghost">Cancel</button></form></div>`;
+  } else {
+    claudeBody = `<span class="envblurb">Use your Claude Pro/Max subscription — sign in once and your Claude models run on your plan, on your own computer.</span><form method="post" class="inline"><input type="hidden" name="action" value="begin_provider"><input type="hidden" name="provider" value="anthropic"><button>Continue with Claude</button></form>`;
+  }
+  const claudeCard = `<div class="envcard"><span class="envname"><span class="provmark anthropic">C</span>Claude</span>${claudeBody}</div>`;
+
+  return `<p class="muted">${note}</p>${cardJump}<div class="envgrid">${wzrdCard}${openaiCard}${claudeCard}</div><div class="row actions">${doneForm("provider", "Continue")}${skipForm("provider")}</div>`;
+}
+
 /** The families offered during onboarding; Settings has the full menu. */
 const ONBOARDING_FAMILIES: readonly ModelFamily[] = [
   "openai",
@@ -1385,7 +1522,57 @@ const ONBOARDING_FAMILIES: readonly ModelFamily[] = [
   "gmi",
 ];
 
+/**
+ * Choose Model — three tabs on who pays for the turn, then the model inside
+ * it. Tapping an unconnected BYO tab starts that provider's sign-in (the
+ * Sign-in-your-AI section owns the full flow); a connected one switches.
+ */
 function modelBody(snapshot: OnboardingSnapshot): string {
+  const provider = snapshot.tokenProvider;
+  const openai = snapshot.oauth.openai;
+  const claude = snapshot.oauth.anthropic;
+
+  const tab = (
+    key: TokenProvider,
+    label: string,
+    acct: string | null
+  ): string => {
+    const on = provider === key;
+    const tag = acct ? `<span class="provacct">${esc(acct)}</span>` : "";
+    if (key === "wzrd") {
+      return `<form method="post"><input type="hidden" name="action" value="set_token_provider"><input type="hidden" name="provider" value="wzrd"><button${on ? ' class="on"' : ""}>${esc(label)}</button></form>${tag}`;
+    }
+    if (!acct) {
+      // Not connected: the tab click opens sign-in rather than switching.
+      return `<form method="post"><input type="hidden" name="action" value="begin_provider"><input type="hidden" name="provider" value="${key}"><button${on ? ' class="on"' : ""}>${esc(label)} — sign in</button></form>`;
+    }
+    return `<form method="post"><input type="hidden" name="action" value="set_token_provider"><input type="hidden" name="provider" value="${key}"><button${on ? ' class="on"' : ""}>${esc(label)}</button></form>${tag}`;
+  };
+  const tabs = `<div class="provtabs">${tab("wzrd", "WZRD", snapshot.tokenProvider === "wzrd" ? "router" : null)}${tab("openai", "OpenAI", openai.connected ? openai.accountLabel : null)}${tab("anthropic", "Anthropic", claude.connected ? claude.accountLabel : null)}</div>`;
+
+  if (provider === "openai") {
+    const pins = openai.models.length
+      ? openai.models
+      : [];
+    const grid = pins.length
+      ? `<div class="famgrid">${pins.map(
+          (model) =>
+            `<form method="post" class="famform"><input type="hidden" name="action" value="set_byo_model"><input type="hidden" name="model" value="${esc(model)}"><button${model === snapshot.byoModel ? "" : ' class="ghost"'}>${esc(model)}</button></form>`
+        ).join("")}${snapshot.byoModel ? `<form method="post" class="famform"><input type="hidden" name="action" value="set_byo_model"><input type="hidden" name="model" value=""><button class="ghost">Default</button></form>` : ""}</div>`
+      : `<p class="muted">Your plan's default model answers — reconnect any time to pick a specific one.</p>`;
+    return `${tabs}<p class="muted">GPT models on <strong>${esc(openai.accountLabel ?? "your ChatGPT plan")}</strong> — served by your subscription, platform metering paused.</p>${grid}<div class="row actions">${skipForm("model")}</div>`;
+  }
+  if (provider === "anthropic") {
+    const pinned = claude.models.length
+      ? claude.models
+      : CLAUDE_MODELS.map((model) => model.id);
+    const grid = `<div class="famgrid">${pinned.map(
+      (model) =>
+        `<form method="post" class="famform"><input type="hidden" name="action" value="set_byo_model"><input type="hidden" name="model" value="${esc(model)}"><button${model === snapshot.byoModel ? "" : ' class="ghost"'}>${esc(model)}</button></form>`
+    ).join("")}${snapshot.byoModel ? `<form method="post" class="famform"><input type="hidden" name="action" value="set_byo_model"><input type="hidden" name="model" value=""><button class="ghost">Default</button></form>` : ""}</div>`;
+    return `${tabs}<p class="muted">Claude models on <strong>${esc(claude.accountLabel ?? "your Claude subscription")}</strong> — served by the official claude CLI on your own computer; metering paused. Helper agents keep using the router.</p>${grid}<div class="row actions">${skipForm("model")}</div>`;
+  }
+
   const families = ONBOARDING_FAMILIES.map(
     (family) =>
       `<form method="post" class="famform"><input type="hidden" name="action" value="set_model_family"><input type="hidden" name="model_family" value="${esc(family)}"><button${family === snapshot.modelFamily ? "" : ' class="ghost"'}>${esc(MODEL_FAMILY_LABELS[family])}</button></form>`
@@ -1404,7 +1591,7 @@ function modelBody(snapshot: OnboardingSnapshot): string {
             `<form method="post" class="famform"><input type="hidden" name="action" value="set_gmi_model"><input type="hidden" name="gmi_model" value="${esc(model.slug)}"><button${model.slug === snapshot.gmiModel ? "" : ' class="ghost"'}>${esc(model.label)}</button></form>`
         ).join("")}${snapshot.gmiModel ? `<form method="post" class="famform"><input type="hidden" name="action" value="clear_gmi_model"><button class="ghost">Follow speed tier</button></form>` : ""}</div>`
       : "";
-  return `<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p>${gmiPins}<p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
+  return `${tabs}<p class="muted">Pick the family your agent thinks with.</p><div class="famgrid">${families}</div><p class="muted">(you can select others in settings later)</p>${gmiPins}<p class="muted">Thinking speed — faster answers or deeper reasoning:</p><div class="row">${tiers}</div><div class="row actions">${skipForm("model")}</div>`;
 }
 
 /** Messages app glyph — green tile with a white speech bubble. */
@@ -1639,7 +1826,7 @@ function stepBody(
     const perSource = imports
       ? (
           [
-            ["Hermes profile", imports.sources.hermes.files],
+            ["Previous agent profile", imports.sources.hermes.files],
             ["Codex", imports.sources.codex.files],
             ["Claude", imports.sources.claude.files],
           ] as Array<[string, number]>
@@ -1656,7 +1843,7 @@ function stepBody(
         ? `<p>Your ingestion agent is reading everything you imported and distilling <strong>Dictionary.MD</strong> — tap Refresh in a minute.</p>`
         : files > 0
           ? `<p>Imported <strong>${files.toLocaleString("en-US")}</strong> files — build your dictionary below, or run the command again to add more.</p>`
-          : `<p class="muted">Already use Hermes, Codex, or Claude Code? One command imports all of it — your profile, sessions, and instructions — straight to your agent's computer, never to the platform. It then builds a personal <strong>Dictionary.MD</strong> from everything, so your agent starts out already knowing you.</p>`;
+          : `<p class="muted">Already use Codex or Claude Code? One command imports all of it — your profile, sessions, and instructions — straight to your agent's computer, never to the platform. It then builds a personal <strong>Dictionary.MD</strong> from everything, so your agent starts out already knowing you.</p>`;
     const command = snapshot.importCommand
       ? `<details${files > 0 || built ? "" : " open"}><summary>Get the one-click import command</summary><p class="muted">Run in Terminal on the machine where your agents live (link valid ~30 minutes; secrets are excluded and credentials redacted before upload):</p><pre>${esc(snapshot.importCommand)}</pre></details>`
       : "";
@@ -2029,6 +2216,7 @@ function sectionBody(
   browserSignin: string | null,
   lite: boolean
 ): string {
+  if (key === "provider") return providerBody(snapshot, browserSignin);
   if (key === "computer") return computerBody(snapshot);
   if (key === "browser") return browserBody(snapshot);
   if (key === "booth_photo") return mediaBody(snapshot, lite);
@@ -2549,6 +2737,7 @@ function browserSigninHref(
   if (ctx.session.via !== "card") return null;
   if (
     slideForStep(active).id !== "apps" &&
+    slideForStep(active).id !== "computer" &&
     !rendersNativeOnairos(snapshot, active)
   ) {
     return null;
@@ -3197,6 +3386,178 @@ export const onboarding: MiniAppModule = {
       const ok = await setSpeedTier(supabase, userId, tier);
       if (ok) await markSafely(supabase, userId, "model", "done");
       return respond(ctx, ok ? null : "model", ok ? `Speed set to ${tier}.` : "Update failed — try again.");
+    }
+
+    if (action === "begin_provider") {
+      const provider = String(form.get("provider") ?? "");
+      if (provider !== "openai" && provider !== "anthropic") {
+        return forbidden("invalid provider");
+      }
+      // OAuth can't run inside a Messages card webview — the slide carries
+      // the signed jump into the real browser for exactly this case.
+      if (ctx.session.via === "card") {
+        return respond(
+          ctx,
+          "provider",
+          "Sign-in can't run inside Messages — open this step in your browser with the link on the slide, sign in there, then come back."
+        );
+      }
+      if (provider === "openai") {
+        const begin = await beginSiwc(supabase, userId);
+        if (!begin.ok) return respond(ctx, "provider", begin.error);
+        return respond(
+          ctx,
+          "provider",
+          "Open the ChatGPT sign-in link below, approve, then paste the 127.0.0.1 address your browser lands on."
+        );
+      }
+      const begin = await beginClaudeLogin(supabase, userId);
+      if (!begin.ok) return respond(ctx, "provider", begin.error);
+      return respond(
+        ctx,
+        "provider",
+        begin.url
+          ? "Open the Claude sign-in link below, approve, then paste the code Anthropic shows."
+          : "Claude is already signed in on your computer — connected."
+      );
+    }
+
+    if (action === "finish_provider") {
+      const provider = String(form.get("provider") ?? "");
+      if (provider === "openai") {
+        const callback = String(form.get("callback") ?? "");
+        const finish = await finishSiwc(supabase, userId, callback);
+        if (!finish.ok) return respond(ctx, "provider", finish.error);
+        // Connected: default the payer to their subscription; Choose Model's
+        // OpenAI tab is now the live lane.
+        await setTokenProvider(supabase, userId, "openai");
+        await markSafely(supabase, userId, "provider", "done");
+        return respond(
+          ctx,
+          "provider",
+          `ChatGPT connected${finish.account ? ` — ${finish.account}` : ""}. Your GPT models now run on your plan.`
+        );
+      }
+      if (provider === "anthropic") {
+        const code = String(form.get("code") ?? "");
+        const finish = await finishClaudeLogin(supabase, userId, code);
+        if (!finish.ok) return respond(ctx, "provider", finish.error);
+        await setTokenProvider(supabase, userId, "anthropic");
+        await markSafely(supabase, userId, "provider", "done");
+        return respond(
+          ctx,
+          "provider",
+          `Claude connected${finish.account ? ` — ${finish.account}` : ""}. Claude models now run on your subscription.`
+        );
+      }
+      return forbidden("invalid provider");
+    }
+
+    if (action === "cancel_provider") {
+      const provider = String(form.get("provider") ?? "");
+      if (provider !== "openai" && provider !== "anthropic") {
+        return forbidden("invalid provider");
+      }
+      await supabase
+        .from("provider_oauth_attempts")
+        .delete()
+        .eq("user_id", userId)
+        .eq("provider", provider);
+      return respond(ctx, "provider", "Sign-in cancelled.");
+    }
+
+    if (action === "disconnect_provider") {
+      const provider = String(form.get("provider") ?? "");
+      const snapshot = await loadSnapshot(supabase, userId);
+      if (provider === "openai") {
+        const ok = await disconnectSiwc(supabase, userId);
+        if (!ok) return respond(ctx, "provider", "Disconnect failed — try again.");
+        if (snapshot.tokenProvider === "openai") {
+          await setTokenProvider(supabase, userId, "wzrd");
+          await clearByoModel(supabase, userId);
+        }
+        return respond(ctx, "provider", "ChatGPT disconnected — back on WZRD Router.");
+      }
+      if (provider === "anthropic") {
+        const ok = await disconnectClaude(supabase, userId);
+        if (!ok) return respond(ctx, "provider", "Disconnect failed — try again.");
+        if (snapshot.tokenProvider === "anthropic") {
+          await setTokenProvider(supabase, userId, "wzrd");
+          await clearByoModel(supabase, userId);
+        }
+        return respond(ctx, "provider", "Claude disconnected — back on WZRD Router.");
+      }
+      return forbidden("invalid provider");
+    }
+
+    if (action === "set_token_provider") {
+      const provider = String(form.get("provider") ?? "");
+      if (!isTokenProvider(provider)) return forbidden("invalid provider");
+      const snapshot = await loadSnapshot(supabase, userId);
+      // BYO lanes require their credential; a click without one is the
+      // sign-in begin flow, which the tab/buttons route through instead.
+      if (provider === "openai" && !snapshot.oauth.openai.connected) {
+        return respond(ctx, "provider", "Sign in with ChatGPT first.");
+      }
+      if (provider === "anthropic" && !snapshot.oauth.anthropic.connected) {
+        return respond(ctx, "provider", "Sign in with Claude first.");
+      }
+      // The anthropic lane binds box config to the claude plugin; leaving it
+      // restores the gateway binding. OpenAI only changes the gateway's
+      // upstream Bearer — the box stays on its custom endpoint either way.
+      const needsRebind =
+        provider === "anthropic" || snapshot.tokenProvider === "anthropic";
+      if (needsRebind) {
+        const bound = await applyTokenProvider(supabase, userId, provider);
+        if (!bound) {
+          return respond(
+            ctx,
+            "provider",
+            "Couldn't switch the lane on your computer — try again."
+          );
+        }
+      }
+      const ok = await setTokenProvider(supabase, userId, provider);
+      if (ok) await markSafely(supabase, userId, "provider", "done");
+      return respond(
+        ctx,
+        null,
+        ok
+          ? `Now paying with ${TOKEN_PROVIDER_LABELS[provider]}.`
+          : "Update failed — try again."
+      );
+    }
+
+    if (action === "set_byo_model") {
+      const slug = String(form.get("model") ?? "");
+      const snapshot = await loadSnapshot(supabase, userId);
+      const allowed =
+        snapshot.tokenProvider === "openai"
+          ? snapshot.oauth.openai.models
+          : snapshot.tokenProvider === "anthropic"
+            ? snapshot.oauth.anthropic.models.length
+              ? snapshot.oauth.anthropic.models
+              : CLAUDE_MODELS.map((model) => model.id)
+            : [];
+      if (!slug) {
+        const ok = await clearByoModel(supabase, userId);
+        if (ok && snapshot.tokenProvider === "anthropic") {
+          await applyTokenProvider(supabase, userId, "anthropic");
+        }
+        return respond(ctx, "model", ok ? "Back on the provider default." : "Update failed — try again.");
+      }
+      if (!allowed.includes(slug)) return forbidden("invalid model");
+      const ok = await setByoModel(supabase, userId, slug);
+      // The anthropic pin is box-side config, not just an entitlement.
+      if (ok && snapshot.tokenProvider === "anthropic") {
+        await applyTokenProvider(supabase, userId, "anthropic", slug);
+      }
+      if (ok) await markSafely(supabase, userId, "model", "done");
+      return respond(
+        ctx,
+        ok ? null : "model",
+        ok ? `Model set to ${slug}.` : "Update failed — try again."
+      );
     }
 
     if (action === "grant_consent") {
