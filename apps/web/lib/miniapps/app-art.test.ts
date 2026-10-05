@@ -3,7 +3,7 @@ import { FIRST_PARTY_ART, firstPartyAppArt, resolveAppArt } from "./app-art";
 
 describe("first party app artwork", () => {
   it("covers every bundled Wabi icon with a local public URL", () => {
-    expect(Object.keys(FIRST_PARTY_ART)).toHaveLength(23);
+    expect(Object.keys(FIRST_PARTY_ART)).toHaveLength(24);
     for (const path of Object.values(FIRST_PARTY_ART)) {
       expect(path).toMatch(/^\/app-icons\/wabi-v1\/[a-z0-9-]+\.png$/);
     }

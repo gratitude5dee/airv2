@@ -7,6 +7,7 @@
 import type { MiniAppModule } from "./types";
 import { ads } from "./ads";
 import { analytics } from "./analytics";
+import { avatar } from "./avatar";
 import { berd } from "./berd";
 import { buzz } from "./buzz";
 import { calendar } from "./calendar";
@@ -38,6 +39,7 @@ import { watch } from "./watch";
 export const FIRST_PARTY_MODULES: Record<string, MiniAppModule> = {
   ads,
   analytics,
+  avatar,
   berd,
   browser,
   buzz,
