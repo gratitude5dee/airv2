@@ -69,11 +69,6 @@ const DIM = "rgba(255,255,255,0.45)";
 const GRID = "rgba(255,255,255,0.14)";
 const POLL_MS = 2500;
 
-const root = document.getElementById("trade-tape");
-if (root) {
-  mount(root);
-}
-
 function mount(rootEl: HTMLElement) {
   const payload: TapePayload = JSON.parse(rootEl.dataset["payload"] ?? "{}");
 
@@ -629,6 +624,7 @@ function mount(rootEl: HTMLElement) {
 }
 
 const TAPE_CSS = `
+.ttape [hidden]{display:none!important}
 .ttape{position:relative;width:100%;color:${INK};font-variant-numeric:tabular-nums}
 .tt-head{display:flex;justify-content:space-between;align-items:center;padding:0 2px 6px}
 .tt-chiprow{display:flex;align-items:baseline;gap:8px}
@@ -686,3 +682,8 @@ const TAPE_CSS = `
 .tt-welcome-card b{color:${INK}}
 .tt-go{margin-top:8px;background:${UP};border:none;color:#06130a;border-radius:12px;padding:11px 26px;font:800 13px ui-monospace,monospace;cursor:pointer}
 `;
+
+const rootEl = document.getElementById("trade-tape");
+if (rootEl) {
+  mount(rootEl);
+}
