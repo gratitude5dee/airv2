@@ -143,13 +143,24 @@ export interface AgentMailMessage {
   message_id: string;
   inbox_id: string;
   thread_id?: string;
+  direction?: string;
+  state?: string;
   from?: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
   subject?: string;
   text?: string;
   /** Provider-extracted new content, already quote-stripped. */
   extracted_text?: string;
   html?: string;
+  /** Provider labels — wzrdmail writes `unread`/`received`/`sent`; `spam`
+   * is ours (lib/jev/mail.ts + the inbox mini-app). */
+  labels?: string[];
   attachments?: AgentMailAttachment[];
+  deleted_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 /** Fetch raw attachment bytes (V3: emailed .ics invites → box inbox). */
@@ -201,8 +212,14 @@ export interface AgentMailThread {
   thread_id: string;
   subject?: string;
   preview?: string;
+  /** AgentMail wire shape. */
   senders?: string[];
+  /** wzrdmail wire shape — the mini-app reads senders ?? participants. */
+  participants?: string[];
+  labels?: string[];
   message_count?: number;
+  deleted_at?: string | null;
+  last_message_at?: string;
   updated_at?: string;
 }
 
@@ -335,7 +352,168 @@ export interface AgentMailDraft {
   subject?: string;
   text?: string;
   to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  labels?: string[];
+  in_reply_to?: string | null;
+  sent_message_id?: string | null;
+  created_at?: string;
   updated_at?: string;
+}
+
+/* ---------------- folder/label/draft surface (wzrdmail-backed) ----------- *
+ * The option/patch shapes below are the shared contract both providers
+ * implement. AgentMail's API has no folder/label/trash concept, so every
+ * function here throws 501 — the mini-app hides the affected controls.
+ */
+
+function unsupported(): never {
+  throw new AgentMailApiError(501, "unsupported on agentmail");
+}
+
+export interface MailThreadListOptions {
+  limit?: number;
+  pageToken?: string;
+  folder?: "all" | "trash";
+  /** csv AND semantics (label names like `unread`, `spam`). */
+  labels?: string[];
+  /** Free-text search over subject/preview. */
+  query?: string;
+}
+
+export interface MailMessageListOptions {
+  labels?: string[];
+  folder?: "all" | "trash" | "scheduled";
+  limit?: number;
+  pageToken?: string;
+}
+
+export interface MailMessagePage {
+  messages: AgentMailMessage[];
+  next_page_token?: string | null;
+}
+
+export interface MailThreadPatch {
+  labels?: string[];
+  add_labels?: string[];
+  remove_labels?: string[];
+}
+
+export interface MailMessagePatch extends MailThreadPatch {
+  /** read:true removes `unread`, read:false adds it. */
+  read?: boolean;
+}
+
+export interface MailDraftPatch {
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  text?: string;
+}
+
+export async function listThreadsFiltered(
+  _inboxId: string,
+  _options?: MailThreadListOptions
+): Promise<AgentMailThreadPage> {
+  unsupported();
+}
+
+export async function searchThreads(
+  _inboxId: string,
+  _query: string,
+  _options?: Omit<MailThreadListOptions, "query">
+): Promise<AgentMailThreadPage> {
+  unsupported();
+}
+
+export async function getThreadLabels(
+  _inboxId: string,
+  _threadId: string
+): Promise<string[]> {
+  unsupported();
+}
+
+export async function patchThread(
+  _inboxId: string,
+  _threadId: string,
+  _patch: MailThreadPatch
+): Promise<AgentMailThread> {
+  unsupported();
+}
+
+export async function trashThread(
+  _inboxId: string,
+  _threadId: string
+): Promise<void> {
+  unsupported();
+}
+
+export async function restoreThread(
+  _inboxId: string,
+  _threadId: string
+): Promise<AgentMailThread> {
+  unsupported();
+}
+
+export async function listMessages(
+  _inboxId: string,
+  _options?: MailMessageListOptions
+): Promise<MailMessagePage> {
+  unsupported();
+}
+
+export async function searchMessages(
+  _inboxId: string,
+  _query: string,
+  _options?: { limit?: number; pageToken?: string }
+): Promise<MailMessagePage> {
+  unsupported();
+}
+
+export async function patchMessage(
+  _inboxId: string,
+  _messageId: string,
+  _patch: MailMessagePatch
+): Promise<AgentMailMessage> {
+  unsupported();
+}
+
+export async function batchUpdateMessages(
+  _inboxId: string,
+  _messageIds: string[],
+  _patch: MailMessagePatch
+): Promise<string[]> {
+  unsupported();
+}
+
+export async function trashMessage(
+  _inboxId: string,
+  _messageId: string
+): Promise<void> {
+  unsupported();
+}
+
+export async function restoreMessage(
+  _inboxId: string,
+  _messageId: string
+): Promise<AgentMailMessage> {
+  unsupported();
+}
+
+export async function updateDraft(
+  _inboxId: string,
+  _draftId: string,
+  _patch: MailDraftPatch
+): Promise<AgentMailDraft> {
+  unsupported();
+}
+
+export async function deleteDraft(
+  _inboxId: string,
+  _draftId: string
+): Promise<void> {
+  unsupported();
 }
 
 /** Recent drafts in an inbox — the review-backstop sweep's read half. */

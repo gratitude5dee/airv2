@@ -18,9 +18,15 @@ import {
   createDraft,
   getAttachmentBytes,
   getMessage,
+  patchMessage,
+  patchThread,
   replyToMessage,
   type MailMessage as AgentMailMessage,
 } from "../mail/client";
+import {
+  classifyInboundMail,
+  isSpamVerdict,
+} from "../jev/mail";
 import { queueEmailDraftReview } from "./review";
 import { createRun, runEvents } from "../hermes/client";
 import { armStopAfter, ensureBoxAwake } from "../orchestrator/boxes";
@@ -164,6 +170,41 @@ export async function processInboundEmail(
     : 2;
 
   if (tier === 2) {
+    // Edge spam screen (Jev, metadata in → label out, fail-open): confident
+    // spam is labeled on the provider and filed silently — no Needs-you
+    // noise. The transactional veto keeps receipts and security alerts.
+    const verdict = await classifyInboundMail({
+      from,
+      subject: message.subject,
+      preview: message.extracted_text ?? message.text,
+    });
+    if (verdict && isSpamVerdict(verdict)) {
+      // Best-effort labeling — a provider failure leaves the mail in the
+      // inbox unlabeled rather than dropped.
+      await patchMessage(inboxId, messageId, { add_labels: ["spam"] }).catch(
+        (error) => {
+          log.error("spam label on message failed", {user_id: userId,
+              error: error instanceof Error ? error.message : String(error),});
+        }
+      );
+      if (message.thread_id) {
+        await patchThread(inboxId, message.thread_id, {
+          add_labels: ["spam"],
+        }).catch((error) => {
+          log.error("spam label on thread failed", {user_id: userId,
+              error: error instanceof Error ? error.message : String(error),});
+        });
+      }
+      // Learning-plane receipt: ids + a subject snippet + the score — never
+      // body text (I2/C4).
+      log.info("spam_label", {
+        user_id: userId,
+        from,
+        subject: (message.subject ?? "").slice(0, 120),
+        spam_score: verdict.spam,
+      });
+      return;
+    }
     // Unknown senders get a decision only — an attached .ics must never
     // auto-add an event or reach the box before the human weighs in.
     await createDecision(supabase, {
