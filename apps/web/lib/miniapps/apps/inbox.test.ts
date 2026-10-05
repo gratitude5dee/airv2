@@ -225,6 +225,65 @@ describe("inbox mini-app", () => {
     });
   });
 
+  it("routes ?compose=1&mode=reply&thread=… to the compose form, not the thread view", async () => {
+    getThread.mockResolvedValueOnce({
+      thread_id: "thread-1",
+      subject: "Deploy window",
+      labels: ["received"],
+      messages: [
+        { message_id: "m-1", inbox_id: "agent@wzrd.tech", from: "ops@b.co", labels: ["received"], text: "hi" },
+      ],
+    });
+
+    const html = await (
+      await inbox.render(
+        context("https://app.wzrd.tech/mini/inbox?compose=1&mode=reply&thread=thread-1")
+      )
+    ).text();
+
+    expect(html).toContain('name="to" value="ops@b.co"');
+    expect(html).toContain('value="Re: Deploy window"');
+    expect(html).toContain('name="action" value="compose"');
+    expect(html).not.toContain('class="msgcard"');
+  });
+
+  it("mark unread posts a return to the folder so mark-read-on-open cannot undo it", async () => {
+    getThread.mockResolvedValueOnce({
+      thread_id: "thread-1",
+      subject: "Later",
+      labels: ["received"],
+      messages: [
+        { message_id: "m-1", from: "a@b.co", labels: ["received"], text: "x" },
+      ],
+    });
+
+    const html = await (
+      await inbox.render(
+        context("https://app.wzrd.tech/mini/inbox?thread=thread-1&from=unread")
+      )
+    ).text();
+
+    expect(html).toContain(
+      'name="action" value="mark_unread"><input type="hidden" name="return" value="?folder=unread"'
+    );
+  });
+
+  it("renders the draft approve button label once-escaped", async () => {
+    getDraft.mockResolvedValueOnce({
+      draft_id: "draft-1",
+      to: ["a@b.co"],
+      subject: "s",
+      text: "t",
+    });
+
+    const html = await (
+      await inbox.render(context("https://app.wzrd.tech/mini/inbox?draft=draft-1"))
+    ).text();
+
+    expect(html).toContain("Approve &amp; send");
+    expect(html).not.toContain("&amp;amp;");
+  });
+
   it("renders HTML-only mail as readable escaped text plus same-origin attachments", async () => {
     getThread.mockResolvedValueOnce({
       thread_id: "thread-1",

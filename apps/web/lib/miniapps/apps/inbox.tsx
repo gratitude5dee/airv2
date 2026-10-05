@@ -395,6 +395,11 @@ export const inbox: MiniAppModule = {
       return renderLite(ctx, inbox, url.searchParams);
     }
 
+    // `?compose=1&mode=reply&thread=…` carries a thread id for prefill —
+    // compose must dispatch before thread or reply links re-render the thread.
+    if (url.searchParams.get("compose")) {
+      return renderCompose(ctx, inbox, url.searchParams, notice);
+    }
     const threadId = url.searchParams.get("thread");
     if (threadId) {
       return renderThread(ctx, inbox, threadId, from, query, notice);
@@ -402,9 +407,6 @@ export const inbox: MiniAppModule = {
     const draftId = url.searchParams.get("draft");
     if (draftId) {
       return renderDraft(ctx, inbox, draftId, notice);
-    }
-    if (url.searchParams.get("compose")) {
-      return renderCompose(ctx, inbox, url.searchParams, notice);
     }
     if (query) {
       return renderSearch(ctx, inbox, query, pageToken, notice);
@@ -701,11 +703,14 @@ async function renderThread(
   const isBlocked = replyTarget !== "" && blocked.has(replyTarget);
   const backLink = backHref(ctx, from, q);
   const ret = `?thread=${encodeURIComponent(threadId)}&from=${encodeURIComponent(from ?? "inbox")}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+  // Mark unread must land on the folder: staying on the thread view would
+  // re-render renderThread, whose mark-read-on-open undoes the action.
+  const unreadRet = backLink.slice(ctx.basePath.length);
 
   const toolbar = lite
     ? ""
     : `<div class="toolbar">
-      ${toolButton(ctx, ret, "mark_unread", { thread: threadId }, "Mark unread")}
+      ${toolButton(ctx, unreadRet, "mark_unread", { thread: threadId }, "Mark unread")}
       ${spam
         ? toolButton(ctx, ret, "not_spam", { thread: threadId }, "Not spam")
         : toolButton(ctx, ret, "spam", { thread: threadId }, "Spam")}
@@ -858,7 +863,7 @@ async function renderDraft(
         <div class="row actions"><button type="submit">Save</button></div>
       </form>
       <div class="toolbar">
-        ${toolButton(ctx, ret, "draft_send", { draft: draftId }, "Approve &amp; send")}
+        ${toolButton(ctx, ret, "draft_send", { draft: draftId }, "Approve & send")}
         ${toolButton(ctx, "?folder=drafts", "draft_delete", { draft: draftId }, "Delete draft")}
       </div>
       ${isPending ? `<p class="muted">Pending review — approving sends through the Needs-you decision.</p>` : ""}
