@@ -74,6 +74,15 @@ export const EMPTY_PAPER_DOC: TradePaperDoc = {
 
 export const EMPTY_WATCHLIST: TradeWatchlistDoc = { version: 1, items: [] };
 
+/** Tape surface preferences (docs/trade/tape.md) — the welcome sheet shows
+ *  once per box, then this flag suppresses it. */
+export interface TradeTapeDoc {
+  version: 1;
+  welcomedAt?: string | null;
+}
+
+export const EMPTY_TAPE_DOC: TradeTapeDoc = { version: 1, welcomedAt: null };
+
 async function readDoc<T>(boxId: string, resource: string, fallback: T): Promise<T> {
   let raw: string;
   try {
@@ -101,7 +110,7 @@ async function readDoc<T>(boxId: string, resource: string, fallback: T): Promise
 export async function readTradeDoc<T>(
   supabase: SupabaseClient,
   userId: string,
-  resource: "paper" | "watchlist" | "snapshot",
+  resource: "paper" | "watchlist" | "snapshot" | "tape",
   fallback: T,
 ): Promise<T> {
   const box = await ensureBoxAwake(supabase, userId);
@@ -116,7 +125,7 @@ export async function readTradeDoc<T>(
 export async function mutateTradeDoc<T>(
   supabase: SupabaseClient,
   userId: string,
-  resource: "paper" | "watchlist" | "snapshot",
+  resource: "paper" | "watchlist" | "snapshot" | "tape",
   fallback: T,
   mutate: (doc: T) => T | false,
 ): Promise<T> {
@@ -135,7 +144,7 @@ export async function mutateTradeDoc<T>(
 /** Watchlist mutation on an already-awake box (the cron tick passes boxId). */
 export async function readTradeDocFrom<T>(
   boxId: string,
-  resource: "paper" | "watchlist" | "snapshot",
+  resource: "paper" | "watchlist" | "snapshot" | "tape",
   fallback: T,
 ): Promise<T> {
   return readDoc(boxId, resource, fallback);
@@ -143,7 +152,7 @@ export async function readTradeDocFrom<T>(
 
 export async function writeTradeDocTo<T>(
   boxId: string,
-  resource: "paper" | "watchlist" | "snapshot",
+  resource: "paper" | "watchlist" | "snapshot" | "tape",
   doc: T,
 ): Promise<void> {
   await writeAppStateTo(boxId, "trade", resource, doc);
