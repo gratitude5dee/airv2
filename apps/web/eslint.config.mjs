@@ -16,6 +16,7 @@ const config = [
       "public/creator-os/deck-pending.js", "public/creator-os/deck-timing.js", "public/creator-os/intro-cinematic.js",
       "public/creator-os/create.js", "public/creator-os/bg/**",
       "public/creator-os/freeze-studio.js", "public/creator-os/draw-studio.js",
+      "public/creator-os/trade-tape.js",
       // Vendored web-component bundle (committed, not lintable source).
       "public/creator-os/fx.js",
       // code-split chunks emitted beside the bundles (vendored library code).
