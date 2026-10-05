@@ -20,6 +20,13 @@ import type {
   AgentMailMessage,
   AgentMailThread,
   AgentMailThreadDetail,
+  AgentMailThreadPage,
+  MailDraftPatch,
+  MailMessageListOptions,
+  MailMessagePage,
+  MailMessagePatch,
+  MailThreadListOptions,
+  MailThreadPatch,
 } from "../agentmail/client";
 import { log } from "../log";
 
@@ -415,4 +422,221 @@ export async function ensureWebhook(
     },
   });
   log.error("wzrdmail webhook created — set WZRDMAIL_WEBHOOK_SECRET to its signing secret", {webhook_id: created.webhook_id,});
+}
+
+/* ---------------- folder/label/draft surface (inbox mini-app) ------------ *
+ * wzrdmail-side implementations of the shared mail surface. Every write
+ * here runs under the org key's `admin` permission — control-plane only,
+ * never reachable from a box-scoped key (C10's two-key model).
+ */
+
+/**
+ * Thread list with folder/label/search filters. The `labels` query param is
+ * sent unconditionally: the un-patched API ignores unknown params, so the
+ * result is additionally filtered client-side from `thread.labels` — the
+ * returned page looks identical before and after the wzrdmail PR lands.
+ */
+export async function listThreadsFiltered(
+  inboxId: string,
+  options: MailThreadListOptions = {}
+): Promise<AgentMailThreadPage> {
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 25),
+  });
+  if (options.pageToken) params.set("page_token", options.pageToken);
+  if (options.folder && options.folder !== "all") {
+    params.set("folder", options.folder);
+  }
+  if (options.labels && options.labels.length > 0) {
+    params.set("labels", options.labels.join(","));
+  }
+  if (options.query) params.set("query", options.query);
+  const path = options.query
+    ? `/inboxes/${encodeURIComponent(inboxId)}/threads/search?${params}`
+    : `/inboxes/${encodeURIComponent(inboxId)}/threads?${params}`;
+  const result = await wzrdmailFetch<{
+    threads?: AgentMailThread[];
+    next_page_token?: string | null;
+  }>(path);
+  let threads = result.threads ?? [];
+  if (options.labels && options.labels.length > 0) {
+    threads = threads.filter((thread) =>
+      (options.labels ?? []).every((label) =>
+        (thread.labels ?? []).includes(label)
+      )
+    );
+  }
+  return {
+    threads,
+    ...(result.next_page_token ? { next_page_token: result.next_page_token } : {}),
+  };
+}
+
+/** Subject/preview search — the `/threads/search` endpoint. */
+export async function searchThreads(
+  inboxId: string,
+  query: string,
+  options: Omit<MailThreadListOptions, "query"> = {}
+): Promise<AgentMailThreadPage> {
+  return listThreadsFiltered(inboxId, { ...options, query });
+}
+
+export async function getThreadLabels(
+  inboxId: string,
+  threadId: string
+): Promise<string[]> {
+  const thread = await getThread(inboxId, threadId);
+  return thread.labels ?? [];
+}
+
+/** Thread label patch — `admin` permission, control-plane key only. */
+export async function patchThread(
+  inboxId: string,
+  threadId: string,
+  patch: MailThreadPatch
+): Promise<AgentMailThread> {
+  return await wzrdmailFetch<AgentMailThread>(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads/${encodeURIComponent(threadId)}`,
+    { method: "PATCH", body: patch }
+  );
+}
+
+/** Soft-delete: the thread and its messages purge after 30 days. */
+export async function trashThread(
+  inboxId: string,
+  threadId: string
+): Promise<void> {
+  await wzrdmailFetch(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads/${encodeURIComponent(threadId)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function restoreThread(
+  inboxId: string,
+  threadId: string
+): Promise<AgentMailThread> {
+  return await wzrdmailFetch<AgentMailThread>(
+    `/inboxes/${encodeURIComponent(inboxId)}/threads/${encodeURIComponent(threadId)}/restore`,
+    { method: "POST" }
+  );
+}
+
+/**
+ * Flat message list — powers the Sent folder (labels=["sent"]) and could
+ * serve `scheduled` too. wzrdmail's page token maps 1:1 onto the shared
+ * page-token convention.
+ */
+export async function listMessages(
+  inboxId: string,
+  options: MailMessageListOptions = {}
+): Promise<MailMessagePage> {
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 25),
+  });
+  if (options.pageToken) params.set("page_token", options.pageToken);
+  if (options.folder && options.folder !== "all") {
+    params.set("folder", options.folder);
+  }
+  if (options.labels && options.labels.length > 0) {
+    params.set("labels", options.labels.join(","));
+  }
+  const result = await wzrdmailFetch<{
+    messages?: AgentMailMessage[];
+    next_page_token?: string | null;
+  }>(`/inboxes/${encodeURIComponent(inboxId)}/messages?${params}`);
+  return {
+    messages: result.messages ?? [],
+    ...(result.next_page_token ? { next_page_token: result.next_page_token } : {}),
+  };
+}
+
+export async function searchMessages(
+  inboxId: string,
+  query: string,
+  options: { limit?: number; pageToken?: string } = {}
+): Promise<MailMessagePage> {
+  const params = new URLSearchParams({
+    limit: String(options.limit ?? 25),
+    query,
+  });
+  if (options.pageToken) params.set("page_token", options.pageToken);
+  const result = await wzrdmailFetch<{
+    messages?: AgentMailMessage[];
+    next_page_token?: string | null;
+  }>(`/inboxes/${encodeURIComponent(inboxId)}/messages/search?${params}`);
+  return {
+    messages: result.messages ?? [],
+    ...(result.next_page_token ? { next_page_token: result.next_page_token } : {}),
+  };
+}
+
+/** Message label patch — `read` maps onto the `unread` label server-side. */
+export async function patchMessage(
+  inboxId: string,
+  messageId: string,
+  patch: MailMessagePatch
+): Promise<AgentMailMessage> {
+  return await wzrdmailFetch<AgentMailMessage>(
+    `/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: "PATCH", body: patch }
+  );
+}
+
+/** ≤100 ids per call; returns the ids the API actually updated. */
+export async function batchUpdateMessages(
+  inboxId: string,
+  messageIds: string[],
+  patch: MailMessagePatch
+): Promise<string[]> {
+  if (messageIds.length === 0) return [];
+  const result = await wzrdmailFetch<{ updated?: string[] }>(
+    `/inboxes/${encodeURIComponent(inboxId)}/messages/batch-update`,
+    {
+      method: "PATCH",
+      body: { message_ids: messageIds.slice(0, 100), ...patch },
+    }
+  );
+  return result.updated ?? [];
+}
+
+export async function trashMessage(
+  inboxId: string,
+  messageId: string
+): Promise<void> {
+  await wzrdmailFetch(
+    `/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function restoreMessage(
+  inboxId: string,
+  messageId: string
+): Promise<AgentMailMessage> {
+  return await wzrdmailFetch<AgentMailMessage>(
+    `/inboxes/${encodeURIComponent(inboxId)}/messages/${encodeURIComponent(messageId)}/restore`,
+    { method: "POST" }
+  );
+}
+
+export async function updateDraft(
+  inboxId: string,
+  draftId: string,
+  patch: MailDraftPatch
+): Promise<AgentMailDraft> {
+  return await wzrdmailFetch<AgentMailDraft>(
+    `/inboxes/${encodeURIComponent(inboxId)}/drafts/${encodeURIComponent(draftId)}`,
+    { method: "PATCH", body: patch }
+  );
+}
+
+export async function deleteDraft(
+  inboxId: string,
+  draftId: string
+): Promise<void> {
+  await wzrdmailFetch(
+    `/inboxes/${encodeURIComponent(inboxId)}/drafts/${encodeURIComponent(draftId)}`,
+    { method: "DELETE" }
+  );
 }

@@ -16,6 +16,12 @@ export type {
   AgentMailThread as MailThread,
   AgentMailThreadDetail as MailThreadDetail,
   AgentMailThreadPage as MailThreadPage,
+  MailDraftPatch,
+  MailMessageListOptions,
+  MailMessagePage,
+  MailMessagePatch,
+  MailThreadListOptions,
+  MailThreadPatch,
 } from "../agentmail/client";
 
 export type MailProvider = "agentmail" | "wzrdmail";
@@ -69,6 +75,36 @@ export const listDrafts: MailClient["listDrafts"] = (...args) =>
   client().listDrafts(...args);
 export const getDraft: MailClient["getDraft"] = (...args) =>
   client().getDraft(...args);
+export const updateDraft: MailClient["updateDraft"] = (...args) =>
+  client().updateDraft(...args);
+export const deleteDraft: MailClient["deleteDraft"] = (...args) =>
+  client().deleteDraft(...args);
+export const listThreadsFiltered: MailClient["listThreadsFiltered"] = (
+  ...args
+) => client().listThreadsFiltered(...args);
+export const searchThreads: MailClient["searchThreads"] = (...args) =>
+  client().searchThreads(...args);
+export const getThreadLabels: MailClient["getThreadLabels"] = (...args) =>
+  client().getThreadLabels(...args);
+export const patchThread: MailClient["patchThread"] = (...args) =>
+  client().patchThread(...args);
+export const trashThread: MailClient["trashThread"] = (...args) =>
+  client().trashThread(...args);
+export const restoreThread: MailClient["restoreThread"] = (...args) =>
+  client().restoreThread(...args);
+export const listMessages: MailClient["listMessages"] = (...args) =>
+  client().listMessages(...args);
+export const searchMessages: MailClient["searchMessages"] = (...args) =>
+  client().searchMessages(...args);
+export const patchMessage: MailClient["patchMessage"] = (...args) =>
+  client().patchMessage(...args);
+export const batchUpdateMessages: MailClient["batchUpdateMessages"] = (
+  ...args
+) => client().batchUpdateMessages(...args);
+export const trashMessage: MailClient["trashMessage"] = (...args) =>
+  client().trashMessage(...args);
+export const restoreMessage: MailClient["restoreMessage"] = (...args) =>
+  client().restoreMessage(...args);
 export const addInboxBlockEntry: MailClient["addInboxBlockEntry"] = (...args) =>
   client().addInboxBlockEntry(...args);
 export const removeInboxBlockEntry: MailClient["removeInboxBlockEntry"] = (

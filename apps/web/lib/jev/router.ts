@@ -8,20 +8,17 @@
  * Fail-open by contract: a missing key, a timeout, or an odd answer
  * degrades to an un-routed turn, never a failed one.
  */
-import { env } from "../env";
-import { requestSignal } from "../http/timeout";
 import {
   CONTEXT_MIN_NOUL,
   GATE_MIN_PROBABILITY,
   GATE_OPTIONS,
-  JEV_GATEWAY_MODEL,
-  JEV_MODEL,
   ROUTE_MIN_PROBABILITY,
   ROUTE_OPTIONS,
   ROUTING_QUESTIONS,
   type GateOption,
   type RouteOption,
 } from "./questions";
+import { jevAsk } from "./transport";
 
 /** Tight budget: routing adds latency to every turn, so a slow Jev is
  * worse than no Jev. */
@@ -75,104 +72,16 @@ export interface SystemOneResponse {
   };
 }
 
-/** Two transports, one contract. A direct TYPESAFE_API_KEY hits TypeSafe's
- * /v1/systemone (noul questions, inline per-answer confidence). Otherwise the
- * Vercel AI Gateway serves the same Jev model through its evaluation-model
- * endpoint — noul questions map onto its `boolean` type and confidence lives
- * in providerMetadata.typesafe.confidence. */
-type JevBackend =
-  | { kind: "typesafe"; url: string; key: string }
-  | { kind: "gateway"; url: string; key: string };
-
-function pickBackend(): JevBackend | null {
-  const typesafeKey = env.typesafeApiKey();
-  if (typesafeKey) {
-    return {
-      kind: "typesafe",
-      url: `${env.typesafeApiBase()}/v1/systemone`,
-      key: typesafeKey,
-    };
-  }
-  const gatewayKey = env.aiGatewayApiKey();
-  if (gatewayKey) {
-    return {
-      kind: "gateway",
-      url: `${env.aiGatewayBase()}/evaluation-model`,
-      key: gatewayKey,
-    };
-  }
-  return null;
-}
-
-/** The gateway's boolean question is the noul primitive — same instructions,
- * different type tag. Choice questions pass through unchanged. */
-function gatewayQuestions(questions: typeof ROUTING_QUESTIONS) {
-  return Object.fromEntries(
-    Object.entries(questions).map(([id, q]) => [
-      id,
-      q.type === "noul" ? { ...q, type: "boolean" } : q,
-    ])
-  );
-}
-
-function buildRequest(
-  backend: JevBackend,
-  input: string
-): { url: string; init: RequestInit } {
-  const state = { surface: "air-chat", message: input.slice(0, MAX_STATE_CHARS) };
-  if (backend.kind === "typesafe") {
-    return {
-      url: backend.url,
-      init: {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${backend.key}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          state,
-          model: JEV_MODEL,
-          questions: ROUTING_QUESTIONS,
-        }),
-      },
-    };
-  }
-  return {
-    url: backend.url,
-    init: {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${backend.key}`,
-        "Content-Type": "application/json",
-        "ai-gateway-protocol-version": "0.0.1",
-        "ai-evaluation-model-specification-version": "4",
-        "ai-model-id": JEV_GATEWAY_MODEL,
-      },
-      body: JSON.stringify({
-        state,
-        questions: gatewayQuestions(ROUTING_QUESTIONS),
-      }),
-    },
-  };
-}
-
 export async function routeTurn(input: string): Promise<TurnRoute | null> {
-  const backend = pickBackend();
-  if (!backend || !input.trim()) return null;
-  const { url, init } = buildRequest(backend, input);
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await fetch(url, {
-        ...init,
-        signal: requestSignal(JEV_TIMEOUT_MS),
-      });
-      if (!response.ok) continue;
-      return parseRoute((await response.json()) as SystemOneResponse);
-    } catch {
-      // Transport/timeout failure — retry once, then fail open.
-    }
-  }
-  return null;
+  if (!input.trim()) return null;
+  const body = await jevAsk<SystemOneResponse>({
+    surface: "air-chat",
+    state: { message: input },
+    questions: ROUTING_QUESTIONS,
+    timeoutMs: JEV_TIMEOUT_MS,
+    maxFieldChars: MAX_STATE_CHARS,
+  });
+  return body ? parseRoute(body) : null;
 }
 
 export function parseRoute(body: SystemOneResponse): TurnRoute | null {
