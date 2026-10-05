@@ -344,7 +344,7 @@ describe("inbox mini-app", () => {
     const html = await (
       await inbox.render(context("https://app.wzrd.tech/mini/inbox?thread=thread-1&from=spam"))
     ).text();
-    expect(html).toContain("Flagged by organization rules");
+    expect(html).toContain("Flagged by your organization rules");
     expect(html).toContain('value="not_spam"');
 
     const form = new FormData();

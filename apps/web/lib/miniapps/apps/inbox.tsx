@@ -102,25 +102,43 @@ const MAIL_CSS = `
 .mailbar .mailbar-end{margin-left:auto;display:flex;gap:0.4rem}
 .mailbar form{margin:0}
 .mailbar input[type=text]{min-height:2rem;padding:0.3rem 0.7rem;font-size:0.8rem;border-radius:var(--radius-pill)}
-.mailrows{display:flex;flex-direction:column;gap:0.55rem;width:min(100%,36rem)}
-.mailrow{display:flex;align-items:center;gap:0.65rem;border:1px solid var(--ring);border-radius:var(--radius-well);min-height:2.9rem;padding:0.6rem 0.8rem;background:var(--well-bg);color:var(--ink);text-decoration:none}
-.mailrow.unread .subj{font-weight:600}
-.mailrow .who{display:flex;align-items:center;gap:0.5rem;min-width:0}
-.mailrow .avatar{width:2rem;height:2rem;font-size:0.75rem}
-.mailrow .meta{min-width:0;flex:1;display:flex;flex-direction:column;gap:0.1rem}
-.mailrow .subj{font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailsearch{width:min(100%,36rem);margin-bottom:0.45rem}
+.mailsearch form{margin:0}
+.mailsearch input[type=text]{width:100%;min-height:2.15rem;padding:0.35rem 1rem;font-size:0.85rem;border-radius:var(--radius-pill)}
+.mailrows{display:flex;flex-direction:column;width:min(100%,36rem);border-top:1px solid var(--ring)}
+.mailrow{display:flex;align-items:center;gap:0.7rem;min-height:3.5rem;padding:0.55rem 0.15rem;border-bottom:1px solid var(--ring);color:var(--ink);text-decoration:none}
+.mailrow .who{display:flex;align-items:center;position:relative;flex-shrink:0}
+.mailrow .avatar{width:2.4rem;height:2.4rem;font-size:0.85rem}
+.mailrow .meta{min-width:0;flex:1;display:flex;flex-direction:column;gap:0.12rem}
+.mailrow .topline{display:flex;align-items:baseline;justify-content:space-between;gap:0.6rem}
+.mailrow .name{color:var(--accent);font-weight:600;font-size:0.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mailrow .prev{color:var(--ink-muted);font-size:0.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mailrow .tail{display:flex;flex-direction:column;align-items:flex-end;gap:0.2rem;flex-shrink:0}
-.unread-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
-.msgcard{background:var(--well-bg);border:1px solid var(--ring);border-radius:var(--radius-well);padding:0.7rem 0.8rem;margin-bottom:0.6rem;font-size:0.92rem;line-height:1.45}
-.msgcard .msghead{display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:0.35rem}
-.msgcard .msghead .who{font-weight:600}
+.mailrow.unread .prev{color:var(--ink)}
+.mailrow .tail{display:flex;flex-direction:column;align-items:flex-end;gap:0.25rem;flex-shrink:0}
+.mailrow .when{color:var(--ink-muted);font-size:0.72rem}
+.unread-dot{position:absolute;right:-3px;bottom:-3px;width:9px;height:9px;border-radius:50%;background:var(--accent);border:2px solid var(--canvas)}
+.countpill{min-width:1.3rem;padding:0.05rem 0.45rem;border-radius:var(--radius-pill);background:var(--well-bg);border:1px solid var(--ring);color:var(--ink);font-size:0.68rem;text-align:center}
+.msgcard{padding:0.75rem 0;margin-bottom:0;font-size:0.92rem;line-height:1.5;border-bottom:1px solid var(--ring)}
+.msgcard .msghead{display:flex;align-items:center;gap:0.65rem;margin-bottom:0.4rem}
+.msgcard .msghead .avatar{width:2.6rem;height:2.6rem;font-size:0.9rem;flex-shrink:0}
+.msgcard .mwho{display:flex;flex-direction:column;min-width:0}
+.msgcard .mwho .name{font-size:0.95rem;font-weight:500}
+.msgcard .mwho .meta{color:var(--ink-muted);font-size:0.75rem}
+.msgcard .mwho .meta .tome{color:var(--accent)}
 .msgcard .msgbody{white-space:pre-wrap;word-break:break-word}
 .msgcard .msgactions{margin-top:0.5rem}
+.threadtitle{width:min(100%,36rem);text-align:left;font-size:1.25rem;line-height:1.3;margin:0.2rem 0 0.8rem}
 .toolbar{display:flex;gap:0.4rem;flex-wrap:wrap;width:min(100%,36rem);margin-bottom:0.8rem}
-.toolbar button{min-height:2rem;padding:0.3rem 0.8rem;font-size:0.6rem}
-.flagbanner{width:min(100%,36rem);margin:0 0 0.8rem;font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);border:1px dashed var(--ring);border-radius:var(--radius-well);padding:0.55rem 0.8rem}
+.toolbar button{min-height:2rem;padding:0.3rem 0.8rem;font-size:0.6rem;border-radius:var(--radius-pill)}
+.flagbanner{display:flex;gap:0.6rem;align-items:flex-start;width:min(100%,36rem);margin:0 0 0.8rem;font-size:0.8rem;line-height:1.45;color:var(--ink);background:rgba(224,49,77,0.12);border:1px solid rgba(224,49,77,0.35);border-radius:var(--radius-well);padding:0.65rem 0.8rem}
+.flagbanner .warnicon{color:#e0314d;font-size:1rem;line-height:1.2;flex-shrink:0}
+.flagbanner strong{display:block;font-size:0.85rem}
+.flagbanner .warnsub{color:var(--ink-muted);font-size:0.75rem}
+.flagbanner.plain{background:none;border:1px dashed var(--ring);color:var(--ink-muted);font-family:var(--font-ui);font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.55rem 0.8rem}
 .emptybox{width:min(100%,36rem);text-align:center;color:var(--ink-muted);font-size:0.9rem;padding:1.6rem 1rem;border:1px dashed var(--ring);border-radius:var(--radius-well)}
+.rowaction{display:flex;justify-content:center;width:min(100%,36rem);margin-bottom:0.6rem}
+.rowaction form{margin:0}
+.rowaction button{min-height:2.1rem;padding:0.3rem 1.1rem;font-size:0.8rem}
 label.field{display:flex;flex-direction:column;gap:0.3rem;font-family:var(--font-ui);font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted)}
 `;
 
@@ -147,16 +165,17 @@ function threadRow(
   const params = new URLSearchParams({ thread: thread.thread_id });
   params.set("from", from);
   if (q) params.set("q", q);
+  const count = thread.message_count ?? 1;
+  const preview = [thread.subject ?? "(no subject)", thread.preview ?? ""]
+    .filter(Boolean)
+    .join(" — ");
   return `<a class="mailrow${unread ? " unread" : ""}" href="${ctx.basePath}?${params}">
-    <span class="who">${unread ? `<span class="unread-dot" aria-label="unread"></span>` : ""}${avatarHtml(who, first)}</span>
+    <span class="who">${avatarHtml(who, first)}${unread ? `<span class="unread-dot" aria-label="unread"></span>` : ""}</span>
     <span class="meta">
-      <span class="subj">${esc(thread.subject ?? "(no subject)")}</span>
-      <span class="prev">${esc(thread.preview ?? "")}</span>
+      <span class="topline"><span class="name">${esc(displayName(first))}</span><span class="when">${esc(mailWhen(thread.last_message_at ?? thread.updated_at))}</span></span>
+      <span class="prev">${esc(preview)} ${badges}</span>
     </span>
-    <span class="tail">
-      <span class="when">${esc(mailWhen(thread.last_message_at ?? thread.updated_at))}</span>
-      <span class="muted" style="font-size:0.7rem">· ${thread.message_count ?? 1} messages ${badges}</span>
-    </span>
+    ${count > 1 ? `<span class="countpill">${count}</span>` : ""}
   </a>`;
 }
 
@@ -175,11 +194,8 @@ function sentRow(
   return `<a class="mailrow" href="${href}">
     <span class="who">${avatarHtml(to.split("@")[0] || "?", to)}</span>
     <span class="meta">
-      <span class="subj">${esc(message.subject ?? "(no subject)")}</span>
-      <span class="prev">To ${esc(to)}</span>
-    </span>
-    <span class="tail">
-      <span class="when">${esc(mailWhen(message.created_at ?? message.updated_at))}</span>
+      <span class="topline"><span class="name">${esc(displayName(to))}</span><span class="when">${esc(mailWhen(message.created_at ?? message.updated_at))}</span></span>
+      <span class="prev">${esc(message.subject ?? "(no subject)")}</span>
     </span>
   </a>`;
 }
@@ -190,12 +206,8 @@ function draftRow(ctx: MiniAppContext, draft: AgentMailDraft): string {
   return `<a class="mailrow" href="${ctx.basePath}?${new URLSearchParams({ draft: draft.draft_id })}">
     <span class="who">${avatarHtml(to.split("@")[0] || "?", to)}</span>
     <span class="meta">
-      <span class="subj">${esc(draft.subject ?? "(no subject)")}</span>
-      <span class="prev">To ${esc(to)}</span>
-    </span>
-    <span class="tail">
-      <span class="when">${esc(mailWhen(draft.updated_at ?? draft.created_at))}</span>
-      ${draft.labels?.includes("spam") ? `<span class="chip">Spam</span>` : ""}
+      <span class="topline"><span class="name">${esc(displayName(to))}</span><span class="when">${esc(mailWhen(draft.updated_at ?? draft.created_at))}</span></span>
+      <span class="prev">${esc(draft.subject ?? "(no subject)")}${draft.labels?.includes("spam") ? ' <span class="chip">Spam</span>' : ""}</span>
     </span>
   </a>`;
 }
@@ -210,11 +222,10 @@ function mailWhen(iso: string | null | undefined): string {
     date.getMonth() === now.getMonth() &&
     date.getDate() === now.getDate();
   if (sameDay) {
-    const time = date.toLocaleTimeString("en-US", {
+    return date.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
     });
-    return `Today ${time}`;
   }
   const sameYear = date.getFullYear() === now.getFullYear();
   return date.toLocaleDateString("en-US", {
@@ -222,6 +233,41 @@ function mailWhen(iso: string | null | undefined): string {
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),
   });
+}
+
+/** Message-card timestamp — "Today, 10:48 AM" / "Yesterday, 5:30 PM" /
+ * "Oct 3, 9:12 AM". */
+function mailWhenFull(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const now = new Date();
+  const dayMs = 86_400_000;
+  const startOf = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const deltaDays = Math.round((startOf(now) - startOf(date)) / dayMs);
+  if (deltaDays === 0) return `Today, ${time}`;
+  if (deltaDays === 1) return `Yesterday, ${time}`;
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return `${date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  })}, ${time}`;
+}
+
+/** Display name from an address header: `"Name <n@x>"` → `Name`,
+ * bare email → local part. */
+function displayName(header: string | undefined): string {
+  const raw = (header ?? "").trim();
+  const named = raw.match(/^(?:"([^"]+)"|([^<"']+?))\s*</);
+  const name = (named?.[1] ?? named?.[2] ?? "").trim();
+  if (name) return name;
+  return raw.split("@")[0] || "?";
 }
 
 /** Shared fetch: the primary agent inbox's provider id plus the address
@@ -319,9 +365,14 @@ function renderReviews(reviews: PendingReview[]): string {
     .join("")}</div>`;
 }
 
-/** "Flagged by organization rules" banner — spec §5 spam treatment. */
+/** "Flagged by organization rules" banner — spec §5 spam treatment,
+ * styled as a warning card. `.plain` variant for the trash note. */
 function flagBanner(): string {
-  return `<div class="flagbanner">Flagged by organization rules</div>`;
+  return `<div class="flagbanner"><span class="warnicon" aria-hidden="true">⚠</span><span><strong>Flagged by your organization rules</strong><span class="warnsub">Email content matches the prevalent spam patterns.</span></span></div>`;
+}
+
+function plainBanner(text: string): string {
+  return `<div class="flagbanner plain">${esc(text)}</div>`;
 }
 
 /** Folder chip row — `.chip` / `.chip.on` from the shell, plus the Compose
@@ -331,12 +382,14 @@ function mailBar(ctx: MiniAppContext, current: Folder, q: string | null) {
     (f) =>
       `<a class="chip${f === current && !q ? " on" : ""}" href="${ctx.basePath}?folder=${f}">${FOLDER_LABELS[f]}</a>`
   ).join("");
-  return `<div class="mailbar">
-    ${chips}
-    <span class="mailbar-end">
+  return `<div class="mailsearch">
       <form method="get" action="${ctx.basePath}">
         <input type="text" name="q" value="${esc(q ?? "")}" placeholder="Search mail" aria-label="Search mail">
       </form>
+    </div>
+    <div class="mailbar">
+    ${chips}
+    <span class="mailbar-end">
       <a class="chip" href="${ctx.basePath}?compose=1">+ Compose</a>
     </span>
   </div>`;
@@ -459,6 +512,8 @@ export const inbox: MiniAppModule = {
         return draftDeleteAction(ctx, inbox.inboxId, form, back);
       case "draft_send":
         return draftSendAction(ctx, inbox.inboxId, form, back);
+      case "empty_spam":
+        return emptySpamAction(ctx, inbox.inboxId, back);
       default:
         return backTo(ctx, ret);
     }
@@ -547,7 +602,9 @@ async function renderFolder(
       .map((t) => threadRow(ctx, t, folder, null, blocked))
       .join("");
     if (folder === "spam") {
-      banner = flagBanner();
+      banner = flagBanner() + (threads.length
+        ? `<div class="rowaction"><form class="inline" method="post"><input type="hidden" name="action" value="empty_spam"><input type="hidden" name="return" value="?folder=spam"><button type="submit" class="ghost">Empty Spam</button></form></div>`
+        : "");
     }
     if (folder === "trash") {
       footnote = `<p class="muted" style="text-align:center">Trash purges after 30 days.</p>`;
@@ -730,10 +787,10 @@ async function renderThread(
     `<style>${MAIL_CSS}</style>` +
     `<div class="toolbar"><a class="navlink" href="${backLink}">← ${esc(FOLDER_LABELS[folderOf(from)] ?? "Back")}</a></div>` +
     (spam ? flagBanner() : "") +
-    (trashed ? `<div class="flagbanner">In trash — purges after 30 days</div>` : "") +
+    (trashed ? plainBanner("In trash — purges after 30 days") : "") +
     toolbar +
-    `<h3 style="width:min(100%,36rem);text-align:left">${esc(thread.subject ?? "(no subject)")}</h3>` +
-    messages.map((m) => renderMessage(ctx, inbox.inboxId, m, ret, lite)).join("") +
+    `<h3 class="threadtitle">${esc(thread.subject ?? "(no subject)")}</h3>` +
+    messages.map((m) => renderMessage(ctx, inbox.inboxId, m, ret, FOLDER_LABELS[folderOf(from)] ?? "Inbox", lite)).join("") +
     (lite
       ? liteReplyForm(ctx, messages[messages.length - 1]?.message_id ?? "", ret)
       : "");
@@ -769,6 +826,7 @@ function renderMessage(
   _inboxId: string,
   message: AgentMailMessage,
   ret: string,
+  folderLabel: string,
   lite = false
 ): string {
   const text = message.extracted_text ?? message.text ?? htmlToText(message.html ?? "");
@@ -778,8 +836,11 @@ function renderMessage(
     : message.deleted_at
       ? `<form class="inline" method="post"><input type="hidden" name="action" value="restore_message"><input type="hidden" name="return" value="${esc(ret)}"><input type="hidden" name="message" value="${esc(message.message_id)}"><button type="submit" class="ghost">Restore</button></form>`
       : `<form class="inline" method="post"><input type="hidden" name="action" value="trash_message"><input type="hidden" name="return" value="${esc(ret)}"><input type="hidden" name="message" value="${esc(message.message_id)}"><button type="submit" class="ghost">Delete</button></form>`;
+  const sender = message.from ?? "unknown";
+  const name = displayName(sender);
+  const meta = `${mailWhenFull(message.created_at)}${folderLabel ? ` · ${folderLabel}` : ""}`;
   return `<div class="msgcard">
-    <div class="msghead"><span class="who">${esc(message.from ?? "unknown")}</span><span class="when">${esc(mailWhen(message.created_at))}</span></div>
+    <div class="msghead">${avatarHtml(name, sender)}<span class="mwho"><span class="name">${esc(name)}</span><span class="meta">${esc(meta)}<br><span class="tome">to Me</span></span></span></div>
     <div class="msgbody">${esc(text)}</div>
     ${attachments}
     ${msgAction ? `<div class="msgactions">${msgAction}</div>` : ""}
@@ -1217,6 +1278,27 @@ async function markAction(
     if (!isUnsupported(error)) throw error;
   }
   return back(markRead ? "Marked read." : "Marked unread.");
+}
+
+/** Empty Spam — trash every spam-labeled thread on the current page
+ * (bounded; the label is our own, replays are no-ops). */
+async function emptySpamAction(
+  _ctx: MiniAppContext,
+  inboxId: string,
+  back: (notice: string) => NextResponse
+): Promise<NextResponse> {
+  try {
+    const page = await listThreadsFiltered(inboxId, {
+      limit: 50,
+      labels: ["spam"],
+    });
+    await Promise.allSettled(
+      page.threads.map((t) => trashThread(inboxId, t.thread_id))
+    );
+  } catch (error) {
+    if (!isUnsupported(error)) throw error;
+  }
+  return back("Spam folder emptied.");
 }
 
 /** Move to spam / Not spam — thread patch plus batch label sync on its
