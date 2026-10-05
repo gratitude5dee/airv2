@@ -30,12 +30,20 @@ import {
 import { deliverTradeApproval } from "@/lib/trade/imessage";
 import { TradeError, tradeOrderSchema, type TradeOrder } from "@/lib/trade/order";
 import { TradeVenueError } from "@/lib/trade/venue";
+import {
+  tapeIntent,
+  tapeMarkets,
+  tapeResolve,
+  tapeState,
+  tapeWelcomed,
+  tapeMarkWelcomed,
+} from "@/lib/trade/tape";
 import { addWatch, listWatches, removeWatch } from "@/lib/trade/watch";
 import type { TradeWatchlistItem } from "@/lib/trade/state";
 import type { TradeOrderRecord } from "@/lib/trade/venue";
 import type { MiniAppContext, MiniAppModule } from "./types";
 
-const TABS = ["portfolio", "trade", "orders", "watch", "settings"] as const;
+const TABS = ["tape", "portfolio", "trade", "orders", "watch", "settings"] as const;
 type Tab = (typeof TABS)[number];
 
 function tabFor(ctx: MiniAppContext): Tab {
@@ -43,14 +51,15 @@ function tabFor(ctx: MiniAppContext): Tab {
   if ((TABS as readonly string[]).includes(fromQuery ?? "")) {
     return fromQuery as Tab;
   }
-  if (ctx.session.resourceId === "approve") return "trade";
+  if (ctx.session.resourceId === "approve") return "tape";
   if (ctx.session.resourceId === "settings") return "settings";
-  return "portfolio";
+  return "tape";
 }
 
 function tabNav(ctx: MiniAppContext, active: Tab): string {
   const links = TABS.map((tab) => {
-    const label = tab === "watch" ? "Watch" : tab.charAt(0).toUpperCase() + tab.slice(1);
+    const label =
+      tab === "trade" ? "Ticket" : tab.charAt(0).toUpperCase() + tab.slice(1);
     const cls = tab === active ? "navlink" : "navlink ghost";
     return `<a class="${cls}" style="font-size:0.6rem;min-height:2.3rem;padding:0 0.8rem" href="${esc(
       `${ctx.basePath}?tab=${tab}`,
@@ -383,6 +392,55 @@ async function renderSettings(ctx: MiniAppContext): Promise<string> {
   return `<section class="panel"><h2>Trading mode</h2>${modeButtons}<h2 style="margin-top:1rem">Coinbase</h2>${statusChip}${connect}<h2 style="margin-top:1rem">Caps</h2>${caps}</section>`;
 }
 
+/* --------------------------------------------------------------- tape */
+
+/**
+ * The tape (docs/trade/tape.md): a Bloxwap-style single screen — live chart,
+ * position rail, stake chips, and two big buttons. Taps run through the
+ * same preview → decision → resolve pipeline as the ticket; the bundle
+ * polls `tape_state` and never sees a preview token.
+ * The card surface (`via==="card"`, no client JS) gets the honest fallback:
+ * the classic ticket + pending block.
+ */
+async function renderTape(ctx: MiniAppContext): Promise<string> {
+  if (ctx.session.via === "card") {
+    return renderTradeTab(ctx, null);
+  }
+  const { mode } = await tradeMode(ctx.supabase, ctx.session.userId);
+  // A live user has already connected a key and chosen the mode — the
+  // welcome sheet's demo pitch is only for paper first-runs (and reading
+  // the flag shouldn't wake the box for live users).
+  const welcomed =
+    mode === "paper"
+      ? await tapeWelcomed(ctx.supabase, ctx.session.userId).catch(() => true)
+      : true;
+  const markets = await tapeMarkets(ctx.supabase, ctx.session.userId).catch(
+    () => [],
+  );
+  const requested = ctx.request.nextUrl.searchParams.get("product");
+  const product =
+    requested && /^[A-Z0-9]{1,12}-USD$/.test(requested.toUpperCase())
+      ? requested.toUpperCase()
+      : (markets[0]?.productId ?? "BTC-USD");
+  const payload = JSON.stringify({
+    product,
+    markets,
+    mode,
+    welcomed,
+  });
+  return `<div id="trade-tape" data-payload="${esc(payload)}"></div><script src="/creator-os/trade-tape.js" defer></script><noscript><section class="panel"><p class="muted">The tape needs JavaScript — <a class="navlink ghost" href="?tab=trade">use the ticket</a> instead.</p></section></noscript>`;
+}
+
+/** tape_state fetches are same-origin — widen connect-src only on the page
+ *  that serves the bundle. */
+function tapeShellHtml(body: string): NextResponse {
+  const response = shellHtml(body);
+  let csp = response.headers.get("Content-Security-Policy") ?? "";
+  if (!csp.includes("connect-src")) csp += "; connect-src 'self'";
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
+}
+
 /* ------------------------------------------------------------- module */
 
 async function renderPage(
@@ -392,7 +450,8 @@ async function renderPage(
 ): Promise<NextResponse> {
   const tab = tabFor(ctx);
   let body = "";
-  if (tab === "portfolio") body = await renderPortfolio(ctx);
+  if (tab === "tape") body = await renderTape(ctx);
+  else if (tab === "portfolio") body = await renderPortfolio(ctx);
   else if (tab === "trade") body = await renderTradeTab(ctx, review);
   else if (tab === "orders") body = await renderOrders(ctx);
   else if (tab === "watch") body = await renderWatch(ctx);
@@ -400,16 +459,29 @@ async function renderPage(
   const full = `${tabNav(ctx, tab)}${body}<section class="panel" style="padding-top:0.6rem">${promptBar(
     "Ask your agent — e.g. buy $50 of BTC, what's my portfolio…",
   )}</section>`;
-  return shellHtml(
-    renderShell({
-      title: "Trade",
-      kicker: "Trading",
-      body: full,
-      notice,
-      lite: ctx.session.via === "card",
-      headline: false,
-    }),
-  );
+  const html = renderShell({
+    title: "Trade",
+    kicker: "Trading",
+    body: full,
+    notice,
+    lite: ctx.session.via === "card",
+    headline: false,
+  });
+  return tab === "tape" ? tapeShellHtml(html) : shellHtml(html);
+}
+
+function json(data: unknown, status = 200): NextResponse {
+  return NextResponse.json(data, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
+function jsonError(error: unknown): NextResponse {
+  if (error instanceof TradeError || error instanceof TradeVenueError) {
+    return json({ ok: false, error: error.message, code: error.code }, error.status);
+  }
+  return json({ ok: false, error: "Something didn't go through — try again." }, 500);
 }
 
 function orderFromForm(form: FormData): Record<string, unknown> {
@@ -453,6 +525,67 @@ export const trade: MiniAppModule = {
     }
     const action = String(form.get("action") ?? "");
     const userId = ctx.session.userId;
+
+    /* ---- tape JSON actions (same-origin fetch from the bundle) ---- */
+
+    if (action === "tape_state") {
+      const product = String(form.get("product") ?? "BTC-USD").toUpperCase();
+      if (!/^[A-Z0-9]{1,12}-USD$/.test(product)) {
+        return json({ ok: false, error: "Unknown market.", code: "bad_product" }, 400);
+      }
+      try {
+        return json(await tapeState(ctx.supabase, userId, product));
+      } catch (error) {
+        return jsonError(error);
+      }
+    }
+
+    if (action === "tape_intent") {
+      try {
+        const result = await tapeIntent(ctx.supabase, userId, {
+          product: form.get("product"),
+          side: form.get("side"),
+          stake: form.get("stake"),
+        });
+        return json({ ok: true, pending: result.pending });
+      } catch (error) {
+        return jsonError(error);
+      }
+    }
+
+    if (action === "tape_resolve") {
+      const decisionId = String(form.get("decision") ?? "");
+      const choice = String(form.get("choice") ?? "");
+      try {
+        const result = await tapeResolve(
+          ctx.supabase,
+          userId,
+          decisionId,
+          choice === "approve" ? "approve" : "dismiss",
+        );
+        return json({ ok: true, ...result });
+      } catch (error) {
+        return jsonError(error);
+      }
+    }
+
+    if (action === "tape_seen") {
+      await tapeMarkWelcomed(ctx.supabase, userId);
+      return json({ ok: true });
+    }
+
+    if (action === "tape_target") {
+      try {
+        const { item } = await addWatch(ctx.supabase, userId, {
+          symbol: form.get("symbol"),
+          op: form.get("op"),
+          price: form.get("price"),
+        });
+        return json({ ok: true, item });
+      } catch (error) {
+        return jsonError(error);
+      }
+    }
 
     if (action === "prompt") {
       try {

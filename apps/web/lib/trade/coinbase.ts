@@ -260,6 +260,40 @@ export async function coinbasePublicPrice(productId: string): Promise<string | n
   return num(first["price"]) ?? num(record(data)["price"]);
 }
 
+/** Unauthenticated candle close series (the tape's chart feed). Advanced
+ *  Trade returns candles newest-first; we hand back `[startSec, close]`
+ *  pairs oldest-first so the client can draw left → right. */
+export async function coinbasePublicCandles(
+  productId: string,
+  seconds = 90 * 60,
+  granularity = "ONE_MINUTE",
+): Promise<[number, number][]> {
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - seconds;
+  const data = await publicGet<Record<string, unknown>>(
+    `/market/products/${encodeURIComponent(productId)}/candles?start=${start}&end=${end}&granularity=${granularity}`,
+  );
+  const candles = Array.isArray(data["candles"]) ? data["candles"] : [];
+  return candles
+    .map((candle): [number, number] => {
+      const row = record(candle);
+      return [Number(str(row["start"])) || 0, Number(str(row["close"])) || NaN];
+    })
+    .filter(([t, c]) => t > 0 && Number.isFinite(c))
+    .sort((a, b) => a[0] - b[0]);
+}
+
+/** 24h price change from the public product row — for the market chip. */
+export async function coinbasePublicChangePct(
+  productId: string,
+): Promise<number | null> {
+  const data = await publicGet<Record<string, unknown>>(
+    `/market/products/${encodeURIComponent(productId)}`,
+  );
+  const pct = num(data["price_percentage_change_24h"]);
+  return pct === null ? null : Number(pct);
+}
+
 /* ----------------------------------------------------- venue (BYO key) */
 
 export interface CoinbaseCredentials {
