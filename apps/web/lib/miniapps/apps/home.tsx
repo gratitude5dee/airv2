@@ -60,6 +60,7 @@ const LAUNCH_ORDER = [
   "browser",
   "settings",
   "feedback",
+  "avatar",
 ] as const;
 
 function rank(slug: string, saved: string[]): number {

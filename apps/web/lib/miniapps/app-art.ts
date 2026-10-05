@@ -2,6 +2,7 @@
 const FIRST_PARTY_ART = {
   ads: "/app-icons/wabi-v1/ads.png",
   analytics: "/app-icons/wabi-v1/analytics.png",
+  avatar: "/app-icons/wabi-v1/avatar.png",
   berd: "/app-icons/wabi-v1/berd.png",
   browser: "/app-icons/wabi-v1/browser.png",
   buzz: "/app-icons/wabi-v1/buzz.png",

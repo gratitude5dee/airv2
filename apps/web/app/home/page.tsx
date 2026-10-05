@@ -1198,6 +1198,12 @@ function HomeShell() {
                     src={dockedApp.url}
                     title={dockedApp.slug}
                     className="h-[320px] w-full rounded-lg border-0 bg-white"
+                    // Docked apps are first-party pages on the mini origin —
+                    // delegate camera/mic so apps like Avatar can run their
+                    // own on-device tracking inside the dock (their own
+                    // Permissions-Policy still decides what they may use).
+                    allow="camera; microphone"
+                    allowFullScreen
                   />
                 </div>
               ) : null}
