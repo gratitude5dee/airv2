@@ -130,7 +130,7 @@ describe("calendar month mosaic", () => {
     expect(html).toContain('class="mo-week"');
     expect(html).toContain('class="mo-cell mo-tile');
     expect(html).toContain('data-count="');
-    expect(html).toContain('class="mo-cell mo-dot');
+    expect(html).toContain('class="mo-cell mo-rest');
     expect((html.match(/class="mo-day"/g) ?? []).length).toBeGreaterThan(0);
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('class="mo-dock"');
@@ -328,7 +328,7 @@ describe("calendar month mosaic", () => {
         await calendar.render(context("?view=month&month=2026-09", "guest"))
       ).text();
       expect(owner).toContain('<a class="mo-cell mo-add"');
-      expect(guest).toContain('class="mo-cell mo-dot is-today"');
+      expect(guest).toContain('class="mo-cell mo-rest is-today"');
       expect(guest).not.toContain('<a class="mo-cell mo-add"');
     } finally {
       vi.useRealTimers();
