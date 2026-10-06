@@ -5,6 +5,8 @@ description: How to run and test the airv2 Next.js web app (apps/web) locally, i
 
 # Testing the airv2 web app locally
 
+- CreateStudio / owner-gated app testing (prod-boot env list, minting `mini_store` without OTP, R2 stub for `?version=` iframes, draft seeding, `cp.local` for main-host routes, Chrome-for-Testing gotchas): `references/miniapp-studio-testing.md`.
+
 ## Read-only Home dashboard and browser setup fallback
 - For metadata-only Home/store checks against live Supabase, select an existing test account with no `boxes` row and keep Box credentials dummy. Empty calendar/decision previews are real empty-state coverage, not proof of populated previews. Do not seed production to fill the cards. Even a GET dashboard load may attempt `/api/box/wake`; expect no-box 404/502 diagnostics and report them separately.
 - Public store home/detail/publisher pages render without a `mini_store` session; authentication is needed to launch, not to inspect their published catalog. Test both main-host `/mini/<slug>` and mini-host `/store/<slug>` if routing changed.
