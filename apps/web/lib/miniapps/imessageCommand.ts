@@ -8,6 +8,7 @@ import { env } from "../env";
 const ALIASES: Readonly<Record<string, string>> = {
   "image-editor": "image",
   "video-editor": "video",
+  calender: "calendar",
   "to-do": "todo",
   people: "crm",
   secrets: "vault",
