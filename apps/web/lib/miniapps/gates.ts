@@ -20,6 +20,7 @@ import {
   sessionExpired,
 } from "./html";
 import type { RegistryApp } from "./registry";
+import { storeSessionUserId } from "./storeSession";
 import { resolveVia } from "./surface";
 import { elapsedMs } from "./timing";
 import { verifyToken, type MiniAppRole } from "./tokens";
@@ -250,6 +251,23 @@ export function sessionGate(
   return { ok: true, session };
 }
 
+/**
+ * Owner pass-through: the store session cookie (mini_store) is host-wide on
+ * the mini origin and already proves the owner's user id, so it admits an
+ * owner session for their own app when no per-app cookie exists — the same
+ * claims a signed link would mint, minted lazily instead. Widens nothing:
+ * non-owners still 403, and a suspended app is 404 before this runs.
+ */
+export function ownerSessionFromStore(
+  request: NextRequest,
+  app: RegistryApp
+): MiniSession | null {
+  if (!app.owner_user_id) return null;
+  const userId = storeSessionUserId(request);
+  if (!userId || userId !== app.owner_user_id) return null;
+  return { userId, resourceId: "default", role: "owner" };
+}
+
 /* ----------------------------------------------------------------- chain */
 
 export async function runGateChain(
@@ -269,8 +287,12 @@ export async function runGateChain(
   let mark = performance.now();
   const visibility = visibilityGate(app);
   timings.visibilityMs = elapsedMs(mark);
-  if (visibility)
+  // Draft rows render for their owner alone — that IS the deployment
+  // preview. Suspended stays a hard 404 for everyone including the owner.
+  const owner = ownerSessionFromStore(request, app);
+  if (visibility && !(app.status === "draft" && owner)) {
     return { ok: false, response: visibility, timings: done() };
+  }
 
   mark = performance.now();
   const password = passwordGate(request, app, basePath, submittedPassword);
@@ -295,9 +317,18 @@ export async function runGateChain(
   }
 
   mark = performance.now();
-  const outcome = sessionGate(request, app);
-  timings.sessionMs = elapsedMs(mark);
-  return { ...outcome, timings: done() };
+  const sessionStart = performance.now();
+  const session =
+    sessionFromCookie(request, app.slug) ?? ownerSessionFromStore(request, app);
+  timings.sessionMs = elapsedMs(sessionStart);
+  if (!session) {
+    return {
+      ok: false,
+      response: sessionExpired("Your session for this app has ended."),
+      timings: done(),
+    };
+  }
+  return { ok: true, session, timings: done() };
 }
 
 /** MA9 gate ledger — best-effort, never blocks the request. */

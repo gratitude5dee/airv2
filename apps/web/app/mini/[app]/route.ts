@@ -26,6 +26,7 @@ import {
   elapsedMs,
   externalOrigin,
   logGateEvent,
+  ownerSessionFromStore,
   passwordGate,
   runGateChain,
   sessionFromCookie,
@@ -34,6 +35,8 @@ import {
   type GateOutcome,
   type GateTimings,
 } from "@/lib/miniapps/gates";
+import { getVersion, VERSION_RE } from "@/lib/create/versions";
+import { versionCookieName } from "@/lib/miniapps/apps/published";
 import { guestRateLimited, redeemGuestGrant } from "@/lib/miniapps/guests";
 import { resolveVia } from "@/lib/miniapps/surface";
 import { FIRST_PARTY_MODULES, type MiniAppModule } from "@/lib/miniapps/apps";
@@ -238,7 +241,9 @@ async function runPublicGateChain(
   }
 
   mark = performance.now();
-  const session = sessionFromCookie(request, app.slug);
+  const session =
+    sessionFromCookie(request, app.slug) ??
+    ownerSessionFromStore(request, app);
   timings.sessionMs = elapsedMs(mark);
   if (session) return { ok: true, session, timings: done() };
   if (!app.owner_user_id)
@@ -509,6 +514,24 @@ async function handleGet(
   entry.via = gate.session.via;
   entry.originVia = gate.session.originVia;
 
+  // ?version=<v> pins the render to one verified, live, non-retired row of
+  // this app — the owner preview lane for staged drafts and old releases.
+  // The pin rides a cookie so relative asset URLs resolve to it too.
+  const requestedVersion = request.nextUrl.searchParams.get("version");
+  let pinned: string | null = null;
+  if (requestedVersion !== null && publishedModule(app)) {
+    if (!VERSION_RE.test(requestedVersion)) {
+      logLoad(entry, "invalid version pin", 400);
+      return new NextResponse("invalid version", { status: 400 });
+    }
+    const row = await getVersion(supabase, app.id, requestedVersion);
+    if (!row || row.retired_at || row.purged_at) {
+      logLoad(entry, "version pin not found", 404);
+      return notFound();
+    }
+    pinned = row.version;
+  }
+
   const renderStart = performance.now();
   const style = await styleFor(supabase, gate.session, prefetched);
   const response = await withStyle(
@@ -520,8 +543,27 @@ async function handleGet(
         app,
         session: gate.session,
         basePath,
+        version: pinned ?? undefined,
       })
   );
+  if (pinned) {
+    response.cookies.set(versionCookieName(slug), pinned, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: basePath,
+      maxAge: 15 * 60,
+    });
+  } else if (appModule === publishedModule(app)) {
+    // Unpinned index render restores the live pointer for its assets.
+    response.cookies.set(versionCookieName(slug), "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: basePath,
+      maxAge: 0,
+    });
+  }
   entry.renderMs = elapsedMs(renderStart);
   logLoad(entry, "rendered", response.status);
   return refreshCookie(response, gate.session, slug, basePath);

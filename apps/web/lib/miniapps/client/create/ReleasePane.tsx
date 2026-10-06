@@ -30,6 +30,8 @@ export interface ReleasePaneProps {
   name: string;
   /** The `dev` block of the extended status when the control plane sends it. */
   dev: DevRelease | null;
+  /** Whether a promote can succeed — false while the app-origin lane is off. */
+  devAvailable: boolean;
   intake: IntakeStatus | null;
   busy: boolean;
   run: (action: () => Promise<void>) => void;
@@ -44,6 +46,7 @@ export function ReleasePane({
   appname,
   name: initialName,
   dev: statusDev,
+  devAvailable,
   intake,
   busy,
   run,
@@ -69,7 +72,7 @@ export function ReleasePane({
   const [store, setStore] = useState<"listed" | "unlisted">("listed");
   const stage = intake?.stage ?? null;
 
-  function release(action: "renew" | "revoke") {
+  function release(action: "promote" | "renew" | "revoke") {
     run(async () => {
       const reply = await postJson<DevRelease>("/api/create/release", {
         app: appname,
@@ -161,9 +164,25 @@ export function ReleasePane({
             </div>
           </>
         ) : (
-          <p className="m-0 text-muted">
-            No dev build yet. The first passing build goes on your dev link.
-          </p>
+          <>
+            <p className="m-0 text-muted">
+              {devAvailable
+                ? "No dev link yet — promote puts the draft on link.wzrd.tech, readable by anyone with the URL, for a few days."
+                : "No dev build yet. The first passing build goes on your dev link."}
+            </p>
+            {devAvailable ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn min-h-[44px] text-[12px]"
+                  disabled={busy}
+                  onClick={() => release("promote")}
+                >
+                  Publish dev link
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 

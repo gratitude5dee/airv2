@@ -23,6 +23,12 @@ export interface MiniAppContext {
    * `/<slug>` on mini.wzrd.tech. Use for redirects and cookie paths.
    */
   basePath: string;
+  /**
+   * A pinned `?version=` row (owner preview lane): the module serves this
+   * version's bundle instead of the live pointer. Set only for verified,
+   * non-retired rows of this app.
+   */
+  version?: string | undefined;
 }
 
 export interface MiniAppModule {

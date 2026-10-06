@@ -9,10 +9,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serviceClient } from "@/lib/supabase";
 import { getRegistryApp } from "@/lib/miniapps/registry";
-import { sessionFromCookie, visibilityGate } from "@/lib/miniapps/gates";
+import {
+  ownerSessionFromStore,
+  sessionFromCookie,
+  visibilityGate,
+} from "@/lib/miniapps/gates";
 import {
   publishedModule,
   serveBundleAsset,
+  versionCookieName,
 } from "@/lib/miniapps/apps/published";
 import { bundleContentType } from "@/lib/miniapps/bundles";
 
@@ -29,9 +34,13 @@ export async function GET(
   if (!app || !publishedModule(app)) {
     return new NextResponse("not found", { status: 404 });
   }
+  // Owner pass-through mirrors the index route: the store session admits
+  // the owner before their per-app cookie exists (e.g. a pinned preview
+  // iframe whose first hit is the index, whose assets then land here).
+  const owner = ownerSessionFromStore(request, app);
   const blocked = visibilityGate(app);
-  if (blocked) return blocked;
-  if (!sessionFromCookie(request, slug)) {
+  if (blocked && !(app.status === "draft" && owner)) return blocked;
+  if (!sessionFromCookie(request, slug) && !owner) {
     return new NextResponse("forbidden", { status: 403 });
   }
   const assetPath = path.join("/");
@@ -40,5 +49,6 @@ export async function GET(
   }
   const contentType = bundleContentType(assetPath);
   if (!contentType) return new NextResponse("not found", { status: 404 });
-  return serveBundleAsset(app, assetPath, contentType);
+  const pinned = request.cookies.get(versionCookieName(slug))?.value;
+  return serveBundleAsset(app, assetPath, contentType, pinned || undefined);
 }
