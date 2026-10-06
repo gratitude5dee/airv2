@@ -167,7 +167,7 @@ describe("mini → app-origin hand-off", () => {
       role: "owner",
     });
     expect(url).not.toBeNull();
-    expect(url!.host).toBe("alice-notes.apps.wzrd.tech");
+    expect(url!.host).toBe("alice-notes-apps.wzrd.tech");
     expect(url!.pathname).toBe("/__air/enter");
     const token = url!.searchParams.get("t")!;
     const verified = verifyAppToken(token, "alice-notes");
@@ -175,7 +175,7 @@ describe("mini → app-origin hand-off", () => {
     expect(verified?.principal).toBe(appPrincipal("user-alice", "app-notes"));
     expect(url!.toString()).not.toContain("user-alice");
     expect(appOriginUrl("alice-notes").origin).toBe(
-      "https://alice-notes.apps.wzrd.tech"
+      "https://alice-notes-apps.wzrd.tech"
     );
   });
 
@@ -215,7 +215,7 @@ describe("mini → app-origin hand-off", () => {
       { channel: "dev" }
     );
     expect(dev).not.toBeNull();
-    expect(dev!.host).toBe("alice-notes.apps.wzrd.tech");
+    expect(dev!.host).toBe("alice-notes-apps.wzrd.tech");
     const devClaims = verifyAppToken(dev!.searchParams.get("t")!, "alice-notes");
     expect(devClaims?.channel).toBe("dev");
     expect(devClaims?.role).toBe("guest");

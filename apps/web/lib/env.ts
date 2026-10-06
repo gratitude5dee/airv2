@@ -616,7 +616,7 @@ export const env = {
   cfDispatchHealthUrl: (): string =>
     optional(
       "CF_DISPATCH_HEALTH_URL",
-      "https://dispatch.apps.wzrd.tech/__air/health"
+      "https://apps.wzrd.tech/__air/health"
     ),
   createFunctionsEnabled: (): boolean =>
     optional("CREATE_FUNCTIONS_ENABLED", "false") === "true",

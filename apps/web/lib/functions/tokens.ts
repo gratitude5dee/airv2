@@ -1,6 +1,6 @@
 /**
  * V11 §6.4 app tokens (CR2): the loader on the mini origin runs the gate
- * chain, then hands the visitor to `<slug>.apps.wzrd.tech` with a 60-second
+ * chain, then hands the visitor to `<slug>-apps.wzrd.tech` with a 60-second
  * token bound to (app, principal, role, resource, jti). The Dispatcher
  * verifies it under APP_ORIGIN_SIGNING_KEY — a key the mini-origin token
  * family never uses, so neither origin can mint the other's tokens.

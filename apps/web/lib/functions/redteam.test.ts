@@ -54,7 +54,7 @@ const REAL_CLOUDFLARE = {
 const PLATFORM_HOSTS = [
   "mini.wzrd.tech",
   "app.wzrd.tech",
-  "alice-rsvp.apps.wzrd.tech",
+  "alice-rsvp-apps.wzrd.tech",
   "box-alice.wzrd.tech",
   "abcdefghij.supabase.co",
   "api.cloudflare.com",

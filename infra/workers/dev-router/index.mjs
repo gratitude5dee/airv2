@@ -1,7 +1,7 @@
-// air-dev (V13 §7.3): the dev-link router on *.dev.wzrd.tech.
+// air-dev (V13 §7.3): the dev-link router on *-dev.wzrd.tech.
 //
 // Per request:
-//  1. Slug out of the host: <username>-<appname>.dev.wzrd.tech (the same
+//  1. Slug out of the host: <username>-<appname>-dev.wzrd.tech (the same
 //     regex the Dispatcher uses). Anything else → 404.
 //  2. `x-air-candidate` present → verify against CANDIDATE_SECRET (CF4):
 //     valid for this slug and unexpired → target <slug>-draft. Expired or
@@ -103,8 +103,8 @@ function notFound() {
 }
 
 export function slugFromHost(hostname) {
-  if (!hostname.endsWith(".dev.wzrd.tech") && hostname !== "dev.wzrd.tech") return null;
-  const slug = hostname === "dev.wzrd.tech" ? "" : hostname.slice(0, -".dev.wzrd.tech".length);
+  if (!hostname.endsWith("-dev.wzrd.tech") && hostname !== "dev.wzrd.tech") return null;
+  const slug = hostname === "dev.wzrd.tech" ? "" : hostname.slice(0, -"-dev.wzrd.tech".length);
   return SLUG_RE.test(slug) ? slug : null;
 }
 

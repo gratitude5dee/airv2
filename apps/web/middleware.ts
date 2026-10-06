@@ -87,7 +87,7 @@ export function middleware(request: NextRequest): NextResponse {
     ) {
       return NextResponse.next({ request: { headers } });
     }
-    // V13: dev releases moved to <slug>.dev.wzrd.tech behind the air-dev
+    // V13: dev releases moved to <slug>-dev.wzrd.tech behind the air-dev
     // router — the link host now serves one segment per pay link only.
     const rewritten = new URL(request.nextUrl);
     rewritten.pathname =

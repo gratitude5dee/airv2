@@ -2,7 +2,7 @@
  * V11 §11.3 mini → app-origin hand-off. After the ordered gate chain has
  * approved a session on the mini origin, a published version that was
  * deployed as a Worker is not rendered here: the loader mints a 60-second
- * app token and 303s to `<slug>.apps.wzrd.tech/__air/enter?t=…`, where the
+ * app token and 303s to `<slug>-apps.wzrd.tech/__air/enter?t=…`, where the
  * Dispatcher exchanges it for a __Host- cookie. Versions that predate the
  * lane (no worker digest) keep the legacy R2 render on the mini origin.
  */

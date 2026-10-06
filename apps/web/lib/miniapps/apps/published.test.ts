@@ -105,12 +105,12 @@ describe("publishedModule dispatch", () => {
 });
 
 describe("app-origin hand-off", () => {
-  it("303s to <slug>.apps.wzrd.tech/__air/enter with a bound app token", async () => {
+  it("303s to <slug>-apps.wzrd.tech/__air/enter with a bound app token", async () => {
     const c = ctx();
     const res = await publishedModule(c.app)!.render(c);
     expect(res.status).toBe(303);
     const target = new URL(res.headers.get("location") ?? "");
-    expect(target.host).toBe("alice-notes.apps.wzrd.tech");
+    expect(target.host).toBe("alice-notes-apps.wzrd.tech");
     expect(target.pathname).toBe("/__air/enter");
     const token = target.searchParams.get("t") ?? "";
     const claims = verifyAppToken(token, "alice-notes");

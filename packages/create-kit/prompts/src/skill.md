@@ -92,7 +92,7 @@ Each is `curl` to `/api/create/*` on the control plane with this Box's gateway t
 
 ```json
 { "ok": true, "slug": "alice-countdown", "appname": "countdown", "version": "v1788600000000",
-  "preview_url": "https://alice-countdown.apps.wzrd.tech/enter?t=…",
+  "preview_url": "https://alice-countdown-apps.wzrd.tech/enter?t=…",
   "findings": [ { "file": "src/main.tsx", "line": 12, "rule": "foreign-import",
                   "severity": "hard", "hint": "…" } ],
   "sizes": { "js": 48211, "css": 9020, "total": 61233, "js_gzip": 15800 }, "log": ["…"] }

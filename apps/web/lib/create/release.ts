@@ -68,9 +68,9 @@ export function devUrl(app: Pick<RegistryApp, "slug">): string {
   return `${env.linkappOrigin()}${nestedPathFor(app.slug)}`;
 }
 
-/** V13 CF3 — the per-app origin dev link: `https://<slug>.dev.wzrd.tech/`. */
+/** V13 CF3 — the per-app origin dev link: `https://<slug>-dev.wzrd.tech/`. */
 export function devOriginUrl(app: Pick<RegistryApp, "slug">): string {
-  return `https://${app.slug}.${createConfig.devOriginSuffix()}/`;
+  return `https://${app.slug}-${createConfig.devOriginSuffix()}/`;
 }
 
 /** True while the dev pointer is set and its expiry is still ahead of `now`. */

@@ -12,7 +12,7 @@ vi.mock("./versions", async (importOriginal) => ({
 }));
 vi.mock("./preview", () => ({
   draftPreviewUrl: (app: { slug: string; draft_version: string | null }) =>
-    `https://${app.slug}.apps.wzrd.tech/__air/enter?v=${app.draft_version}`,
+    `https://${app.slug}-apps.wzrd.tech/__air/enter?v=${app.draft_version}`,
 }));
 const drop = vi.hoisted(() => ({ resolveOrCreateDropApp: vi.fn() }));
 vi.mock("./drop", () => drop);

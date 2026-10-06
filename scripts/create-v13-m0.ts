@@ -9,7 +9,7 @@
  * Local probes run in any checkout. Live probes need:
  *   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN   — Workers for Platforms API
  *   CREATE_JOBS_ORIGIN                          — deployed air-create (default https://create.wzrd.tech)
- *   M0_DEV_HOST                                 — a slug to probe through air-dev (default m0-canary.dev.wzrd.tech)
+ *   M0_DEV_HOST                                 — a slug to probe through air-dev (default m0-canary-dev.wzrd.tech)
  *   M0_CANARY=1                                 — opt in to deploying a canary user Worker into air-apps
  *
  * Without credentials live probes record "pending" with the operator runbook.
@@ -101,7 +101,7 @@ const probes: Probe[] = [
   },
   {
     id: "dev-router-layout",
-    name: "air-dev router binds the manifest KV, dispatches to <slug>-dev/-draft and serves *.dev.wzrd.tech",
+    name: "air-dev router binds the manifest KV, dispatches to <slug>-dev/-draft and serves *-dev.wzrd.tech",
     live: false,
     async run() {
       const cfgSrc = read("infra/workers/dev-router/wrangler.jsonc");
@@ -341,7 +341,7 @@ const probes: Probe[] = [
 const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? "";
 const CF_ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
 const JOBS_ORIGIN = process.env.CREATE_JOBS_ORIGIN ?? "https://create.wzrd.tech";
-const DEV_HOST = process.env.M0_DEV_HOST ?? "m0-canary.dev.wzrd.tech";
+const DEV_HOST = process.env.M0_DEV_HOST ?? "m0-canary-dev.wzrd.tech";
 
 async function cfApi(path: string, init?: RequestInit): Promise<{ status: number; body: unknown }> {
   const isForm = init?.body instanceof FormData;
@@ -384,7 +384,7 @@ probes.push(
   },
   {
     id: "dev-origin",
-    name: "*.dev.wzrd.tech DNS + cert resolve and air-dev answers on the wildcard",
+    name: "*-dev.wzrd.tech DNS + cert resolve and air-dev answers on the wildcard",
     live: true,
     async run() {
       try {
@@ -395,7 +395,7 @@ probes.push(
         // up, nothing promoted. A 200 means a real app is already there.
         return ok(`GET https://${DEV_HOST}/ → ${res.status}; x-robots-tag="${noindex || "none"}"; body ${JSON.stringify(body.slice(0, 60))}`);
       } catch (e) {
-        return pending(`air-dev not reachable yet — deploy it / fix *.dev.wzrd.tech DNS (${e instanceof Error ? e.message : e})`);
+        return pending(`air-dev not reachable yet — deploy it / fix *-dev.wzrd.tech DNS (${e instanceof Error ? e.message : e})`);
       }
     },
   },

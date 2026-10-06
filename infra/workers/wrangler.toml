@@ -14,7 +14,10 @@ compatibility_date = "2025-06-01"
 workers_dev = false
 
 routes = [
-  { pattern = "*.apps.wzrd.tech/*", zone_name = "wzrd.tech" },
+  # single-label app origins (<slug>-apps.wzrd.tech) ride the zone's free
+  # Universal cert; apps.wzrd.tech itself only answers /__air/* control paths
+  { pattern = "*-apps.wzrd.tech/*", zone_name = "wzrd.tech" },
+  { pattern = "apps.wzrd.tech/*", zone_name = "wzrd.tech" },
 ]
 
 [vars]
