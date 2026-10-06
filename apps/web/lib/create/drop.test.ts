@@ -9,7 +9,7 @@ const versions = vi.hoisted(() => ({
 vi.mock("./versions", () => versions);
 
 const preview = vi.hoisted(() => ({
-  draftPreviewUrl: vi.fn((): string | null => "https://alice-promo.apps.wzrd.tech/__air/enter?t=x"),
+  draftPreviewUrl: vi.fn((): string | null => "https://alice-promo-apps.wzrd.tech/__air/enter?t=x"),
 }));
 vi.mock("./preview", () => preview);
 
@@ -137,7 +137,7 @@ describe("dropBundle", () => {
       appname: "promo",
       version: "v1700000000000",
       url: "https://mini.wzrd.tech/alice/promo",
-      preview_url: "https://alice-promo.apps.wzrd.tech/__air/enter?t=x",
+      preview_url: "https://alice-promo-apps.wzrd.tech/__air/enter?t=x",
       findings: [],
       kind: "html",
       status: "draft",

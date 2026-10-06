@@ -39,9 +39,12 @@ export function nestedPathFor(slug: string): string {
   return parts ? `/${parts.username}/${parts.appname}` : `/${slug}`;
 }
 
-/** Host of the isolated app origin for a published slug (CR1). */
+/** Host of the isolated app origin for a published slug (CR1).
+ * Single-label form `<slug>-<suffix>`: every app host sits one label deep
+ * under wzrd.tech, which the zone's free Universal cert covers — a
+ * `.<suffix>` join would need Advanced Certificate Manager. */
 export function appOriginHost(slug: string, suffix: string): string {
-  return `${slug}.${suffix}`;
+  return `${slug}-${suffix}`;
 }
 
 export type NestedRoute =

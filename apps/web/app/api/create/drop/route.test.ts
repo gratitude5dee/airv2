@@ -46,7 +46,7 @@ vi.mock("@/lib/create/versions", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/create/preview", () => ({
-  draftPreviewUrl: () => "https://alice-promo.apps.wzrd.tech/__air/enter?t=x",
+  draftPreviewUrl: () => "https://alice-promo-apps.wzrd.tech/__air/enter?t=x",
 }));
 
 const app = makeApp({

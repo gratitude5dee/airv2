@@ -22,8 +22,8 @@ expired" while the app is `published`/healthy.
 ### D2 — Every deployment-side path depends on an origin that isn't live
 
 Draft preview (`__air/enter`), dev links (`link.wzrd.tech/<u>/<a>`), and
-the app-origin handoff all terminate on `*.apps.wzrd.tech` / the link
-worker. Prod check: `curl https://gratitude-player.apps.wzrd.tech/` → TLS
+the app-origin handoff all terminate on `*-apps.wzrd.tech` / the link
+worker. Prod check: `curl https://gratitude-player-apps.wzrd.tech/` → TLS
 handshake failure (no DNS/cert); `appOriginLaneReady()` is therefore the
 honest signal — `draftPreviewUrl` is null and `promoteToDev` would 503.
 Every prod `miniapp_versions` row has `worker_sha256 = null` → all serving

@@ -48,7 +48,7 @@ describe("V11 §6 slug split", () => {
     expect(nestedPathFor("alice-notes")).toBe("/alice/notes");
     expect(nestedPathFor("kanban")).toBe("/kanban");
     expect(appOriginHost("alice-notes", "apps.wzrd.tech")).toBe(
-      "alice-notes.apps.wzrd.tech"
+      "alice-notes-apps.wzrd.tech"
     );
   });
 });

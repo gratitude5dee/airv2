@@ -1,4 +1,4 @@
-// Air Dispatcher (V11 §11.2): the platform Worker on `*.apps.wzrd.tech`.
+// Air Dispatcher (V11 §11.2): the platform Worker on `*-apps.wzrd.tech`.
 //
 // Per request:
 //  1. `/__air/health` and `/__air/csp` are answered here (content-free).
@@ -190,7 +190,7 @@ async function readManifest(env, slug) {
 
 function slugFromHost(request, env) {
   const host = (request.headers.get("host") ?? "").toLowerCase().split(":")[0];
-  const suffix = `.${env.APPS_ORIGIN_SUFFIX}`;
+  const suffix = `-${env.APPS_ORIGIN_SUFFIX}`;
   if (!host.endsWith(suffix)) return null;
   const slug = host.slice(0, -suffix.length);
   return /^[a-z0-9_]{2,24}-[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(slug)

@@ -310,7 +310,7 @@ export async function terminateJobWorkflow(jobId: string): Promise<{ ok: boolean
   return bridgePost<{ ok: boolean }>(`/v1/jobs/${jobId}/cancel`, {});
 }
 
-/** The dev origin for one slug (CF3): `https://<slug>.dev.wzrd.tech/`. */
+/** The dev origin for one slug (CF3): `https://<slug>-dev.wzrd.tech/`. */
 export function devLinkUrl(slug: string): string {
-  return `https://${slug}.${createConfig.devOriginSuffix()}/`;
+  return `https://${slug}-${createConfig.devOriginSuffix()}/`;
 }
