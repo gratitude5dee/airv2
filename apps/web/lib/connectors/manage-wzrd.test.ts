@@ -19,7 +19,9 @@ const createOAuthRequest = vi.fn(
   })
 );
 const getConnectionRequest = vi.fn();
-const disconnectConnection = vi.fn(async () => undefined);
+const disconnectConnection = vi.fn(
+  async (..._args: unknown[]) => undefined
+);
 const listAllConnectedAccounts = vi.fn(async (): Promise<unknown[]> => []);
 vi.mock("../wzrdconnect/client", () => ({
   createOAuthRequest: (...args: unknown[]) =>
@@ -29,7 +31,7 @@ vi.mock("../wzrdconnect/client", () => ({
   getConnectionRequest: (...args: unknown[]) =>
     getConnectionRequest(...(args as [string])),
   disconnectConnection: (...args: unknown[]) =>
-    disconnectConnection(...(args as [never])),
+    disconnectConnection(...args),
   WzrdConnectApiError: class extends Error {
     status: number;
     constructor(status: number, message: string, _code: string | null = null) {
@@ -52,13 +54,11 @@ vi.mock("../composio/client", () => ({
   listAllConnectedAccounts: () => listAllConnectedAccounts(),
 }));
 
-const grantWzrdConnection = vi.fn(async () => undefined);
-const revokeWzrdConnection = vi.fn(async () => undefined);
+const grantWzrdConnection = vi.fn(async (..._args: unknown[]) => undefined);
+const revokeWzrdConnection = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock("../wzrdconnect/tokens", () => ({
-  grantWzrdConnection: (...args: unknown[]) =>
-    grantWzrdConnection(...(args as [never, string, string])),
-  revokeWzrdConnection: (...args: unknown[]) =>
-    revokeWzrdConnection(...(args as [never, string, string])),
+  grantWzrdConnection: (...args: unknown[]) => grantWzrdConnection(...args),
+  revokeWzrdConnection: (...args: unknown[]) => revokeWzrdConnection(...args),
 }));
 
 const installComposioMcp = vi.fn(async () => undefined);

@@ -8,9 +8,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { FakeSupabase } from "../testing/fakeSupabase";
 
-const createRuntimeToken = vi.fn(async (name: string) => ({
-  token: `oct_${name}`,
-  record: { id: `tok-${name}`, name },
+const createRuntimeToken = vi.fn(async (...args: unknown[]) => ({
+  token: `oct_${String(args[0])}`,
+  record: { id: `tok-${String(args[0])}`, name: args[0] },
 }));
 const listRuntimeTokens = vi.fn(
   async (): Promise<
@@ -24,13 +24,11 @@ const listRuntimeTokens = vi.fn(
     }>
   > => []
 );
-const updateRuntimeToken = vi.fn(async () => undefined);
+const updateRuntimeToken = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock("./client", () => ({
-  createRuntimeToken: (...args: unknown[]) =>
-    createRuntimeToken(...(args as [string, never])),
+  createRuntimeToken: (...args: unknown[]) => createRuntimeToken(...args),
   listRuntimeTokens: () => listRuntimeTokens(),
-  updateRuntimeToken: (...args: unknown[]) =>
-    updateRuntimeToken(...(args as [string, never])),
+  updateRuntimeToken: (...args: unknown[]) => updateRuntimeToken(...args),
 }));
 
 import {
