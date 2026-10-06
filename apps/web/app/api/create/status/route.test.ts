@@ -121,6 +121,9 @@ describe("GET /api/create/status", () => {
       },
     });
     expect(body.versions).toHaveLength(2);
+    // The lane flag is always present; the test env has no app-origin deploy
+    // config, so dev promotion is reported unavailable rather than absent.
+    expect(body.dev_available).toBe(false);
     expect(publish.ownedApp).toHaveBeenCalledWith(expect.anything(), "user-alice", "alice-promo");
   });
 

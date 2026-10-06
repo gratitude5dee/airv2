@@ -95,6 +95,8 @@ export interface StatusResponse {
   versions: VersionSummary[];
   /** V12 §14.1 extended status; absent until the status route ships it. */
   dev?: DevRelease | null;
+  /** Whether the app-origin lane serves dev links — hide the promote action when off. */
+  dev_available?: boolean;
   /** V13 §5.2/§8: the app's newest job (open or terminal), null pre-V13. */
   job?: {
     id: string;
@@ -522,7 +524,11 @@ function Chat({
 
 function Preview({
   status,
-  previewUrl,
+  mode,
+  onMode,
+  draftUrl,
+  liveUrl,
+  epoch,
   device,
   lite,
   onDevice,
@@ -531,8 +537,15 @@ function Preview({
   compact,
 }: {
   status: StatusResponse | null;
-  /** Frozen by the studio: changes only on a new draft, a reload or the lite toggle. */
-  previewUrl: string | null;
+  /** What the frame shows: the staged draft's pinned render or the live app. */
+  mode: "draft" | "live";
+  onMode: (mode: "draft" | "live") => void;
+  /** `?version=<draft>` on the app's own URL — owner-gated, no app origin needed. */
+  draftUrl: string | null;
+  /** The app's live nested URL; null until the app is published. */
+  liveUrl: string | null;
+  /** Bump forces a frame remount — the Reload button's mechanism. */
+  epoch: number;
   device: DeviceId;
   lite: boolean;
   onDevice: (device: DeviceId) => void;
@@ -542,11 +555,19 @@ function Preview({
 }) {
   const preset = DEVICES.find((d) => d.id === device) ?? DEVICES[1];
   const src = useMemo(() => {
-    if (!previewUrl) return null;
-    const url = new URL(previewUrl);
+    const base = mode === "live" ? liveUrl : draftUrl;
+    if (!base) return null;
+    const url = new URL(base, window.location.origin);
     if (lite) url.searchParams.set("lite", "1");
+    if (epoch > 0) url.searchParams.set("r", String(epoch));
     return url.toString();
-  }, [previewUrl, lite]);
+  }, [mode, liveUrl, draftUrl, lite, epoch]);
+  const modes = (
+    [
+      { id: "draft", label: "Draft", url: draftUrl },
+      { id: "live", label: "Live", url: liveUrl },
+    ] as const
+  ).filter((entry) => entry.url !== null);
   const frame = preset.w
     ? { width: preset.w, height: preset.h, maxWidth: "100%" }
     : { width: "100%", height: compact ? 480 : 720 };
@@ -554,8 +575,29 @@ function Preview({
     <section className="panel flex flex-col !p-4" aria-label="Preview">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <strong className="text-[13px]">Preview</strong>
-        {status?.draft_version ? (
+        {modes.length > 1 ? (
+          <span className="flex gap-0.5 rounded-full border border-current/20 p-0.5" role="tablist">
+            {modes.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={mode === entry.id}
+                className={`rounded-full px-2 py-0.5 text-[10px] ${
+                  mode === entry.id ? "bg-current/10" : "text-muted"
+                }`}
+                onClick={() => onMode(entry.id)}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </span>
+        ) : null}
+        {mode === "draft" && status?.draft_version ? (
           <code className="text-[11px] text-muted">{status.draft_version}</code>
+        ) : null}
+        {mode === "live" && status?.live?.version ? (
+          <code className="text-[11px] text-muted">{status.live.version}</code>
         ) : null}
         {status?.qa_score !== null && status?.qa_score !== undefined ? (
           <span className="rounded-full border border-current/20 px-2 text-[10px] text-muted">
@@ -626,7 +668,9 @@ function Preview({
         ) : (
           <p className="m-0 py-16 text-center text-[12px] text-muted">
             {status
-              ? "No draft yet — the first build lands here."
+              ? mode === "live"
+                ? "Not live yet — publish to put it here."
+                : "No draft yet — the first build lands here."
               : "Pick or describe an app to preview it."}
           </p>
         )}
@@ -826,7 +870,7 @@ function VersionsTab({
               </span>
             </div>
             <div className="mt-1 flex flex-wrap gap-2">
-              {isDraft || isLive ? (
+              {!row.retired_at ? (
                 <button
                   className="btn-ghost text-[11px]"
                   type="button"
@@ -1525,14 +1569,17 @@ function Project({
             : "draft"}
         </span>
       </div>
-      <div className="mb-3 flex flex-wrap gap-1" role="tablist">
+      <div
+        className="-mx-1 mb-3 flex gap-1 overflow-x-auto px-1 pb-0.5"
+        role="tablist"
+      >
         {TABS.map((t) => (
           <button
             key={t}
             type="button"
             role="tab"
             aria-selected={tab === t}
-            className={`rounded-full border px-2 py-0.5 text-[11px] ${
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${
               tab === t ? "border-current" : "border-current/20 text-muted"
             }`}
             onClick={() => setTab(t)}
@@ -1578,6 +1625,7 @@ function Project({
           appname={status.appname}
           name={status.name}
           dev={status.dev ?? null}
+          devAvailable={status.dev_available === true}
           intake={intake}
           busy={busy}
           run={run}
@@ -1657,11 +1705,11 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [device, setDevice] = useState<DeviceId>("expanded");
   const [lite, setLite] = useState(false);
-  // The iframe src. A preview URL carries a 60 s owner token that the app
-  // origin swaps for a cookie on first load, so the src is pinned here and
-  // replaced only when a new draft lands or the owner asks for a reload —
-  // never on an ordinary status poll, which would discard the draft's state.
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Preview frame selection + remount counter. The src is derived from the
+  // status read (the app's own URL for live, `?version=` for a staged draft),
+  // so there is no pinned token to keep — Reload bumps the epoch instead.
+  const [previewMode, setPreviewMode] = useState<"draft" | "live">("draft");
+  const [previewEpoch, setPreviewEpoch] = useState(0);
   const events = useRef<EventSource | null>(null);
   // Bumped on every project switch (and on unmount); a turn started under an
   // older value belongs to a conversation the owner has left and is dropped
@@ -1688,7 +1736,7 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
       setStatus(next);
       const newDraft = next.draft_version !== lastDraft.current;
       lastDraft.current = next.draft_version;
-      if (newDraft || remountPreview) setPreviewUrl(next.preview_url);
+      if (newDraft || remountPreview) setPreviewEpoch((value) => value + 1);
     },
     [],
   );
@@ -1732,7 +1780,7 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
 
   useEffect(() => {
     setStatus(null);
-    setPreviewUrl(null);
+    setPreviewEpoch(0);
     lastDraft.current = null;
     if (slug)
       void loadStatus(slug).catch(() =>
@@ -1927,27 +1975,23 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
       });
   }
 
-  /** The draft previews through a fresh owner-only app token; live opens
-   * the public URL. Older versions have no origin to preview on (§13.1). */
+  /** Every row previews through the `?version=` lane on the app's own URL —
+   * owner-gated on the mini origin, no app-origin deployment required. Live
+   * opens the plain URL; the owner pass-through admits the studio session. */
   function previewVersion(version: string) {
     if (!status) return;
-    if (version === status.live?.version) {
-      window.open(status.url, "_blank", "noopener");
-      return;
-    }
-    run(async () => {
-      const data = await postJson<{ preview_url: string }>(
-        "/api/create/preview-link",
-        { slug: status.slug },
-      );
-      if (data.preview_url) window.open(data.preview_url, "_blank", "noopener");
-    });
+    const target =
+      version === status.live?.version
+        ? status.url
+        : `${status.url}?version=${encodeURIComponent(version)}`;
+    window.open(target, "_blank", "noopener");
   }
 
-  /** A preview token lives 60 s, so a reload is a status refresh (fresh token) plus a remount. */
+  /** The frame remounts on an epoch bump; a status refresh lands any new draft. */
   function reloadPreview() {
+    setPreviewEpoch((value) => value + 1);
     if (!slug) return;
-    void loadStatus(slug, { remountPreview: true }).catch(() => undefined);
+    void loadStatus(slug).catch(() => undefined);
   }
 
   /** The lite toggle re-enters the app origin, so it needs a fresh token too. */
@@ -1958,6 +2002,24 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
 
   const build = status?.build ?? null;
   const drafts = projects.filter((p) => p.slug !== slug);
+
+  // Preview frame sources, all on the app's own URL: the live pointer, or a
+  // `?version=` pin for a staged draft. A draft-status app has no live yet —
+  // its plain URL already renders the (only) bundle for the owner.
+  const stagedDraft =
+    status !== null &&
+    status.draft !== null &&
+    status.draft.version !== status.live?.version;
+  const liveUrl = status?.status === "published" ? status.url : null;
+  const draftUrl = !status
+    ? null
+    : stagedDraft
+      ? `${status.url}?version=${status.draft_version}`
+      : status.status === "draft"
+        ? status.url
+        : null;
+  const mode: "draft" | "live" =
+    previewMode === "draft" && draftUrl ? "draft" : liveUrl ? "live" : "draft";
 
   const picker = (
     <div className="mb-4 flex flex-wrap items-center gap-2 text-[12px]">
@@ -1981,6 +2043,17 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
           {status.versions.length === 1 ? "" : "s"}
         </span>
       ) : null}
+      {status ? (
+        <a
+          className="underline"
+          href={status.url}
+          target="_blank"
+          rel="noreferrer"
+          title={status.url}
+        >
+          {status.status === "published" ? "Open live" : "Open owner preview"}
+        </a>
+      ) : null}
       {message ? <span className="ml-auto text-muted">{message}</span> : null}
     </div>
   );
@@ -1992,7 +2065,11 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
         <div className="flex flex-col gap-3">
           <Preview
             status={status}
-            previewUrl={previewUrl}
+            mode={mode}
+            onMode={setPreviewMode}
+            draftUrl={draftUrl}
+            liveUrl={liveUrl}
+            epoch={previewEpoch}
             device="compact"
             lite={true}
             onDevice={() => undefined}
@@ -2068,7 +2145,11 @@ export function CreateStudio({ slug: initialSlug, jobId }: CreateStudioProps) {
         />
         <Preview
           status={status}
-          previewUrl={previewUrl}
+          mode={mode}
+          onMode={setPreviewMode}
+          draftUrl={draftUrl}
+          liveUrl={liveUrl}
+          epoch={previewEpoch}
           device={device}
           lite={lite}
           onDevice={setDevice}

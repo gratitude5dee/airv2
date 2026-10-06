@@ -43,6 +43,18 @@ export function apiCookieName(slug: string): string {
   return `mini_api_${slug}`;
 }
 
+/**
+ * Version pin cookie: `?version=<v>` on the app index serves that row's
+ * bundle and plants this cookie so the relative asset URLs under the same
+ * base path resolve to the pinned version too (the index's own relative
+ * links can't carry the query). Last write wins across tabs — a page
+ * refresh restores consistency. Client-forgeable but only selects among
+ * versions of an app the requester already passed the gate for.
+ */
+export function versionCookieName(slug: string): string {
+  return `mini_ver_${slug}`;
+}
+
 export const API_COOKIE_PATH = "/api/apps";
 
 function bundleHeaders(): Record<string, string> {
@@ -55,11 +67,14 @@ function bundleHeaders(): Record<string, string> {
 }
 
 async function render(ctx: MiniAppContext): Promise<NextResponse> {
-  const version = ctx.app.bundle_version;
+  const version = ctx.version ?? ctx.app.bundle_version;
   if (!version) {
     return new NextResponse("not found", { status: 404 });
   }
-  if (await servedOnAppOrigin(ctx.supabase, ctx.app)) {
+  // A pinned ?version= render is the owner preview lane: always the R2
+  // bundle, never the app-origin hand-off — the pin exists to show a row
+  // that may have no live deployment at all.
+  if (!ctx.version && (await servedOnAppOrigin(ctx.supabase, ctx.app))) {
     const target = handoffUrl(ctx.app, ctx.session);
     if (target) {
       log.info("miniapp handoff", {app: ctx.app.slug,
@@ -115,12 +130,15 @@ export function publishedModule(app: RegistryApp): MiniAppModule | null {
 export async function serveBundleAsset(
   app: RegistryApp,
   path: string,
-  contentType: string
+  contentType: string,
+  version?: string
 ): Promise<NextResponse> {
   if (!r2Configured()) {
     return new NextResponse("app storage unavailable", { status: 503 });
   }
-  const object = await getObject(`apps/${app.slug}/${app.bundle_version}/${path}`);
+  const bundleVersion = version ?? app.bundle_version;
+  if (!bundleVersion) return new NextResponse("not found", { status: 404 });
+  const object = await getObject(`apps/${app.slug}/${bundleVersion}/${path}`);
   if (!object) return new NextResponse("not found", { status: 404 });
   return new NextResponse(new Uint8Array(object.body), {
     status: 200,

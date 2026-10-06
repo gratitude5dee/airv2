@@ -25,6 +25,7 @@ import { draftPreviewUrl } from "@/lib/create/preview";
 import { getBuild, latestBuild, logTail } from "@/lib/create/build";
 import { budgetMeter, createSpendUsd } from "@/lib/create/budget";
 import { devReleaseActive, devUrl } from "@/lib/create/release";
+import { appOriginLaneReady } from "@/lib/functions/deploy";
 import { getIntake, IntakeError } from "@/lib/create/intake";
 import { jobView, latestJobForApp } from "@/lib/create/job";
 import { createConfig } from "@/lib/create/config";
@@ -120,6 +121,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               expires_at: app.dev_expires_at,
             }
           : null,
+      // §13 app-origin lane flag: false here means dev links cannot be
+      // promoted (nothing serves them) — the UI hides the action instead
+      // of offering a 503.
+      dev_available: appOriginLaneReady(),
       intake_stage: intake?.stage ?? null,
       job: job === null ? null : jobView(job),
       // V13 §13: whether the go/JobView lane is on for this owner.
