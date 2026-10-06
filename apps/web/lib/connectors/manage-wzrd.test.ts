@@ -32,7 +32,7 @@ vi.mock("../wzrdconnect/client", () => ({
     disconnectConnection(...(args as [never])),
   WzrdConnectApiError: class extends Error {
     status: number;
-    constructor(status: number, message: string, code: string | null = null) {
+    constructor(status: number, message: string, _code: string | null = null) {
       super(message);
       this.name = "WzrdConnectApiError";
       this.status = status;

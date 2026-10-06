@@ -497,7 +497,7 @@ export const env = {
   // Nullable like every optional credential: the WZRD client throws a clear
   // not-configured error at its single call site.
   wzrdConnectAdminToken: (): string | null =>
-    process.env.WZRD_CONNECT_ADMIN_TOKEN || null,
+    process.env["WZRD_CONNECT_ADMIN_TOKEN"] || null,
   // MasterKey (x402 service catalog + MCP). The partner secret is the
   // server-to-server credential the /api/mcp/masterkey proxy uses to mint
   // per-user MCP tokens; it never reaches a box or browser.
