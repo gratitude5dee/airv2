@@ -5,7 +5,14 @@
  * not at fire time. Token custody stays with Composio; we read status only.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { env } from "@/lib/env";
+import { excludedConnectorProvider } from "@/lib/connectors/provider";
 import { listConnectedAccounts } from "@/lib/composio/client";
+import { listConnections } from "@/lib/wzrdconnect/client";
+import {
+  toolkitForWzrdService,
+  wzrdConnectionAlias,
+} from "@/lib/wzrdconnect/slugs";
 
 /** Probe connections for slots firing this far ahead. */
 export const HEALTH_HORIZON_MS = 48 * 60 * 60 * 1000;
@@ -50,20 +57,34 @@ export async function probeConnectionHealth(
 
   for (const [userId, userSlots] of byUser) {
     result.usersChecked += 1;
-    // Composio is the token authority: refresh our status mirror from it,
-    // then judge each needed toolkit against the refreshed mirror.
+    // The owning gateway is the token authority: refresh our status mirror
+    // from it, then judge each needed toolkit against the refreshed
+    // mirror. R-CONN-01: on WZRD Connect the admin-side connection list is
+    // scoped to the user by their connection alias (`air-<userId>`).
     let liveToolkits: Set<string> | null = null;
     try {
-      // listConnectedAccounts already filters to ACTIVE accounts, so a
-      // toolkit missing from the response has no live token.
-      const accounts = await listConnectedAccounts(userId);
-      liveToolkits = new Set<string>();
-      for (const account of accounts) {
-        const slug = account.toolkit?.slug;
-        if (slug) liveToolkits.add(slug.toLowerCase());
+      if (env.connectorProvider() === "wzrd") {
+        const alias = wzrdConnectionAlias(userId);
+        const connections = await listConnections();
+        liveToolkits = new Set<string>();
+        for (const conn of connections) {
+          if (conn.virtual) continue;
+          if (conn.connectionName === alias && conn.configured) {
+            liveToolkits.add(toolkitForWzrdService(conn.service));
+          }
+        }
+      } else {
+        // listConnectedAccounts already filters to ACTIVE accounts, so a
+        // toolkit missing from the response has no live token.
+        const accounts = await listConnectedAccounts(userId);
+        liveToolkits = new Set<string>();
+        for (const account of accounts) {
+          const slug = account.toolkit?.slug;
+          if (slug) liveToolkits.add(slug.toLowerCase());
+        }
       }
     } catch {
-      // Composio unreachable: fall back to the local mirror below.
+      // Gateway unreachable: fall back to the local mirror below.
     }
 
     const neededToolkits = new Map<string, string[]>(); // toolkit -> slot ids
@@ -83,6 +104,7 @@ export async function probeConnectionHealth(
           .from("connections")
           .update({ status: healthy ? "active" : "error" })
           .eq("user_id", userId)
+          .neq("provider", excludedConnectorProvider())
           .eq("toolkit", toolkit)
           .neq("status", healthy ? "active" : "error");
         if (!error) result.connectionsMarked += 1;
@@ -91,6 +113,7 @@ export async function probeConnectionHealth(
           .from("connections")
           .select("status")
           .eq("user_id", userId)
+          .neq("provider", excludedConnectorProvider())
           .eq("toolkit", toolkit)
           .maybeSingle();
         healthy = connection?.status === "active";

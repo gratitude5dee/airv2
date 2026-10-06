@@ -52,7 +52,11 @@ import {
   writeComputeFile,
   type ComputeTarget,
 } from "../compute/runtime";
-import { installComposioMcp, installMasterkeyMcp } from "./connectors";
+import {
+  installComposioMcp,
+  installMasterkeyMcp,
+  installWzrdConnectMcp,
+} from "./connectors";
 import { MigrationBusyError } from "../migration/types";
 import { provisionDaytona } from "./daytona";
 import { ensureMailboxOnBox, provisionEmail } from "./email";
@@ -1208,12 +1212,19 @@ async function finishSetup(
   } else {
     await installBaseSkills(target);
   }
+  // Connector MCP preinstall follows the active backend (R-CONN-01):
+  // whichever is installed pops the other's mcp_servers key, so a box
+  // always ends up with exactly one connector endpoint.
   try {
-    await installComposioMcp(supabase, userId, target);
+    if (env.connectorProvider() === "wzrd") {
+      await installWzrdConnectMcp(supabase, userId, target);
+    } else {
+      await installComposioMcp(supabase, userId, target);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    log.error("composio preinstall failed", {box_id: target.instanceId,
-        user_id: userId, error: message});
+    log.error("connector preinstall failed", {box_id: target.instanceId,
+        user_id: userId, provider: env.connectorProvider(), error: message});
   }
   try {
     await installMasterkeyMcp(supabase, userId, target);

@@ -14,6 +14,8 @@ import {
 import { profileFor, restartCommand } from "../compute/environments";
 import { createSession, getSession } from "../composio/client";
 import { ensureMasterkeyConnection } from "../masterkey/client";
+import { wzrdConnectionAlias } from "../wzrdconnect/slugs";
+import { ensureWzrdConnectToken } from "../wzrdconnect/tokens";
 
 const CONNECTED_TOOLS_TEMPLATE = `# What you can use right now (managed by air — do not edit)
 
@@ -29,7 +31,7 @@ const CONNECTED_TOOLS_TEMPLATE = `# What you can use right now (managed by air �
 
 ## Connected by your human
 Connected: nothing yet.
-Use connected apps through your composio MCP tools. If a tool fails with an auth error, say so and suggest reconnecting from the Connectors page — never ask for credentials in chat.
+Use connected apps through your connector MCP tools. If a tool fails with an auth error, say so and suggest reconnecting from the Connectors page — never ask for credentials in chat.
 `;
 
 export async function ensureComposioSession(
@@ -112,6 +114,7 @@ export async function installComposioMcp(
     'mcp = cfg.get("mcp_servers")',
     "mcp = mcp if isinstance(mcp, dict) else {}",
     `mcp["composio"] = {"url": "${proxyUrl}", "enabled": True, "headers": {"Authorization": "Bearer " + cfg["model"]["api_key"]}}`,
+    'mcp.pop("wzrd-connect", None)',
     'cfg["mcp_servers"] = mcp',
     "p.write_text(yaml.safe_dump(cfg, default_flow_style=False))",
   ].join("\n");
@@ -123,6 +126,49 @@ export async function installComposioMcp(
   if (result.exitCode !== 0) {
     throw new Error(`composio mcp install failed: ${result.stderr}`);
   }
+}
+
+/**
+ * Install (or refresh) the per-user WZRD Connect MCP endpoint on the
+ * user's machine — identical in every environment, only the home dir and
+ * restart shell differ. Same trust shape as installComposioMcp: the box
+ * authenticates to our /api/mcp/wzrdconnect proxy with its own gateway
+ * token, and the proxy injects the user's runtime token + connection
+ * alias server-side, so no connector credential ever reaches the box.
+ */
+export async function installWzrdConnectMcp(
+  supabase: SupabaseClient,
+  userId: string,
+  provisioned?: ComputeTarget
+): Promise<void> {
+  await ensureWzrdConnectToken(supabase, userId);
+  const target = provisioned ?? (await ensureComputeAwake(supabase, userId));
+  const homeDir = profileFor(target.environment).homeDir;
+  const proxyUrl = `${env.appOrigin()}/api/mcp/wzrdconnect`;
+  const script = [
+    "import yaml, pathlib",
+    `p = pathlib.Path("${homeDir}/.hermes/config.yaml")`,
+    "cfg = yaml.safe_load(p.read_text()) or {}",
+    'mcp = cfg.get("mcp_servers")',
+    "mcp = mcp if isinstance(mcp, dict) else {}",
+    `mcp["wzrd-connect"] = {"url": "${proxyUrl}", "enabled": True, "headers": {"Authorization": "Bearer " + cfg["model"]["api_key"]}}`,
+    'mcp.pop("composio", None)',
+    'cfg["mcp_servers"] = mcp',
+    "p.write_text(yaml.safe_dump(cfg, default_flow_style=False))",
+  ].join("\n");
+  const result = await runCommand(
+    target,
+    `${hermesBin(target, "python")} - <<'PYEOF' && ${restartCommand(target.environment, ["hermes-gateway"])}\n${script}\nPYEOF`,
+    180
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`wzrd connect mcp install failed: ${result.stderr}`);
+  }
+}
+
+/** The alias the worker sees for this user's connection on any service. */
+export function wzrdAlias(userId: string): string {
+  return wzrdConnectionAlias(userId);
 }
 
 export async function writeConnectedToolsFile(
