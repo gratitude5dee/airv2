@@ -7,11 +7,12 @@
  * or the MCP endpoint, C10); disconnect revokes. Owner-only (MA4).
  */
 import { NextResponse } from "next/server";
+import { ComposioApiError } from "@/lib/composio/client";
+import { WzrdConnectApiError } from "@/lib/wzrdconnect/client";
 import {
-  ComposioApiError,
-  listToolkits,
-  type ComposioToolkit,
-} from "@/lib/composio/client";
+  connectableToolkits,
+  type ToolkitOption,
+} from "@/lib/connectors/toolkits";
 import { connectionHealth, type ConnectionHealth } from "@/lib/connectors/meta";
 import {
   beginConnect,
@@ -20,6 +21,7 @@ import {
   TOOLKIT_SLUG_PATTERN,
   type ConnectionRow,
 } from "@/lib/connectors/manage";
+import { excludedConnectorProvider } from "@/lib/connectors/provider";
 import { externalOrigin } from "../gates";
 import { env } from "@/lib/env";
 import { mintToken } from "../tokens";
@@ -31,8 +33,11 @@ import type { MiniAppContext, MiniAppModule } from "./types";
 import { log } from "../../log";
 
 // Chrome enforces form-action on the redirect that follows a form POST, so
-// the connect redirect into the Composio hosted page must be allowed on top
-// of the shell's CSP (same pattern as pay.tsx for Stripe Checkout).
+// the connect redirect to the provider's hosted page must be allowed on top
+// of the shell's CSP (same pattern as pay.tsx for Stripe Checkout). WZRD
+// Connect's OAuth begins on connector.wzrd.tech and 302s straight into the
+// provider's own host — google.com, github.com, ... — which can't be
+// enumerated, so that backend needs the https scheme source.
 function connectHtml(body: string): NextResponse {
   const response = shellHtml(body);
   const csp = response.headers.get("Content-Security-Policy") ?? "";
@@ -40,7 +45,9 @@ function connectHtml(body: string): NextResponse {
     "Content-Security-Policy",
     csp.replace(
       "form-action 'self'",
-      "form-action 'self' https://*.composio.dev"
+      env.connectorProvider() === "wzrd"
+        ? "form-action 'self' https:"
+        : "form-action 'self' https://*.composio.dev"
     )
   );
   return response;
@@ -77,7 +84,7 @@ function browserJumpHref(ctx: MiniAppContext): string | null {
 }
 
 function renderConnect(
-  toolkits: ComposioToolkit[],
+  toolkits: ToolkitOption[],
   connections: ConnectionRow[],
   health: ConnectionHealth[],
   notice: string | null,
@@ -87,7 +94,7 @@ function renderConnect(
   const statusByToolkit = new Map(connections.map((c) => [c.toolkit, c.status]));
   const healthByToolkit = new Map(health.map((h) => [h.toolkit, h]));
   const connectedFirst = [...toolkits].sort((a, b) => {
-    const rank = (t: ComposioToolkit) =>
+    const rank = (t: ToolkitOption) =>
       statusByToolkit.get(t.slug) === "active"
         ? 0
         : statusByToolkit.get(t.slug) === "pending"
@@ -132,11 +139,12 @@ async function loadAndRender(
 ): Promise<NextResponse> {
   const userId = ctx.session.userId;
   const [toolkits, { data: rows }] = await Promise.all([
-    listToolkits(),
+    connectableToolkits(),
     ctx.supabase
       .from("connections")
       .select("toolkit, status, connected_at")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .neq("provider", excludedConnectorProvider()),
   ]);
   let connections = (rows ?? []) as ConnectionRow[];
   // A pending Connect Link may have completed on the hosted page — sync the
@@ -226,7 +234,10 @@ export const connect: MiniAppModule = {
         );
         return withBaseHeaders(NextResponse.redirect(link.redirect_url, 303));
       } catch (error) {
-        if (error instanceof ComposioApiError) {
+        if (
+          error instanceof ComposioApiError ||
+          error instanceof WzrdConnectApiError
+        ) {
           log.error("connect link failed", {user_id: userId,
               toolkit,
               status: error.status,

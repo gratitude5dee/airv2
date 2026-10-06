@@ -188,9 +188,12 @@ vi.mock("../namespace/client", () => ({
 }));
 
 const installComposioMcp = vi.fn();
+const installWzrdConnectMcp = vi.fn();
 vi.mock("./connectors", () => ({
   installComposioMcp: (...args: unknown[]) =>
     installComposioMcp(...(args as [])),
+  installWzrdConnectMcp: (...args: unknown[]) =>
+    installWzrdConnectMcp(...(args as [])),
 }));
 vi.mock("./daytona", () => ({ provisionDaytona: vi.fn() }));
 const ensureMailboxOnBox = vi.fn(async () => true);
@@ -214,6 +217,7 @@ vi.mock("../env", () => ({
     appOrigin: () => "https://air.test",
     boxDashboardAuthKey: () => null,
     tenkiTemplateId: () => tenkiTemplate,
+    connectorProvider: () => "composio",
   },
 }));
 let tenkiTemplate: string | null = "tenki:snap-1";

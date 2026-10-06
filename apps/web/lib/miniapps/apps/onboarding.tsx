@@ -103,12 +103,14 @@ import { env } from "@/lib/env";
 import { sendMiniAppCard, updateMiniAppCard } from "@/lib/miniapps/cards";
 import { claimCardSend, type CardClaim } from "@/lib/miniapps/cardSends";
 import { ComposioApiError } from "@/lib/composio/client";
+import { WzrdConnectApiError } from "@/lib/wzrdconnect/client";
 import {
   beginConnect,
   syncConnections,
   TOOLKIT_SLUG_PATTERN,
   type ConnectionRow,
 } from "@/lib/connectors/manage";
+import { excludedConnectorProvider } from "@/lib/connectors/provider";
 import { createRun, MAIN_SESSION } from "@/lib/agent/client";
 import {
   isOnboardingStep,
@@ -639,12 +641,15 @@ async function loadSnapshot(
           .maybeSingle()
       ),
       // `provider` comes back so the Onairos step reads its status from
-      // these rows instead of querying the same table a second time.
+      // these rows instead of querying the same table a second time. Scope
+      // the list to the active connector backend (R-CONN-01): a leftover
+      // row from the other provider must not double-count a toolkit.
       timedPart(parts, "connections", () =>
         supabase
           .from("connections")
           .select("provider, toolkit, status, connected_at")
           .eq("user_id", userId)
+          .neq("provider", excludedConnectorProvider())
       ),
       timedPart(parts, "entity_refs", () =>
         rendering("booth")
@@ -2317,8 +2322,14 @@ function slides(
   // Chrome enforces form-action on the redirect that follows a form POST, so
   // the Composio connect and Stripe onboarding redirects to their hosted
   // pages must be allowed here.
+  const connectTargets =
+    env.connectorProvider() === "wzrd"
+      ? // WZRD Connect's OAuth hops straight into each provider's own host
+        // (google.com, github.com, ...) — unbounded, so https: it is.
+        "https:"
+      : "https://*.composio.dev";
   headers["Content-Security-Policy"] =
-    `${csp}; form-action 'self' https://*.composio.dev https://connect.stripe.com https://*.stripe.com; frame-ancestors 'self' ${env.appOrigin()}`;
+    `${csp}; form-action 'self' ${connectTargets} https://connect.stripe.com https://*.stripe.com; frame-ancestors 'self' ${env.appOrigin()}`;
   return new NextResponse(body, {
     status: 200,
     headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },
@@ -3351,7 +3362,10 @@ export const onboarding: MiniAppModule = {
           NextResponse.redirect(link.redirect_url, 303)
         );
       } catch (error) {
-        if (error instanceof ComposioApiError) {
+        if (
+          error instanceof ComposioApiError ||
+          error instanceof WzrdConnectApiError
+        ) {
           log.error("connect link failed", {user_id: userId,
               toolkit,
               status: error.status,

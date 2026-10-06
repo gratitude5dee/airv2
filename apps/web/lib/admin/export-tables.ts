@@ -22,8 +22,17 @@ const all = (table: string): ExportTable => ({
 });
 
 export const EXPORT_TABLES: readonly ExportTable[] = [
-  // v2 core (M8)
-  all("users"),
+  // v2 core (M8) — users carries the WZRD Connect runtime token itself, so
+  // the export takes an explicit list and it never rides the archive.
+  {
+    table: "users",
+    column: "id",
+    select:
+      "id, created_at, status, username, username_changed_at, wallet_address, " +
+      "thirdweb_user_id, composio_session_id, publish_paused, deleting_at, " +
+      "miniapp_background, miniapp_home_order, miniapp_theme, muse_mode_until, " +
+      "muse_settings, wzrd_connect_token_id",
+  },
   all("handles"),
   all("senders"),
   all("agent_addresses"),

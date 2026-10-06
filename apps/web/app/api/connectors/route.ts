@@ -10,7 +10,7 @@ import { sessionUserId } from "@/lib/auth/user";
 import { serviceClient } from "@/lib/supabase";
 import { parseBody } from "@/lib/http/body";
 import { env } from "@/lib/env";
-import { listToolkits } from "@/lib/composio/client";
+import { connectableToolkits } from "@/lib/connectors/toolkits";
 import { connectionHealth } from "@/lib/connectors/meta";
 import {
   beginConnect,
@@ -18,6 +18,10 @@ import {
   syncConnections,
   TOOLKIT_SLUG_PATTERN,
 } from "@/lib/connectors/manage";
+import {
+  connectorProvider,
+  excludedConnectorProvider,
+} from "@/lib/connectors/provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,12 +42,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const supabase = serviceClient();
+  const provider = connectorProvider();
   const [toolkits, { data: rows }] = await Promise.all([
-    listToolkits(),
+    connectableToolkits(),
     supabase
       .from("connections")
       .select("toolkit, status, connected_at")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .neq("provider", excludedConnectorProvider()),
   ]);
   const connections = (rows ?? []) as Array<{
     toolkit: string;
@@ -52,13 +58,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }>;
   const health = await connectionHealth(supabase, userId, connections);
   return NextResponse.json({
-    toolkits: toolkits.map((t) => ({
-      slug: t.slug,
-      name: t.name,
-      logo: t.meta?.logo ?? null,
-    })),
+    toolkits,
     connections,
     health,
+    provider,
   });
 }
 

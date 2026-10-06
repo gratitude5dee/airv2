@@ -74,6 +74,7 @@ export const OPTIONAL_ENV = [
   "CF_RUNTIME_KV_ID",
   "CLOUDFLARE_ACCOUNT_ID",
   "CLOUDFLARE_API_TOKEN",
+  "CONNECTOR_PROVIDER",
   "CREATE_BRIDGE_SECRET",
   "CREATE_FUNCTIONS_ENABLED",
   "CREATE_JOBS_ORIGIN",
@@ -221,6 +222,8 @@ export const OPTIONAL_ENV = [
   "WANDB_PROJECT",
   "WZRDMAIL_BASE_URL",
   "WZRDMAIL_MCP_URL",
+  "WZRD_CONNECT_ADMIN_TOKEN",
+  "WZRD_CONNECT_ORIGIN",
   "WZRD_CREATE_INSTALLATION_ID",
   "X402_FACILITATOR_URL",
   "X402_NETWORK",
@@ -471,6 +474,30 @@ export const env = {
       optional("MAIL_PROVIDER", "wzrdmail") === "wzrdmail" ? "wzrd.tech" : "agentmail.to",
     ),
   composioApiKey: (): string => required("COMPOSIO_API_KEY"),
+  // Connector backend for connect flows, publish execution, and the box MCP
+  // proxy (R-CONN-01). Composio stays the default while WZRD Connect is
+  // verified against it; flip to "wzrd" to make the self-hosted gateway
+  // primary.
+  connectorProvider: (): "composio" | "wzrd" => {
+    const value = optional("CONNECTOR_PROVIDER", "composio");
+    if (value !== "composio" && value !== "wzrd") {
+      throw new Error(
+        `CONNECTOR_PROVIDER must be "composio" or "wzrd", got "${value}"`,
+      );
+    }
+    return value;
+  },
+  wzrdConnectOrigin: (): string =>
+    optional("WZRD_CONNECT_ORIGIN", "https://connector.wzrd.tech").replace(
+      /\/+$/,
+      "",
+    ),
+  // Admin bearer for the self-hosted WZRD Connect worker — mints per-user
+  // runtime tokens and named connections; it never reaches a box or browser.
+  // Nullable like every optional credential: the WZRD client throws a clear
+  // not-configured error at its single call site.
+  wzrdConnectAdminToken: (): string | null =>
+    process.env.WZRD_CONNECT_ADMIN_TOKEN || null,
   // MasterKey (x402 service catalog + MCP). The partner secret is the
   // server-to-server credential the /api/mcp/masterkey proxy uses to mint
   // per-user MCP tokens; it never reaches a box or browser.

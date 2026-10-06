@@ -9,7 +9,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { stopCompute, destroyCompute, runCommand } from "../compute/runtime";
 import { profileFor, kindFor } from "../compute/environments";
 import { buildCompute } from "../provisioning/provision";
-import { installComposioMcp, installMasterkeyMcp } from "../provisioning/connectors";
+import {
+  installComposioMcp,
+  installMasterkeyMcp,
+  installWzrdConnectMcp,
+} from "../provisioning/connectors";
 import { ensureMailboxOnBox } from "../provisioning/email";
 import { provisionDaytona } from "../provisioning/daytona";
 import { providerOf, resume } from "../box/client";
@@ -649,8 +653,13 @@ export async function stepActivating(ctx: StepCtx): Promise<StepOutcome> {
         what,
           migration_id: migration.id,
           error: error instanceof Error ? error.message : String(error),});
-    await installComposioMcp(supabase, migration.user_id, toTarget).catch(
-      logError("composio")
+    // The connector endpoint follows the active backend (R-CONN-01).
+    const installConnector =
+      env.connectorProvider() === "wzrd"
+        ? installWzrdConnectMcp
+        : installComposioMcp;
+    await installConnector(supabase, migration.user_id, toTarget).catch(
+      logError("connector")
     );
     await installMasterkeyMcp(supabase, migration.user_id, toTarget).catch(
       logError("masterkey")
