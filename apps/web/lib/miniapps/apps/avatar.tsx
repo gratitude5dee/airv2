@@ -52,7 +52,7 @@ async function renderAvatar(ctx: MiniAppContext): Promise<NextResponse> {
   if (ctx.session.role !== "owner") {
     return forbidden("this view is owner-only");
   }
-  const body = `<div style="flex:1;display:flex;flex-direction:column;align-self:stretch;width:100%;min-height:0"><iframe src="${AVATAR_ORIGIN}/" title="Avatar — FYE elemental casting stage" allow="camera ${AVATAR_ORIGIN}; microphone ${AVATAR_ORIGIN}; autoplay ${AVATAR_ORIGIN}; fullscreen ${AVATAR_ORIGIN}" allowfullscreen referrerpolicy="no-referrer" style="flex:1;width:100%;min-height:0;border:0;border-radius:var(--radius-panel);background:#0b0b10"></iframe><p class="muted" style="text-align:center;margin:0.5rem 0 0">Tap “Hand mode” in the stage for camera tracking — pointer drawing always works. <a href="${AVATAR_ORIGIN}/" target="_blank" rel="noopener">Open avatar.wzrd.tech ↗</a></p></div>`;
+  const body = `<div style="flex:1;display:flex;flex-direction:column;align-self:stretch;width:100%;min-height:0"><iframe src="${AVATAR_ORIGIN}/" title="Avatar — FYE elemental casting stage" allow="camera ${AVATAR_ORIGIN}; microphone ${AVATAR_ORIGIN}; autoplay ${AVATAR_ORIGIN}; fullscreen ${AVATAR_ORIGIN}" allowfullscreen referrerpolicy="no-referrer" style="flex:1;width:100%;min-height:0;border:0;border-radius:var(--radius-panel);background:#0b0b10"></iframe><p class="muted" style="text-align:center;margin:0.5rem 0 0">Tap “Hand mode” for camera tracking and “Controls” for the move pad — drawing always works. <a href="${AVATAR_ORIGIN}/" target="_blank" rel="noopener">Open avatar.wzrd.tech ↗</a></p></div>`;
   return allowEmbedded(
     shellHtml(
       renderShell({
