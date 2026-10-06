@@ -85,7 +85,7 @@ export const CREATIVE_READY_DEBOUNCE_MS = 250;
  * user attaches, then types; either order lands inside this window.
  */
 export const REFERENCE_WINDOW_MS = 3_000;
-const MAX_ATTEMPTS = 5;
+export const MAX_ATTEMPTS = 5;
 const CANCEL_POLL_MS = 2_000;
 /**
  * A Hermes turn may keep its SSE body open forever after the headers arrive.
@@ -95,6 +95,7 @@ const CANCEL_POLL_MS = 2_000;
  */
 export const INITIAL_RESPONSE_DEADLINE_MS = 45_000;
 export const FINAL_RESPONSE_DEADLINE_MS = 120_000;
+const LIVE_DEADLINE_POLL_MS = 250;
 
 export async function beforeDeadline<T>(
   pending: Promise<T>,
@@ -116,6 +117,50 @@ export async function beforeDeadline<T>(
     ]);
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Initial-response deadline that re-arms on stream activity. The 45s
+ * window exists to catch a dead stream, not to bound a working one:
+ * reasoning deltas and tool calls never surface as text through
+ * hermesDeltas, so a turn whose model thinks before speaking was killed
+ * mid-work and retried with the identical input — a deterministic
+ * livelock. Real events (anything with a `data:` frame; keepalive
+ * comments don't count) push the window to `activity.at + 45s`; the
+ * absolute cap stays `hardCapAt` (the 120s final deadline), so a turn
+ * actively streaming gets at most the final deadline to emit first text.
+ */
+export async function untilLiveDeadline<T>(
+  pending: Promise<T>,
+  activity: { at: number },
+  deadlineAt: number,
+  hardCapAt: number,
+  message: string
+): Promise<T> {
+  const settled = pending.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error })
+  );
+  for (;;) {
+    const effectiveAt = Math.min(
+      Math.max(deadlineAt, activity.at + INITIAL_RESPONSE_DEADLINE_MS),
+      hardCapAt
+    );
+    const remainingMs = effectiveAt - Date.now();
+    if (remainingMs <= 0) throw new Error(message);
+    const winner = await Promise.race([
+      settled,
+      new Promise<"tick">((resolve) =>
+        setTimeout(
+          () => resolve("tick"),
+          Math.min(remainingMs, LIVE_DEADLINE_POLL_MS)
+        )
+      ),
+    ]);
+    if (winner === "tick") continue;
+    if (winner.ok) return winner.value;
+    throw winner.error;
   }
 }
 
@@ -527,7 +572,8 @@ async function materializeAttachments(
 export async function* hermesDeltas(
   stream: ReadableStream<Uint8Array>,
   onDone?: (output: string) => void,
-  onFirstDelta?: () => void
+  onFirstDelta?: () => void,
+  onActivity?: () => void
 ): AsyncGenerator<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -557,6 +603,10 @@ export async function* hermesDeltas(
         } catch {
           continue;
         }
+        // Reasoning/tool events never yield text but prove the run is alive
+        // — the initial-response deadline re-arms on them (keepalive
+        // comments carry no `data:` line and never reach this point).
+        onActivity?.();
         if (event.event === "message.delta" && event.delta) {
           if (!sawDelta) onFirstDelta?.();
           sawDelta = true;
@@ -678,6 +728,31 @@ async function retryUndeliveredStream(
     return;
   }
 
+  if (job.attempts >= MAX_ATTEMPTS) {
+    // The identical burst already failed this way MAX_ATTEMPTS times —
+    // carrying it once more only guarantees the next claim dies the same
+    // way (the dead-burst livelock). Drop it, close the job, and say so
+    // honestly: resending beats an endless "still working on it" loop.
+    log.error("imessage stream retries exhausted", {box_id: null,
+        user_id: job.userId,
+        space_id: job.spaceId,
+        attempts: job.attempts,
+        error: error instanceof Error ? error.message : String(error),});
+    await supabase
+      .from("flush_jobs")
+      .delete()
+      .eq("space_id", job.spaceId)
+      .eq("chain_started_at", chainStartedAt);
+    await sender
+      .sendText(
+        job.spaceId,
+        job.phone,
+        "i couldn't finish that one — send it again?"
+      )
+      .catch(() => undefined);
+    return;
+  }
+
   await carryMessages(supabase, job.userId, job.spaceId, drained);
   await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
   log.error("imessage stream retry scheduled", {box_id: null,
@@ -707,6 +782,149 @@ async function notifyFirstRetry(
     )
     .catch(() => undefined);
   return true;
+}
+
+/**
+ * Evaluate the anchored command lanes one queued message at a time.
+ *
+ * The card, create, and trade parsers all anchor on the WHOLE input —
+ * but the burst composes bodies with "\n" and carried rows gain an
+ * "[Earlier message]" prefix — so a single carry made every queued
+ * command permanently unmatchable: "/calendar" inside a burst degraded
+ * into a doomed model turn instead of an instant card. Each iMessage is
+ * its own command unit, so the lanes run per body. A consumed message
+ * leaves the model input: its card, intake, or order reply IS the
+ * response (leaving it in would double-answer).
+ *
+ * Lane precedence per message mirrors the old whole-burst order:
+ * /create intake → mini-app card → /trade command. Draw/freeze/twin/
+ * creative/location stay whole-input after this pass — those parsers
+ * already scan multi-line bursts, and attachments deliberately span
+ * messages. Identical repeated commands deliver once.
+ *
+ * One command annotates instead of consuming: an owner `/create` opens
+ * the intake and prepends its hook line, but the command text stays in
+ * the burst — the Planner reads the prompt from the model input.
+ *
+ * Returns the consumed row ids plus any intake lines to prepend to the
+ * model input, or "requeued" when a registry lookup failed and the
+ * un-delivered remainder was requeued for backoff.
+ */
+async function deliverBurstCommands(
+  supabase: SupabaseClient,
+  sender: SpectrumSender,
+  job: {
+    spaceId: string;
+    userId: string;
+    phone: string;
+    attempts: number;
+    senderTier: number | null;
+  },
+  drained: QueuedMessage[]
+): Promise<
+  | { consumed: Set<string>; intakeLines: string[]; createSeen: boolean }
+  | "requeued"
+> {
+  const laneJob = {
+    spaceId: job.spaceId,
+    userId: job.userId,
+    phone: job.phone,
+    senderTier: job.senderTier,
+  };
+  const consumed = new Set<string>();
+  const intakeLines: string[] = [];
+  const seen = new Set<string>();
+  let createSeen = false;
+  for (const message of drained) {
+    if (isBridgeMarkerId(message.message_id)) continue;
+    const body = (message.body ?? "").trim();
+    if (!body) continue;
+    const key = body.toLowerCase();
+    // The repeat is still consumed — it was already answered once.
+    if (seen.has(key)) {
+      consumed.add(message.id);
+      continue;
+    }
+    seen.add(key);
+
+    const intake = await maybeOpenIntake(supabase, sender, laneJob, body);
+    if (intake) {
+      createSeen = true;
+      if (intake.kind === "owner") {
+        // An owner /create annotates the turn, it does not consume it: the
+        // Planner runs in air-main and reads the prompt from the model
+        // input, so the command text must stay in the burst.
+        intakeLines.push(intake.line);
+      } else {
+        // Non-owner got the owner-only line inside maybeOpenIntake; the
+        // command itself must not reach the model turn.
+        consumed.add(message.id);
+      }
+      continue;
+    }
+
+    try {
+      if (await maybeSendMiniAppLink(supabase, sender, laneJob, body)) {
+        consumed.add(message.id);
+        continue;
+      }
+    } catch (error) {
+      if (error instanceof MiniAppRegistryLookupError) {
+        if (job.attempts < MAX_ATTEMPTS) {
+          // Only the un-delivered remainder retries — a card already sent
+          // must not send again.
+          await requeueMessages(
+            supabase,
+            job.userId,
+            job.spaceId,
+            job.phone,
+            drained.filter((m) => !consumed.has(m.id))
+          );
+          await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
+          return "requeued";
+        }
+        throw error;
+      }
+      log.error("mini-app command failed", {box_id: null,
+          user_id: job.userId,
+          error: error instanceof Error ? error.message : String(error),});
+      await sender
+        .sendText(
+          job.spaceId,
+          job.phone,
+          "couldn't open that mini-app. try again?"
+        )
+        .catch(() => undefined);
+      consumed.add(message.id);
+      continue;
+    }
+
+    const tradeCommand = parseTradeCommand(body);
+    if (tradeCommand) {
+      try {
+        const { handled } = await runTradeCommand(
+          supabase,
+          (text) => sender.sendText(job.spaceId, job.phone, text),
+          { ...laneJob, sender },
+          tradeCommand
+        );
+        if (handled) {
+          consumed.add(message.id);
+          continue;
+        }
+      } catch (error) {
+        log.error("trade command failed", {box_id: null,
+            user_id: job.userId,
+            error: error instanceof Error ? error.message : String(error),});
+        await sender
+          .sendText(job.spaceId, job.phone, "couldn't reach trading. try again?")
+          .catch(() => undefined);
+        consumed.add(message.id);
+        continue;
+      }
+    }
+  }
+  return { consumed, intakeLines, createSeen };
 }
 
 /**
@@ -866,12 +1084,46 @@ async function runFlushInner(
     // "owner" or contact:<sender_id>, the same ref that names the session.
     const senderRef =
       burstTier === 0 ? "owner" : `contact:${burstSenderId ?? "unknown"}`;
-    let rawInput = composeInput(carried, fresh);
-    const responseLaneInput = composeResponseLaneInput(carried, fresh);
+    // Anchored command lanes run per message before anything composes the
+    // burst — see deliverBurstCommands. A consumed command's deterministic
+    // reply is its whole turn; it must also stay out of every later
+    // carry/requeue so the retry never re-delivers it.
+    const burstCommands = await deliverBurstCommands(
+      supabase,
+      sender,
+      {
+        spaceId: job.spaceId,
+        userId: job.userId,
+        phone: job.phone,
+        attempts: job.attempts,
+        senderTier: burstTier,
+      },
+      drained
+    );
+    if (burstCommands === "requeued") return;
+    const consumedIds = burstCommands.consumed;
+    const carriedLeft = carried.filter((m) => !consumedIds.has(m.id));
+    const freshLeft = fresh.filter((m) => !consumedIds.has(m.id));
+    const remaining = [...carriedLeft, ...freshLeft];
+    if (!remaining.some((m) => !isBridgeMarkerId(m.message_id))) {
+      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
+        await supabase
+          .from("flush_jobs")
+          .delete()
+          .eq("space_id", job.spaceId)
+          .eq("chain_started_at", chainStartedAt);
+      }
+      return;
+    }
+    let rawInput = composeInput(carriedLeft, freshLeft);
+    const responseLaneInput = composeResponseLaneInput(
+      carriedLeft,
+      freshLeft
+    );
     // Timed progress starts from the first fresh iMessage, not from when a
     // warm box happened to finish booting. Retried carried work has already
     // received a visible update, so it never restarts this clock.
-    const firstFreshAt = fresh[0]?.received_at;
+    const firstFreshAt = freshLeft[0]?.received_at;
     const receivedAtMs = firstFreshAt ? Date.parse(firstFreshAt) : Number.NaN;
     if (
       fresh.length > 0 &&
@@ -926,7 +1178,7 @@ async function runFlushInner(
             job.userId,
             job.spaceId,
             job.phone,
-            drained
+            remaining
           );
           await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
           return;
@@ -981,7 +1233,7 @@ async function runFlushInner(
             job.userId,
             job.spaceId,
             job.phone,
-            drained
+            remaining
           );
           await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
           return;
@@ -1003,132 +1255,18 @@ async function runFlushInner(
       }
       return;
     }
-    // V12 §8.1: "/create <text>" from the owner opens the create_intakes row
-    // here and marks the turn; the Planner itself runs in air-main (V11 §9.2),
-    // so the turn is never short-circuited. Anyone else gets the owner-only
-    // line, exactly like the card path.
-    const intake = await maybeOpenIntake(
-      supabase,
-      sender,
-      { spaceId: job.spaceId, userId: job.userId, phone: job.phone, senderTier: burstTier },
-      responseLaneInput
-    );
-    if (intake?.kind === "non_owner") {
-      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
-        await supabase
-          .from("flush_jobs")
-          .delete()
-          .eq("space_id", job.spaceId)
-          .eq("chain_started_at", chainStartedAt);
-      }
-      return;
+    // V12 §8.1: "/create <text>" intakes opened per message in
+    // deliverBurstCommands mark the turn here — the Planner itself runs in
+    // air-main (V11 §9.2), so the turn is never short-circuited. Each intake
+    // line rides the model input in message order.
+    for (const line of burstCommands.intakeLines) {
+      rawInput = `${line}\n${rawInput}`;
     }
-    if (intake?.kind === "owner") rawInput = `${intake.line}\n${rawInput}`;
     // V13 §9.2 (F1): a non-`/create` reply while the owner's newest intake is
     // at `asking` counts as the owner's answer — record it before the turn
     // runs so `plan_written` can never hit an intake that never left asking.
-    if (intake === null) {
+    if (!burstCommands.createSeen) {
       await recordAskingReply(supabase, job.userId).catch(() => undefined);
-    }
-    try {
-      const handled = await maybeSendMiniAppLink(
-        supabase,
-        sender,
-        {
-          spaceId: job.spaceId,
-          userId: job.userId,
-          phone: job.phone,
-          senderTier: burstTier,
-        },
-        responseLaneInput
-      );
-      if (handled) {
-        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
-          await supabase
-            .from("flush_jobs")
-            .delete()
-            .eq("space_id", job.spaceId)
-            .eq("chain_started_at", chainStartedAt);
-        }
-        return;
-      }
-    } catch (error) {
-      if (error instanceof MiniAppRegistryLookupError) {
-        if (job.attempts < MAX_ATTEMPTS) {
-          await requeueMessages(
-            supabase,
-            job.userId,
-            job.spaceId,
-            job.phone,
-            drained
-          );
-          await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
-          return;
-        }
-        throw error;
-      }
-      log.error("mini-app command failed", {box_id: null,
-        user_id: job.userId,
-          error: error instanceof Error ? error.message : String(error),});
-      await sender
-        .sendText(job.spaceId, job.phone, "couldn't open that mini-app. try again?")
-        .catch(() => undefined);
-      if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
-        await supabase
-          .from("flush_jobs")
-          .delete()
-          .eq("space_id", job.spaceId)
-          .eq("chain_started_at", chainStartedAt);
-      }
-      return;
-    }
-    // Trade lane (docs/trade/plan.md §4.2): `/trade <arm>` commands answer
-    // deterministically here — before any box wake. A bare `/trade` was
-    // already carded by the mini-app branch above; freeform `/trade ...`
-    // text falls through to the Hermes turn and the box-side trade skill.
-    // Commands parse the unlabelled lane input, not the sender-labelled
-    // model input.
-    const tradeCommand = parseTradeCommand(responseLaneInput);
-    if (tradeCommand) {
-      try {
-        const { handled } = await runTradeCommand(
-          supabase,
-          (text) => sender.sendText(job.spaceId, job.phone, text),
-          {
-            spaceId: job.spaceId,
-            userId: job.userId,
-            phone: job.phone,
-            senderTier: burstTier,
-            sender,
-          },
-          tradeCommand
-        );
-        if (handled) {
-          if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
-            await supabase
-              .from("flush_jobs")
-              .delete()
-              .eq("space_id", job.spaceId)
-              .eq("chain_started_at", chainStartedAt);
-          }
-          return;
-        }
-      } catch (error) {
-        log.error("trade command failed", {box_id: null,
-        user_id: job.userId,
-            error: error instanceof Error ? error.message : String(error),});
-        await sender
-          .sendText(job.spaceId, job.phone, "couldn't reach trading. try again?")
-          .catch(() => undefined);
-        if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
-          await supabase
-            .from("flush_jobs")
-            .delete()
-            .eq("space_id", job.spaceId)
-            .eq("chain_started_at", chainStartedAt);
-        }
-        return;
-      }
     }
     // /twin lane: the digital twin speaks or poses as the owner — voice
     // clone + lip-sync, or an identity-anchored image. Owner-only, consent
@@ -1233,12 +1371,12 @@ async function runFlushInner(
           userId: job.userId,
           phone: job.phone,
           senderTier: burstTier,
-          senderId: drained.find((row) => row.sender_id)?.sender_id,
+          senderId: remaining.find((row) => row.sender_id)?.sender_id,
         },
         // Lane input is unlabelled: the share marker and intent regexes
         // anchor on raw user lines.
         responseLaneInput,
-        drained[0]?.message_id ?? String(Date.now())
+        remaining[0]?.message_id ?? String(Date.now())
       );
       if (located.handled) {
         if (!(await chainCancelled(supabase, job.spaceId, chainStartedAt))) {
@@ -1272,7 +1410,7 @@ async function runFlushInner(
         // First-class queued state: hold the user honestly, retry later.
         // Carry the full drained burst: previously carried rows were already
         // deleted by drainCarried, so re-carrying only `fresh` would lose them.
-        await carryMessages(supabase, job.userId, job.spaceId, drained);
+        await carryMessages(supabase, job.userId, job.spaceId, remaining);
         if (job.attempts === 0) {
           // Shared bridge (optibox rule 1: always answer something): a
           // restricted no-tools completion through the gateway answers the
@@ -1455,7 +1593,7 @@ async function runFlushInner(
               error: error instanceof Error ? error.message : String(error),
             })
           );
-        await carryMessages(supabase, job.userId, job.spaceId, drained);
+        await carryMessages(supabase, job.userId, job.spaceId, remaining);
         await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
         return;
       }
@@ -1504,7 +1642,7 @@ async function runFlushInner(
                 },
               }
             : {}),
-          idempotencyKey: `imessage-flush:${job.spaceId}:${drained[0]?.message_id ?? chainStartedAt}`,
+          idempotencyKey: `imessage-flush:${job.spaceId}:${remaining[0]?.message_id ?? chainStartedAt}`,
         }),
         initialResponseDeadlineAt,
         "Hermes did not create the run before the initial-response deadline"
@@ -1514,7 +1652,7 @@ async function runFlushInner(
         supabase,
         job,
         chainStartedAt,
-        drained,
+        remaining,
         sender,
         error
       );
@@ -1556,8 +1694,11 @@ async function runFlushInner(
       // Outbound marker lanes: `[send-file: …]` and `[card: …]` markers are
       // stripped from the streamed text and delivered (native attachments,
       // mini-app cards) after the stream.
+      const streamActivity = { at: Date.now() };
       const stripped = stripSendFileMarkers(
-        hermesDeltas(events, undefined, () => progressTimeline?.stop())
+        hermesDeltas(events, undefined, () => progressTimeline?.stop(), () => {
+          streamActivity.at = Date.now();
+        })
       );
       const deltas = stripped.deltas;
 
@@ -1623,10 +1764,12 @@ async function runFlushInner(
       // (SOUL.md tells the agent this convention). Anything longer streams
       // exactly as before, prefixed by what the probe consumed.
       const iterator = guarded()[Symbol.asyncIterator]();
-      const initialProbe = await beforeDeadline(
+      const initialProbe = await untilLiveDeadline(
         probeForTapback(iterator),
+        streamActivity,
         initialResponseDeadlineAt,
-        "Hermes did not begin a response within 45 seconds"
+        finalResponseDeadlineAt,
+        "Hermes did not begin a response within the initial-response window"
       );
       // Finish consuming the reply before Spectrum sees any of it. If Hermes
       // stalls after its first few tokens, the same durable burst can still be
@@ -1692,7 +1835,7 @@ async function runFlushInner(
         supabase,
         job,
         chainStartedAt,
-        drained,
+        remaining,
         sender,
         error,
         statusAttempted
@@ -1706,7 +1849,7 @@ async function runFlushInner(
     const { stripped, probe } = prepared;
     // Synthetic carried rows (bridge markers) are not real iMessages, so a
     // reaction can never pin to them; target the last real inbound instead.
-    const tapbackTarget = [...drained]
+    const tapbackTarget = [...remaining]
       .reverse()
       .find((message) => !isBridgeMarkerId(message.message_id))?.message_id;
     if (probe.tapback && tapbackTarget && !cancelled) {
@@ -1783,7 +1926,7 @@ async function runFlushInner(
     if (cancelled) {
       // Losing nothing: the drained messages ride into the next batch as
       // history. The successor chain owns the flush job now.
-      await carryMessages(supabase, job.userId, job.spaceId, drained);
+      await carryMessages(supabase, job.userId, job.spaceId, remaining);
       return;
     }
 

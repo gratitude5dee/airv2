@@ -6,6 +6,8 @@ describe("parseMiniAppCommand", () => {
     expect(parseMiniAppCommand(" /Onboarding ")).toBe("onboarding");
     expect(parseMiniAppCommand("/image-editor")).toBe("image");
     expect(parseMiniAppCommand("/to-do")).toBe("todo");
+    // Common typo: the calendar card must still open.
+    expect(parseMiniAppCommand("/calender")).toBe("calendar");
   });
 
   it("does not intercept prose or multi-message bursts", () => {

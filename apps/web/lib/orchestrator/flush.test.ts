@@ -10,6 +10,7 @@ import {
   enqueueInbound,
   FINAL_RESPONSE_DEADLINE_MS,
   INITIAL_RESPONSE_DEADLINE_MS,
+  MAX_ATTEMPTS,
   hermesDeltas,
   hasCompleteReferencePair,
   isCancelled,
@@ -25,6 +26,8 @@ import {
 } from "../hermes/client";
 import { command } from "../box/client";
 import { createSpectrumSender } from "../spectrum/sender";
+import { maybeSendMiniAppLink } from "../miniapps/imessageCommand";
+import { runTradeCommand } from "../trade/imessage";
 import { ensureBoxAwake } from "./boxes";
 import { probeForTapback } from "../spectrum/tapbacks";
 import { sendMarkedCards } from "../miniapps/cards";
@@ -53,13 +56,18 @@ vi.mock("../spectrum/tapbacks", () => ({ probeForTapback: vi.fn() }));
 vi.mock("../creative/imessage", () => ({
   maybeRunCreativeLane: vi.fn().mockResolvedValue(false),
 }));
-vi.mock("../miniapps/imessageCommand", () => ({
+// Only the send is stubbed: the real parsers (parseMiniAppCommand,
+// parseCreateIntent — which ../create/intake also imports from here) must
+// run so per-message command evaluation is actually exercised.
+vi.mock("../miniapps/imessageCommand", async (importActual) => ({
+  ...(await importActual<typeof import("../miniapps/imessageCommand")>()),
   maybeSendMiniAppLink: vi.fn().mockResolvedValue(false),
-  MiniAppRegistryLookupError: class extends Error {},
-  OWNER_ONLY_CARD_LINE: "only the owner can open mini-apps.",
 }));
 vi.mock("../miniapps/cards", () => ({
   sendMarkedCards: vi.fn().mockResolvedValue(1),
+}));
+vi.mock("../trade/imessage", () => ({
+  runTradeCommand: vi.fn().mockResolvedValue({ handled: true }),
 }));
 vi.mock("./boxes", () => ({
   armStopAfter: vi.fn().mockResolvedValue(undefined),
@@ -552,6 +560,12 @@ describe("runFlush history replay", () => {
         message: options.agentRunInsertError,
       };
     }
+    // Postgres DEFAULT columns the insert path relies on.
+    db.defaults["create_intakes"] = (row: Record<string, unknown>) => ({
+      id: "intake-1",
+      opened_at: "2026-10-06T00:00:00.000Z",
+      ...row,
+    });
     return db.client();
   }
 
@@ -574,7 +588,12 @@ describe("runFlush history replay", () => {
       target,
     } as never);
     vi.mocked(ensureSession).mockResolvedValue({ created: false });
+    vi.mocked(createRun).mockReset();
     vi.mocked(createRun).mockResolvedValue({ run_id: "run-1" });
+    vi.mocked(maybeSendMiniAppLink).mockReset();
+    vi.mocked(maybeSendMiniAppLink).mockResolvedValue(false);
+    vi.mocked(runTradeCommand).mockClear();
+    vi.mocked(runTradeCommand).mockResolvedValue({ handled: true });
     vi.mocked(runEvents).mockResolvedValue(
       sse([{ event: "run.completed", output: "thanks!" }]) as never
     );
@@ -1074,6 +1093,285 @@ describe("runFlush history replay", () => {
       // coherent while never touching owner history.
       expect(request).not.toHaveProperty("conversationHistory");
     });
+  });
+
+  describe("per-message command lanes", () => {
+    it("delivers the card for a slash command inside a multi-message burst", async () => {
+      const calls: unknown[] = [];
+      vi.mocked(maybeSendMiniAppLink).mockImplementation(
+        async (_supabase, _sender, _job, input) => {
+          calls.push(input);
+          return input === "/calendar";
+        }
+      );
+      await runFlush(
+        fakeSupabase([
+          { id: "q1", message_id: "m1", body: "/calendar" },
+          { id: "q2", message_id: "m2", body: "what's on today" },
+        ]),
+        job,
+        new Date().toISOString()
+      );
+      expect(calls).toContain("/calendar");
+      // Commands parse one iMessage body at a time — never the composed
+      // "\n" blob, which is what made in-burst commands unmatchable.
+      expect(calls.some((input) => String(input).includes("\n"))).toBe(false);
+      expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
+        input: "[from unknown] what's on today",
+      });
+    });
+
+    it("delivers a repeated command exactly once", async () => {
+      const calls: unknown[] = [];
+      vi.mocked(maybeSendMiniAppLink).mockImplementation(
+        async (_supabase, _sender, _job, input) => {
+          calls.push(input);
+          return input === "/calendar";
+        }
+      );
+      await runFlush(
+        fakeSupabase([
+          { id: "q1", message_id: "m1", body: "/calendar" },
+          { id: "q2", message_id: "m2", body: "/calendar" },
+        ]),
+        job,
+        new Date().toISOString()
+      );
+      expect(calls.filter((input) => input === "/calendar")).toHaveLength(1);
+      // Every message was consumed by a deterministic reply — no turn runs.
+      expect(vi.mocked(createRun)).not.toHaveBeenCalled();
+    });
+
+    it("evaluates a carried command on its raw body, not the '[Earlier message]' prefix", async () => {
+      const db = new FakeSupabase();
+      db.tables["carried_messages"] = [
+        {
+          space_id: "space-1",
+          user_id: "user-1",
+          sender_tier: 0,
+          id: "c1",
+          message_id: "mc1",
+          body: "/calendar",
+        },
+      ];
+      db.tables["batch_queue"] = [
+        { space_id: "space-1", id: "q1", message_id: "m1", body: "hey" },
+      ];
+      const calls: unknown[] = [];
+      vi.mocked(maybeSendMiniAppLink).mockImplementation(
+        async (_supabase, _sender, _job, input) => {
+          calls.push(input);
+          return input === "/calendar";
+        }
+      );
+      await runFlush(db.client(), job, new Date().toISOString());
+      expect(calls).toContain("/calendar");
+      expect(
+        calls.some((input) => String(input).includes("[Earlier message]"))
+      ).toBe(false);
+      expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
+        input: "[from unknown] hey",
+      });
+    });
+
+    it("runs a /trade command inside a burst and still answers the prose", async () => {
+      await runFlush(
+        fakeSupabase([
+          { id: "q1", message_id: "m1", body: "/trade portfolio" },
+          { id: "q2", message_id: "m2", body: "and how's my day" },
+        ]),
+        job,
+        new Date().toISOString()
+      );
+      expect(vi.mocked(runTradeCommand)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(createRun).mock.calls[0]?.[1]).toMatchObject({
+        input: "[from unknown] and how's my day",
+      });
+    });
+
+    it("keeps an owner /create in the model input alongside its intake line", async () => {
+      const db = new FakeSupabase();
+      db.defaults["create_intakes"] = (row: Record<string, unknown>) => ({
+        id: "intake-1",
+        opened_at: "2026-10-06T00:00:00.000Z",
+        ...row,
+      });
+      db.tables["batch_queue"] = [
+        {
+          space_id: "space-1",
+          id: "q1",
+          message_id: "m1",
+          body: "/create build a piano practice tracker",
+        },
+        { space_id: "space-1", id: "q2", message_id: "m2", body: "thanks" },
+      ];
+      await runFlush(
+        db.client(),
+        { ...job, senderTier: 0 },
+        new Date().toISOString()
+      );
+      const input = vi.mocked(createRun).mock.calls[0]?.[1]?.input;
+      expect(input).toContain("[create-intake ");
+      // The Planner reads the prompt from the turn input — the command is
+      // annotated, not consumed.
+      expect(input).toContain("/create build a piano practice tracker");
+      expect(input).toContain("thanks");
+    });
+  });
+
+  it("re-arms the initial-response deadline on non-text stream events", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T00:00:00.000Z"));
+    const encoder = new TextEncoder();
+    vi.mocked(runEvents).mockResolvedValue(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          const push = (ms: number, frame: object) =>
+            setTimeout(
+              () =>
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify(frame)}\n\n`)
+                ),
+              ms
+            );
+          // Tool/reasoning frames carry no text deltas — the old deadline
+          // killed this turn at 45s while the model was legitimately working.
+          push(30_000, { event: "reasoning.delta", delta: "thinking" });
+          push(60_000, { event: "tool.started", name: "lookup" });
+          push(75_000, { event: "message.delta", delta: "the answer" });
+          push(76_000, { event: "run.completed", output: "the answer" });
+          setTimeout(() => controller.close(), 77_000);
+        },
+      }) as never
+    );
+    vi.mocked(probeForTapback).mockImplementation(async (iterator) => {
+      const first = await iterator.next();
+      return {
+        buffered: first.done ? "" : first.value,
+        ended: first.done ?? false,
+      };
+    });
+    const chunks: string[] = [];
+    vi.mocked(createSpectrumSender).mockResolvedValue({
+      sendText: vi.fn().mockResolvedValue(undefined),
+      streamText: vi.fn(async (_space: string, _phone: string, deltas: AsyncIterable<string>) => {
+        for await (const delta of deltas) chunks.push(delta);
+      }),
+      react: vi.fn().mockResolvedValue(true),
+      sendReply: vi.fn().mockResolvedValue(true),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    const pending = runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "think hard" }]),
+      job,
+      new Date().toISOString()
+    );
+    await vi.advanceTimersByTimeAsync(80_000);
+    await pending;
+    expect(stopRun).not.toHaveBeenCalled();
+    expect(chunks.join("")).toContain("the answer");
+    vi.useRealTimers();
+  });
+
+  it("still kills a stream that emits only keepalive comments at 45s", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T00:00:00.000Z"));
+    const encoder = new TextEncoder();
+    vi.mocked(runEvents).mockResolvedValue(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          // SSE comment frames (":ka") arrive steadily but carry no `data:`
+          // line — a hung run wearing the costume of a live one.
+          const tick = () => {
+            controller.enqueue(encoder.encode(`:ka\n\n`));
+            setTimeout(tick, 5_000);
+          };
+          setTimeout(tick, 5_000);
+        },
+      }) as never
+    );
+    vi.mocked(probeForTapback).mockImplementation(async (iterator) => {
+      const first = await iterator.next();
+      return {
+        buffered: first.done ? "" : first.value,
+        ended: first.done ?? false,
+      };
+    });
+    const pending = runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "hi" }]),
+      job,
+      new Date().toISOString()
+    );
+    await vi.advanceTimersByTimeAsync(INITIAL_RESPONSE_DEADLINE_MS + 1_000);
+    await pending;
+    expect(stopRun).toHaveBeenCalledWith(target, "run-1");
+    vi.useRealTimers();
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
+  });
+
+  it("still bounds a live stream by the final deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T00:00:00.000Z"));
+    const encoder = new TextEncoder();
+    vi.mocked(runEvents).mockResolvedValue(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          // Frames keep arriving but none carry text forever: activity
+          // pushes the initial window yet the 120s hard cap must still fire.
+          let at = 10_000;
+          const tick = () => {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ event: "reasoning.delta", delta: "…" })}\n\n`
+              )
+            );
+            at += 10_000;
+            setTimeout(tick, 10_000);
+          };
+          setTimeout(tick, at);
+        },
+      }) as never
+    );
+    vi.mocked(probeForTapback).mockImplementation(async (iterator) => {
+      const first = await iterator.next();
+      return {
+        buffered: first.done ? "" : first.value,
+        ended: first.done ?? false,
+      };
+    });
+    const pending = runFlush(
+      fakeSupabase([{ id: "q1", message_id: "m1", body: "hi" }]),
+      job,
+      new Date().toISOString()
+    );
+    await vi.advanceTimersByTimeAsync(FINAL_RESPONSE_DEADLINE_MS + 1_000);
+    await pending;
+    expect(stopRun).toHaveBeenCalledWith(target, "run-1");
+    vi.useRealTimers();
+    expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
+  });
+
+  it("drops the burst with one honest text once stream retries are exhausted", async () => {
+    vi.mocked(createRun).mockRejectedValue(new Error("gateway 500"));
+    const db = new FakeSupabase();
+    db.tables["batch_queue"] = [
+      { space_id: "space-1", id: "q1", message_id: "m1", body: "hi" },
+    ];
+    await runFlush(
+      db.client(),
+      { ...job, attempts: MAX_ATTEMPTS },
+      new Date().toISOString()
+    );
+    expectLog(/imessage\ stream\ retries\ exhausted/, { level: "error" });
+    const sender = (await vi.mocked(createSpectrumSender).mock.results.at(-1)!
+      .value) as { sendText: ReturnType<typeof vi.fn> };
+    expect(sender.sendText).toHaveBeenCalledWith(
+      "space-1",
+      "+15551234567",
+      "i couldn't finish that one — send it again?"
+    );
+    // Not re-carried, not rescheduled: the livelock loop is closed.
+    expect(db.rows("carried_messages")).toEqual([]);
   });
 });
 
