@@ -61,11 +61,13 @@ function tabNav(ctx: MiniAppContext, active: Tab): string {
     const label =
       tab === "trade" ? "Ticket" : tab.charAt(0).toUpperCase() + tab.slice(1);
     const cls = tab === active ? "navlink" : "navlink ghost";
-    return `<a class="${cls}" style="font-size:0.6rem;min-height:2.3rem;padding:0 0.8rem" href="${esc(
+    return `<a class="${cls}" style="font-size:0.55rem;min-height:2rem;padding:0 0.62rem;letter-spacing:0.09em;flex:0 0 auto" href="${esc(
       `${ctx.basePath}?tab=${tab}`,
     )}">${esc(label)}</a>`;
   }).join("");
-  return `<nav class="row" style="justify-content:center;width:min(100%,36rem);margin-bottom:0.4rem">${links}</nav>`;
+  /* One line on every screen: scroll sideways before it wraps into a
+     second row that eats the viewport on a phone. */
+  return `<nav class="row tr-tabs" style="width:min(100%,36rem);margin-bottom:0.4rem;flex-wrap:nowrap;overflow-x:auto;justify-content:safe center;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px">${links}</nav><style>.tr-tabs::-webkit-scrollbar{display:none}</style>`;
 }
 
 function money(value: number | null | undefined): string {

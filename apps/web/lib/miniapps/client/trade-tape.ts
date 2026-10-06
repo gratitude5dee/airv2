@@ -241,6 +241,12 @@ function mount(rootEl: HTMLElement) {
     downBtn.querySelector("em")!.textContent = pos ? `sell $${stake}` : "flat";
     upBtn.querySelector("em")!.textContent = `buy $${stake}`;
 
+    /* While an approval card is up it owns the thumb zone — the
+       stakes/buttons/hint are dead weight behind it. */
+    stakesEl.hidden = !!state.pending;
+    buttonsEl.hidden = !!state.pending;
+    hintEl.hidden = !!state.pending;
+
     for (const el of Array.from(stakesEl.children)) {
       (el as HTMLElement).classList.toggle(
         "on",

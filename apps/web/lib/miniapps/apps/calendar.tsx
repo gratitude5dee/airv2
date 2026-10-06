@@ -674,9 +674,9 @@ function monthBody(
       const isOpen = key === selectedDay;
       if (allDayEvents.length === 0) {
         if (isOwner && isToday) {
-          cells.push(`<a class="mo-cell mo-add" data-day="${esc(key)}" href="${esc(viewHref(basePath, "month", persona, key, undefined, { new: true }))}#new" aria-label="Today — add an event">+</a>`);
+          cells.push(`<a class="mo-cell mo-add" data-day="${esc(key)}" href="${esc(viewHref(basePath, "month", persona, key, undefined, { new: true }))}#new" aria-label="Today — add an event"><span class="mo-num">${number}</span><i>+</i></a>`);
         } else {
-          cells.push(`<span class="mo-cell mo-dot${isToday ? " is-today" : ""}" data-day="${esc(key)}" aria-label="${esc(dayLabel(key))} — no events"></span>`);
+          cells.push(`<span class="mo-cell mo-rest${isToday ? " is-today" : ""}" data-day="${esc(key)}" aria-label="${esc(dayLabel(key))} — no events"><span class="mo-n">${number}</span><i class="mo-dot"></i></span>`);
         }
         continue;
       }
@@ -717,7 +717,7 @@ function monthBody(
       const cover = coverMarkup(
         coverFor(artworkEvents, avatars, publicUrl, color)
       );
-      cells.push(`<a class="mo-cell mo-tile${isOpen ? " is-open" : ""}${isToday ? " is-today" : ""}${muted ? " is-muted" : ""}${dayEvents.some((event) => event.status === "pending") ? " is-pending" : ""}" data-day="${esc(key)}" data-count="${dayEvents.length}" data-personas="${esc(personas.toLowerCase())}" href="${esc(href)}" aria-label="${esc(isOpen ? `Close ${dayLabel(key)}` : label)}"${isOpen ? ' aria-expanded="true"' : ""}${muted ? ' aria-hidden="true" tabindex="-1"' : ""} style="--tilt:${isOpen ? "0" : tiltFor(key)}deg;--persona:${esc(color)}"><span class="mo-face">${cover}${stickers}<span class="mo-x" aria-hidden="true">×</span></span></a>`);
+      cells.push(`<a class="mo-cell mo-tile${isOpen ? " is-open" : ""}${isToday ? " is-today" : ""}${muted ? " is-muted" : ""}${dayEvents.some((event) => event.status === "pending") ? " is-pending" : ""}" data-day="${esc(key)}" data-count="${dayEvents.length}" data-personas="${esc(personas.toLowerCase())}" href="${esc(href)}" aria-label="${esc(isOpen ? `Close ${dayLabel(key)}` : label)}"${isOpen ? ' aria-expanded="true"' : ""}${muted ? ' aria-hidden="true" tabindex="-1"' : ""} style="--tilt:${isOpen ? "0" : tiltFor(key)}deg;--persona:${esc(color)}"><span class="mo-face"><span class="mo-num">${number}</span>${cover}${stickers}<span class="mo-x" aria-hidden="true">×</span></span></a>`);
     }
     rows.push(`<li class="mo-week">${cells.join("")}</li>`);
   }
@@ -760,10 +760,16 @@ const CALENDAR_CSS = `
 .mo-persona.on{background:var(--accent);color:var(--on-accent)}
 #new form input:not([type=checkbox]){min-width:0;max-width:100%;box-sizing:border-box}#new label.when{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
 .mo-grid,.mo-week{min-width:0}.mo-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;list-style:none;margin:0;padding:0}
-.mo-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:center;justify-items:center}
+.mo-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:center;justify-items:center;content-visibility:auto;contain-intrinsic-size:auto 52px}
 .mo-cell{aspect-ratio:1;width:100%;min-width:0}.mo-blank{display:block}
-.mo-dot{display:block;width:6px;height:6px;border-radius:50%;background:var(--ink-muted);opacity:.55;align-self:center;justify-self:center}
-.mo-dot.is-today{box-shadow:0 0 0 2px var(--accent)}
+.mo-num{position:absolute;top:4px;left:7px;z-index:1;font:700 .58rem var(--font-ui);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5);line-height:1}
+.mo-tile.is-open .mo-num{display:none}
+.mo-tile.is-today .mo-num{color:var(--accent)}
+.mo-rest{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.mo-n{font:500 .55rem var(--font-ui);color:var(--ink-muted);opacity:.7;line-height:1}
+.mo-rest.is-today .mo-n{color:var(--accent);opacity:1;font-weight:700}
+.mo-dot{display:block;width:6px;height:6px;border-radius:50%;background:var(--ink-muted);opacity:.55}
+.mo-rest.is-today .mo-dot{background:var(--accent);opacity:1}
 .mo-tile{display:block;color:var(--ink);text-decoration:none;transition:opacity .22s,transform .3s}
 .mo-tile .mo-face{position:relative;display:block;width:100%;height:100%;border-radius:28%;overflow:hidden;transform:rotate(var(--tilt,0deg));background:var(--persona,var(--accent));box-shadow:var(--shadow),inset 0 0 0 1px rgba(255,255,255,.28);transition:opacity .22s,transform .3s}
 .mo-cover{display:grid;width:100%;height:100%;overflow:hidden}.mo-cover img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 30%}
@@ -778,13 +784,28 @@ const CALENDAR_CSS = `
 .mo-chips{display:flex;gap:.5rem;overflow-x:auto;scroll-snap-type:x mandatory;list-style:none;margin:0;padding:0 2.6rem 0 .2rem}.mo-chip{scroll-snap-align:start;flex:0 0 auto;min-width:11rem;max-width:78%;display:flex;align-items:center;gap:.4rem;padding:.35rem .6rem;border-radius:var(--radius-pill);background:rgba(255,255,255,.08);border:1px solid var(--ring);color:var(--ink);text-decoration:none;font:500 .68rem var(--font-ui)}.mo-chip.pending{border-style:dashed}.mo-chip .mo-ttl{max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mo-time,.mo-loc{color:var(--ink-muted);white-space:nowrap}.mo-loc{overflow:hidden;text-overflow:ellipsis;max-width:8rem}
 .mo-avs{display:inline-flex;flex:0 0 auto}.mo-av{display:block;width:20px;height:20px;border-radius:50%;object-fit:cover;font:600 .55rem var(--font-ui);color:var(--on-accent);text-align:center;line-height:20px}.mo-av+.mo-av{margin-left:-5px}.mo-pdot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none}
 .mo-close{position:absolute;top:.3rem;right:.4rem;width:2rem;height:2rem;min-height:0;padding:0;margin:0;display:grid;place-items:center;background:transparent;border:0;box-shadow:none;border-radius:50%;color:var(--ink-muted);text-decoration:none;font:400 1.2rem var(--font-ui);line-height:1;cursor:pointer}.mo-empty{margin:.2rem 2rem .2rem 0;color:var(--ink-muted);font:500 .7rem var(--font-ui)}.mo-addlink{font:500 .7rem var(--font-ui);color:var(--ink);text-decoration:underline}
-.mo-add{border-radius:28%;border:1.5px dashed var(--ring);color:var(--ink-muted);display:grid;place-items:center;font-size:1.4rem;text-decoration:none}
+.mo-add{position:relative;border-radius:28%;border:1.5px dashed var(--ring);color:var(--ink-muted);display:grid;place-items:center;font-size:1.4rem;text-decoration:none}
+.mo-add>i{font-style:normal}
 .mo-dock{position:sticky;bottom:.75rem;margin:.75rem auto 0;display:flex;gap:.25rem;padding:.3rem;border:1px solid var(--ring);border-radius:var(--radius-pill);background:var(--panel-bg);box-shadow:var(--shadow);backdrop-filter:var(--blur);width:max-content;max-width:100%;z-index:2}.mo-dock-item{min-width:44px;min-height:44px;display:grid;place-items:center;border-radius:var(--radius-pill);color:var(--ink);text-decoration:none;font:500 .6rem var(--font-ui)}.mo-dock-item svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.75}.mo-dock-item.on{background:rgba(255,255,255,.14)}.mo-dock-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media(prefers-reduced-motion:reduce){.mo-tile .mo-face{transform:none!important}.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}.mo-tile,.mo-tile .mo-face{transition:opacity .15s}}
+/* iOS webview budget: the Messages/iOS sheet kills the page ("Unable to Load
+   App") when per-tile compositing is heavy — flat tiles, no backdrop blur,
+   one cover photo, lighter shadows on touch/small screens. */
+@media (hover:none),(max-width:560px){
+.mo-tile .mo-face{transform:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}
+.mo-cover.n2,.mo-cover.n3,.mo-cover.n4{grid-template-columns:1fr;grid-template-rows:1fr}
+.mo-cover.n3 img:first-child{grid-row:auto}
+.mo-cover img:not(:first-of-type){display:none}
+.mo-grid{gap:6px}.mo-week{gap:6px}
+}
 `;
 
+/* iOS Messages webview budget: per-tile imagery is the heaviest thing the
+   month ships — one cover photo per tile, flat faces, no backdrop blur. */
 const CALENDAR_LITE_CSS = `
-.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}.mo-tile .mo-face{transform:none}.mo-tile,.mo-tile .mo-face{transition:none}
+.mo-strip,.mo-dock{backdrop-filter:none;-webkit-backdrop-filter:none}.mo-tile .mo-face{transform:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}.mo-tile,.mo-tile .mo-face{transition:none}
+.mo-cover.n2,.mo-cover.n3,.mo-cover.n4{grid-template-columns:1fr;grid-template-rows:1fr}.mo-cover.n3 img:first-child{grid-row:auto}.mo-cover img:not(:first-of-type){display:none}
 `;
 
 function calendarHtml(body: string): NextResponse {
