@@ -98,7 +98,7 @@ Cross-cutting constraints keep their `ARCHITECTURE.md` / `goal-miniapps-v9.md` n
 - Non-Coinbase venues, onchain DEX swaps, bridging. (§10 lists the onchain option as the first follow-on because the platform already has thirdweb wallets holding USDC on Base.)
 - Strategy packs / monitors / congressional & commentary signals (Adaam's bulk). Watchlist price alerts only.
 - Multi-user portfolios, shared accounts, or an operator-held pooled key (Adaam's model). Per-user BYO key only.
-- Charts beyond a sparkline. Research artifacts (`publish_chart`) are a separate lane.
+- Charts beyond a sparkline. Research artifacts (`publish_chart`) are a separate lane. *(Superseded for the tape surface — `docs/trade/tape.md` adds a single close-line chart to `/trade` itself; research artifacts remain a separate lane.)*
 - Fiat on/off-ramp. If the user has no USD/USDC in the portfolio the ticket says so and links Coinbase.
 
 ---

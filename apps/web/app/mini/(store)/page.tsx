@@ -51,6 +51,7 @@ const CATEGORIES: [string, string[]][] = [
   ["Work", ["calendar", "inbox", "crm", "analytics"]],
   ["Create", ["video", "image", "shop"]],
   ["Money", ["pay", "vault"]],
+  ["Play", ["avatar"]],
 ];
 
 function priceChip(app: RegistryApp): string | null {
