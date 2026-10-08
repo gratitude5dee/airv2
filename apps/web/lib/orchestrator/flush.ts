@@ -654,6 +654,21 @@ async function rescheduleWithBackoff(
     .eq("space_id", spaceId);
 }
 
+/**
+ * True when the box answers a stop with "run not found": the stale run
+ * already ended (or the box lost its run table to a rebuild/restart), so
+ * there is nothing left to kill and nothing alive to overlap. Anything
+ * else — timeout, 5xx, unreachable — may still be a live run worth holding
+ * the burst for.
+ */
+function runAlreadyGone(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (/run_not_found/i.test(error.message) ||
+      /run not found/i.test(error.message))
+  );
+}
+
 async function carryMessages(
   supabase: SupabaseClient,
   userId: string,
@@ -1556,6 +1571,11 @@ async function runFlushInner(
       const stopped = await stopRun(runTarget, priorRunId)
         .then(() => true)
         .catch((error: unknown) => {
+          // The box no longer knows this run — the stop is already satisfied,
+          // so the stale id must not hold the burst forever (the dead-stop
+          // livelock: the id stays set, every claim fails the same stop, and
+          // the user's question is never run again).
+          if (runAlreadyGone(error)) return true;
           log.error("imessage prior run stop failed", {
             user_id: job.userId,
             box_id: box.boxId,
@@ -1593,6 +1613,37 @@ async function runFlushInner(
               error: error instanceof Error ? error.message : String(error),
             })
           );
+        if (await chainCancelled(supabase, job.spaceId, chainStartedAt)) {
+          // A newer inbound already owns the job: carry this burst for it
+          // and leave its deadline alone.
+          await carryMessages(supabase, job.userId, job.spaceId, remaining);
+          return;
+        }
+        if (job.attempts >= MAX_ATTEMPTS) {
+          // Same dead-burst end as the stream path: holding again only
+          // guarantees the next claim dies on the same stop. Drop the job
+          // and say so honestly.
+          log.error("imessage prior run stop retries exhausted", {
+            box_id: box.boxId,
+            user_id: job.userId,
+            space_id: job.spaceId,
+            hermes_run_id: priorRunId,
+            attempts: job.attempts,
+          });
+          await supabase
+            .from("flush_jobs")
+            .delete()
+            .eq("space_id", job.spaceId)
+            .eq("chain_started_at", chainStartedAt);
+          await sender
+            .sendText(
+              job.spaceId,
+              job.phone,
+              "i couldn't finish that one — send it again?"
+            )
+            .catch(() => undefined);
+          return;
+        }
         await carryMessages(supabase, job.userId, job.spaceId, remaining);
         await rescheduleWithBackoff(supabase, job.spaceId, job.attempts);
         return;
