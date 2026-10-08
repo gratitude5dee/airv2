@@ -13,6 +13,7 @@ import {
   verifySignupToken,
 } from "@/lib/auth/session";
 import { provisionUser } from "@/lib/provisioning/provision";
+import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 
 export const maxDuration = 800;
@@ -67,10 +68,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .update({ status: "active", wallet_address: grant.walletAddress })
     .eq("id", userId)
     .is("wallet_address", null);
-  await supabase
-    .from("provisioning")
-    .update({ state: "claimed", updated_at: new Date().toISOString() })
-    .eq("user_id", userId);
+  await db.write(
+    supabase
+      .from("provisioning")
+      .update({ state: "active", updated_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .neq("state", "abandoned"),
+    { what: "activate signup provisioning", user_id: userId }
+  );
+  await db.write(
+    supabase
+      .from("handles")
+      .update({ verified_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("platform", "imessage")
+      .eq("address", grant.phone)
+      .is("verified_at", null),
+    { what: "verify signup handle", user_id: userId }
+  );
 
   const token = await issueSessionToken(supabase, userId);
   if (!token) {
