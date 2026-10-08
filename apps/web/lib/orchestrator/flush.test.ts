@@ -548,13 +548,27 @@ describe("runFlush history replay", () => {
 
   function fakeSupabase(
     queueRows: Array<Record<string, unknown>>,
-    options: { agentRunInsertError?: string } = {}
+    options: {
+      agentRunInsertError?: string;
+      priorRunId?: string;
+      chainStartedAt?: string;
+    } = {}
   ) {
     const db = new FakeSupabase();
     db.tables["batch_queue"] = queueRows.map((row) => ({
       space_id: "space-1",
       ...row,
     }));
+    if (options.priorRunId) {
+      db.tables["flush_jobs"] = [
+        {
+          space_id: "space-1",
+          hermes_run_id: options.priorRunId,
+          cancelled_at: null,
+          chain_started_at: options.chainStartedAt ?? null,
+        },
+      ];
+    }
     if (options.agentRunInsertError) {
       db.opErrors["agent_runs:insert"] = {
         message: options.agentRunInsertError,
@@ -783,6 +797,69 @@ describe("runFlush history replay", () => {
     expect(notifiedBeforeStopSettled).toBe(true);
     vi.useRealTimers();
     expectLog(/imessage\ stream\ retry\ scheduled/, { level: "error" });
+  });
+
+  it("starts a fresh run when the box no longer knows the prior run", async () => {
+    // The dead-stop livelock: hermes_run_id survives on the job row while the
+    // box has already forgotten the run (rebuild/restart). run_not_found must
+    // satisfy the stop so the burst runs instead of deferring forever.
+    vi.mocked(stopRun).mockRejectedValue(
+      new Error(
+        '{"error": {"message": "Run not found: stale-run", "type": "invalid_request_error", "code": "run_not_found"}}'
+      )
+    );
+
+    const supabase = fakeSupabase(
+      [{ id: "q1", message_id: "m1", body: "what did I ask?" }],
+      { priorRunId: "stale-run" }
+    );
+    await runFlush(supabase, job, new Date().toISOString());
+
+    expect(stopRun).toHaveBeenCalledWith(target, "stale-run");
+    expect(vi.mocked(createRun)).toHaveBeenCalledTimes(1);
+    const sender = (await vi.mocked(createSpectrumSender).mock.results.at(-1)!
+      .value) as { streamText: ReturnType<typeof vi.fn> };
+    expect(sender.streamText).toHaveBeenCalled();
+  });
+
+  it("drops the burst honestly when the prior run stop keeps failing", async () => {
+    // A persistent non-"not found" stop failure (api_server wedged but the
+    // box awake) must still terminate: same dead-burst end as the stream
+    // path, never a silent infinite deferral.
+    const chainAt = "2026-10-08T12:00:00.000Z";
+    vi.mocked(stopRun).mockRejectedValue(new Error("connect ETIMEDOUT"));
+
+    const db = new FakeSupabase();
+    db.tables["batch_queue"] = [
+      { space_id: "space-1", id: "q1", message_id: "m1", body: "hello" },
+    ];
+    db.tables["flush_jobs"] = [
+      {
+        space_id: "space-1",
+        hermes_run_id: "wedged-run",
+        cancelled_at: null,
+        chain_started_at: chainAt,
+      },
+    ];
+    await runFlush(
+      db.client(),
+      { ...job, attempts: MAX_ATTEMPTS },
+      chainAt
+    );
+
+    expect(vi.mocked(createRun)).not.toHaveBeenCalled();
+    expect(db.rows("flush_jobs")).toHaveLength(0);
+    const sender = (await vi.mocked(createSpectrumSender).mock.results.at(-1)!
+      .value) as { sendText: ReturnType<typeof vi.fn> };
+    expect(sender.sendText).toHaveBeenCalledWith(
+      "space-1",
+      "+15551234567",
+      "i couldn't finish that one — send it again?"
+    );
+    expectLog(/imessage\ prior\ run\ stop\ failed/, { level: "error" });
+    expectLog(/imessage\ prior\ run\ stop\ retries\ exhausted/, {
+      level: "error",
+    });
   });
 
   it("logs receipt write failures without suppressing the delivered answer", async () => {
