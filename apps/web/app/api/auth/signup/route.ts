@@ -69,8 +69,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .is("wallet_address", null);
   await supabase
     .from("provisioning")
-    .update({ state: "claimed", updated_at: new Date().toISOString() })
-    .eq("user_id", userId);
+    .update({ state: "active", updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .neq("state", "abandoned");
+  await supabase
+    .from("handles")
+    .update({ verified_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("platform", "imessage")
+    .eq("address", grant.phone)
+    .is("verified_at", null);
 
   const token = await issueSessionToken(supabase, userId);
   if (!token) {
