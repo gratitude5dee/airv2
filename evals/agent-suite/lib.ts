@@ -80,6 +80,12 @@ export interface EvalCase {
    */
   may_clarify?: boolean;
   /**
+   * Decision kinds a `none` case may still file without failing gating: the
+   * request permits an owner-gated side step (K182's drafts-only replies)
+   * without requiring one.
+   */
+  allowed_decision_kinds?: DecisionKind[];
+  /**
    * Value-shape regexes a non-degraded reply must quote **and** have backed
    * by a tool result — the fabricated-facts tripwire for analytics/CRM
    * answers (a figure or a person's name the agent never actually read).
@@ -129,6 +135,8 @@ export function skillFromPreview(event: SseEvent): string | null {
 }
 
 export interface DecisionRow {
+  /** Pending decision filed before the window that the reply cites by id (a reused gate). */
+  reused?: boolean;
   kind: string;
   status: string;
   label: string | null;
@@ -167,6 +175,7 @@ export interface CaseResult {
   must_not_do: string[];
   /** Copied from the case; absent on results persisted before the fields existed. */
   may_clarify?: boolean;
+  allowed_decision_kinds?: DecisionKind[];
   must_cite?: string[];
   group?: string;
   /** ISO timestamp captured just before POST /api/chat — the decisions window floor. */
@@ -238,6 +247,10 @@ export function loadCases(path: string): EvalCase[] {
     if (parsed.may_clarify !== undefined && typeof parsed.may_clarify !== "boolean") {
       throw new Error(`messages.jsonl line ${i + 1}: bad may_clarify`);
     }
+    const allowedKinds = parsed.allowed_decision_kinds ?? [];
+    if (!Array.isArray(allowedKinds) || allowedKinds.some((k) => !DECISION_KINDS.includes(k))) {
+      throw new Error(`messages.jsonl line ${i + 1}: bad allowed_decision_kinds`);
+    }
     if (
       parsed.group !== undefined &&
       (typeof parsed.group !== "string" || !parsed.group.trim())
@@ -254,6 +267,7 @@ export function loadCases(path: string): EvalCase[] {
       must_do: mustDo,
       must_not_do: mustNotDo,
       ...(parsed.may_clarify === true ? { may_clarify: true } : {}),
+      ...(allowedKinds.length ? { allowed_decision_kinds: allowedKinds } : {}),
       ...(mustCite.length ? { must_cite: mustCite } : {}),
       ...(parsed.group ? { group: parsed.group.trim() } : {}),
     };
@@ -344,4 +358,25 @@ export function requireEnv(name: string): string {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/**
+ * Creation time of the draft a wzrdmail `email_draft` decision points at
+ * (`ref` = `draft_<ULID>`), or null for any other ref. The decision row can
+ * land minutes after the draft, so the draft's own clock is what says which
+ * case wrote it.
+ */
+export function draftRefTimeMs(ref: string | null | undefined): number | null {
+  const match = /^draft_([0-9A-HJKMNP-TV-Z]{26})$/.exec(ref ?? "");
+  if (!match) return null;
+  let ms = 0;
+  for (const ch of match[1].slice(0, 10)) ms = ms * 32 + ULID_ALPHABET.indexOf(ch);
+  return ms;
+}
+
+/** 8-hex decision id prefixes a reply cites ("decision 35c6ab99"). */
+export function citedDecisionPrefixes(output: string): string[] {
+  return [...new Set([...output.matchAll(/\b[0-9a-f]{8}\b/g)].map((m) => m[0]))];
 }
