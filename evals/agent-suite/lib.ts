@@ -370,9 +370,10 @@ const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
  */
 export function draftRefTimeMs(ref: string | null | undefined): number | null {
   const match = /^draft_([0-9A-HJKMNP-TV-Z]{26})$/.exec(ref ?? "");
-  if (!match) return null;
+  const ulid = match?.[1];
+  if (!ulid) return null;
   let ms = 0;
-  for (const ch of match[1].slice(0, 10)) ms = ms * 32 + ULID_ALPHABET.indexOf(ch);
+  for (const ch of ulid.slice(0, 10)) ms = ms * 32 + ULID_ALPHABET.indexOf(ch);
   return ms;
 }
 

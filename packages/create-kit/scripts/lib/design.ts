@@ -157,7 +157,7 @@ export function buildSkill(inputs: DesignInputs): string {
   const frontmatter = [
     "---",
     "name: create-miniapp",
-    'description: "Build or host a wzrd.tech mini-app for your human: a /create sentence (questions, plan, then `air-create go` starts the job — dev link at <username>-<appname>-dev.wzrd.tech) or an HTML file / zip / folder (Drop) becomes a version the owner previews. You plan and go; the job builds, checks and publishes the dev link; only the owner makes it live at mini.wzrd.tech/<username>/<app-name>."',
+    'description: "Build a mini-app or tiny web tool, or host a page, on wzrd.tech for your human: a /create sentence (questions, plan, then `air-create go` starts the job — dev link at <username>-<appname>-dev.wzrd.tech) or an HTML file / zip / folder (Drop) becomes a version the owner previews. You plan and go; the job builds, checks and publishes the dev link; only the owner makes it live at mini.wzrd.tech/<username>/<app-name>."',
     "version: 5.0.0",
     "author: air",
     "license: MIT",
