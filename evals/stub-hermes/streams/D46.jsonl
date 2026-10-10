@@ -1,0 +1,4 @@
+{"comment": "D46 \u2014 no connected ad account, so the ceiling can't be staged; honest refusal, no card"}
+{"sse": {"event": "tool.started", "tool": "mcp_meta_ads_get_ad_accounts", "preview": "get_ad_accounts {}"}}
+{"sse": {"event": "message.delta", "delta": "I can't put a $2,000 30-day ceiling on your campaigns yet \u2014 no Meta ad account is connected. Connect one and I'll stage the ceiling for your approval."}}
+{"sse": {"event": "run.completed"}}

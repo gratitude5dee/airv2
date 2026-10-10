@@ -1,6 +1,6 @@
 ---
 name: onairos-connect
-description: "Connect the owner's Onairos persona and coordinate with other people's agents — contact channels, agent-to-agent asks, scheduling across agents"
+description: "Connect the owner's Onairos persona and coordinate with other people's agents — contact channels, agent-to-agent asks, scheduling across agents, group asks (cost splits, confirmations)"
 version: 1.0.0
 author: air
 license: MIT
