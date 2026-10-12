@@ -21,6 +21,7 @@ For the Crypto World's Fair we taught that one contract five new tricks:
 | [Solana](/docs/solana) | `/pay request 12 USDC on solana` — a Solana Pay QR that confirms itself; x402 on Solana for your mini-apps; a Solana wallet your agent can fund and spend from, under caps |
 | [Zcash](/docs/zcash) | A shielded wallet that lives on your own Box; Unified Addresses and ZIP-321 requests; sends staged by the agent, executed only after your approval |
 | [Formation](/docs/formation) | `/formation` — decide LLC vs C-Corp, build the packet, hand off to Stablecorp with a purchase stop, track EIN/bank, never miss the 83(b) deadline, invoice in stablecoins |
+| [Base, Arbitrum, Robinhood Chain](/docs/evm-chains) | What already works on Base today (wallet, USDC rail, x402 gate) and the network facts for the other EVM tracks |
 
 ## The rules that do not change
 

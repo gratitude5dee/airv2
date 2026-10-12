@@ -13,7 +13,7 @@ This folder is the program of record for Air's entry:
 |---|---|
 | `README.md` (this file) | The analysis: which features, on which surface, and why — with the rejected options |
 | `spec.md` | The executable spec for Devin (SWE-2 Max): milestones per session, invariants, routes, migrations, tests |
-| `../site/{solana,tempo,hyperliquid,zcash,formation,index}.md` | Public docs pages, source of truth for `air.wzrd.tech/docs/<slug>` (mirrored by the operator, same convention as `docs/muse-connector.md`) |
+| `../site/{index,solana,tempo,hyperliquid,zcash,formation,evm-chains}.md` | Public docs pages, source of truth for `air.wzrd.tech/docs/<slug>` (mirrored by the operator, same convention as `docs/muse-connector.md`) |
 | `../../.agents/skills/{colosseum-resources,solana-dev,tempo,hyperliquid-*,meteora,pay,agentic-wallet,arcium,…}` | Installed sponsor/track skills (`npx skills add …`, pinned in `skills-lock.json`) |
 
 Read `ARCHITECTURE.md`, `docs/goal-miniapps-v9.md` and `docs/trade/plan.md` before
@@ -236,8 +236,10 @@ The product is Stablecorp (mystablecorp.xyz): Delaware C-Corp or Wyoming LLC fro
 anywhere, no SSN, EIN, registered agent, US business bank account with a USDC
 treasury, invoicing in USDC/EURC/USDT/fiat, 83(b), cap table. Founding-cohort
 pricing: LLC from $999 one-time, C-Corp from $1,199 one-time (their marketing; verify
-at checkout). There is **no public Stablecorp API** — the integration surface is a
-guided intake, a handoff, and the money rails after.
+at checkout), plus hackathon perks listed in the Colosseum corpus (30% off
+incorporation, priority EIN, priority banking KYB, a free 30-minute setup call). There
+is **no public Stablecorp API** — the integration surface is a guided intake, a
+handoff, and the money rails after.
 
 Air is unusually good at exactly that: an agent that interviews you over iMessage,
 keeps documents in your vault, puts deadlines on your calendar, drives a browser with a
@@ -270,11 +272,16 @@ stores, and reminds.
 ## 8. The $25k tracks — documented, not built
 
 Base: Air's wallet *is* on Base (chain 8453, USDC) and the x402 gate settles there
-today; nothing new is required to be "on Base", and the Base docs page says exactly
-what already works. Arbitrum / Robinhood Chain (an Arbitrum Orbit chain, 4663 mainnet
-/ 46630 testnet, ETH gas, Stock Tokens) / Ethereum L1: all EVM, all reachable by
-changing `WALLET_CHAIN_ID` and the USDC address — the spec's chain registry (W0) makes
-that a config row, and the docs pages say so. No entry-specific work beyond that.
+today; nothing new is required to be "on Base", and `docs/site/evm-chains.md` says
+exactly what already works. Two Base facts shape the spec: OnchainKit and MiniKit
+were archived in September 2026 (Base now recommends wagmi + viem and the Farcaster
+mini-app SDK), and x402 moved to protocol v2 under the x402 Foundation
+(`PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` headers, CAIP-2 networks) — W3 upgrades
+Air's gate to v2 with v1 compatibility. Arbitrum / Robinhood Chain (an Arbitrum
+Orbit chain, 4663 mainnet / 46630 testnet, ETH gas, Stock Tokens with the ERC-8056
+scaled-UI extension) / Ethereum L1: all EVM, all reachable by changing
+`WALLET_CHAIN_ID` and the USDC address — the spec's chain registry (W0) makes that a
+config row. No entry-specific work beyond that.
 
 ---
 

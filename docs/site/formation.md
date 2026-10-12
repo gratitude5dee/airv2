@@ -61,7 +61,14 @@ pricing is:
 | Delaware C-Corp | from $1,199 |
 
 Incorporation, banking, stablecoin invoicing, and the first year's compliance are
-described as included. Confirm on their checkout page.
+described as included. Confirm on their checkout page. Crypto World's Fair builders
+also get Stablecorp's hackathon perks: 30% off incorporation, priority EIN processing,
+priority banking KYB, and a free 30-minute entity setup call. Air surfaces the perk
+code on the Submit screen when the hackathon flag is set.
+
+Plan the calendar honestly: the EIN is the critical path (an SS-4 by fax for founders
+without an SSN typically takes one to four weeks without a priority channel), and a
+bank account cannot open before the EIN letter exists.
 
 ### 4. Track
 
