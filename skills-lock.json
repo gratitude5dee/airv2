@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "agentic-wallet": {
+      "source": "coinbase/agentic-wallet-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-wallet/SKILL.md",
+      "computedHash": "c8b76dcdbc732fa27fcd61c212103cb6f9884500963986cb69db6dc5e441a984"
+    },
+    "arcium": {
+      "source": "arcium-hq/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/arcium/SKILL.md",
+      "computedHash": "70da37ee069e2602b52ed5d1fe3395fb13f0a7e48f1f0e0bcdfad48a608c79ef"
+    },
     "buildspace-ci-cd": {
       "source": "photon-hq/skills",
       "sourceType": "github",
@@ -24,6 +36,12 @@
       "sourceType": "github",
       "skillPath": "skills/chat-adapter-imessage/SKILL.md",
       "computedHash": "0cde63e7c51def9dbfd6a5c1a9fc7b0d5ddb1f835f04b3641e4df7957b838caa"
+    },
+    "colosseum-resources": {
+      "source": "ColosseumOrg/colosseum-resources",
+      "sourceType": "github",
+      "skillPath": "skills/colosseum-resources/SKILL.md",
+      "computedHash": "ab84c86c14e8bb8824e6dcf57e21ee54b56fcda9f48575518fa1df00464f827f"
     },
     "composio": {
       "source": "composio-community/skills",
@@ -129,17 +147,47 @@
       "skillPath": "skills/hyperframes-registry/SKILL.md",
       "computedHash": "af86c24b6efeff0c0641630631cde9ee60dcef884deba78b47ec820e4de57f1f"
     },
+    "hyperliquid-payments": {
+      "source": "infinitefield/hypersdk",
+      "sourceType": "github",
+      "skillPath": "skills/hyperliquid-payments/SKILL.md",
+      "computedHash": "3bb1764ab6ec04832548da39be1213fa141b795d95794aeb56a46d92af1c9049"
+    },
+    "hyperliquid-rust-sdk": {
+      "source": "infinitefield/hypersdk",
+      "sourceType": "github",
+      "skillPath": "skills/hyperliquid-rust-sdk/SKILL.md",
+      "computedHash": "9ed9368a0091635fc278fd60c071632401b070e207b8ff7d3aa00ea1eb9cfdc2"
+    },
+    "hyperliquid-trading": {
+      "source": "infinitefield/hypersdk",
+      "sourceType": "github",
+      "skillPath": "skills/hyperliquid-trading/SKILL.md",
+      "computedHash": "3f5cfa557b0f703b44a8e4d65e399dbf2cefb01387c4fcc0e35d44ad4037a806"
+    },
     "imessage": {
       "source": "photon-hq/skills",
       "sourceType": "github",
       "skillPath": "skills/imessage/SKILL.md",
       "computedHash": "14504b1077b1ab380036520c6cbb0f9eaf32582ca603763fbf346a4391acb9a1"
     },
+    "integration-privy": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/integration-privy/SKILL.md",
+      "computedHash": "42840fb29ee2ff86d7b4106a6af2983a1ca84fdf6f560e6e76766427f6c2dad4"
+    },
     "media-use": {
       "source": "heygen-com/hyperframes",
       "sourceType": "github",
       "skillPath": "skills/media-use/SKILL.md",
       "computedHash": "879718089d57c5aae36c60564995a2ccf63937c4c306a65649ea8d0aeef2b64b"
+    },
+    "meteora": {
+      "source": "MeteoraAg/meteora-invent",
+      "sourceType": "github",
+      "skillPath": "skills/meteora/SKILL.md",
+      "computedHash": "034b9551089bcd8cf1b7dc0baa652b7e308f768c13332cf083f730422cffca73"
     },
     "motion-doctrine": {
       "source": "heygen-com/hyperframes",
@@ -164,6 +212,12 @@
       "sourceType": "github",
       "skillPath": ".claude/skills/oversized-cursor/SKILL.md",
       "computedHash": "94314400e9bd497624ef114ac9dfb550b35da6beb6185ec854af23353b365a6b"
+    },
+    "pay": {
+      "source": "solana-foundation/pay",
+      "sourceType": "github",
+      "skillPath": "skills/pay/SKILL.md",
+      "computedHash": "2ac5f21e22fa042171a63603aaf8ced54f1594aa04bbc2c15846410513ec7f1e"
     },
     "photon-cli": {
       "source": "photon-hq/skills",
@@ -195,6 +249,24 @@
       "skillPath": ".claude/skills/seam-craft/SKILL.md",
       "computedHash": "84f0b4302df13acee5f437b1f6a1cb8d169ae78a7debf2b8a8e723f5be369e1e"
     },
+    "seeker-connect": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seeker-connect/SKILL.md",
+      "computedHash": "ce5170cdf9d532644b393c5e8a605efc2c05a2e1fde1f637dac65bd6e3bc5240"
+    },
+    "seeker-domains": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seeker-domains/SKILL.md",
+      "computedHash": "0d093f2741d9be66dbf95f77f8f4f3ea84bdb640cb838c4a2341cf970a3e2788"
+    },
+    "seeker-genesis-token": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/seeker-genesis-token/SKILL.md",
+      "computedHash": "6b01d58e06e4429b7834b06053d7380ac370412608355523ac2dc37118547f67"
+    },
     "skill-creator": {
       "source": "composio-community/skills",
       "sourceType": "github",
@@ -214,6 +286,30 @@
       "skillPath": "skills/slideshow/SKILL.md",
       "computedHash": "eb61318bf2ee083043b407620013eaa31d38480553434daf3d4693dab9727733"
     },
+    "solana-dev": {
+      "source": "solana-foundation/solana-dev-skill",
+      "sourceType": "github",
+      "skillPath": "skills/solana-dev/SKILL.md",
+      "computedHash": "841c75d49657f6ee0bce0edea5e42dd982173e9b97c92b887bc87e21dd9809e4"
+    },
+    "solana-mobile": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/solana-mobile/SKILL.md",
+      "computedHash": "a292a08ed34273ca0b6abe71edf9f22060da28493338c2f7426f362fb30d2215"
+    },
+    "solana-mobile-publishing": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/solana-mobile-publishing/SKILL.md",
+      "computedHash": "1e915ac5b4ee7c6bfeccb1cef4e35813c562da81e8f73b53b62dcaceeee9dd40"
+    },
+    "solana-mobile-wallet": {
+      "source": "solana-mobile/solana-mobile-skills",
+      "sourceType": "github",
+      "skillPath": "skills/solana-mobile-wallet/SKILL.md",
+      "computedHash": "137213578d4b5bd0e5356038302cd8ee022b49d5c394d2282bae20946a316b7d"
+    },
     "spectrum": {
       "source": "photon-hq/skills",
       "sourceType": "github",
@@ -225,6 +321,12 @@
       "sourceType": "github",
       "skillPath": "skills/talking-head-recut/SKILL.md",
       "computedHash": "9138cca773a2a1cf5d58d51619aa0925d84f2e3fa97802db419a9e3274d8265b"
+    },
+    "tempo": {
+      "source": "tempoxyz/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tempo/SKILL.md",
+      "computedHash": "fa136ee32934f9de89308f50cb539696d3e97e8f22320e7d620b52f5b1f75860"
     }
   }
 }
