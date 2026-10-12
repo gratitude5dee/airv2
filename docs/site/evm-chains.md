@@ -6,6 +6,10 @@ slug: /docs/evm-chains
 
 # Base, Arbitrum, Robinhood Chain
 
+Status: shipped — the Base wallet, the Pay mini-app's USDC rail, and the x402 gate are
+live today. Arbitrum and Robinhood Chain are reference facts for the same EVM wallet,
+not configured rails.
+
 Air's server-managed wallet is on **Base** (USDC), the Pay mini-app's USDC rail sends
 on Base, and the mini-app x402 gate settles USDC on Base through the Coinbase
 Developer Platform facilitator. Nothing here is new for the World's Fair; it is the
@@ -24,8 +28,9 @@ Robinhood Chain are EVM chains Air can point the same wallet at by configuration
 | Robinhood Chain | 4663 | `https://rpc.mainnet.chain.robinhood.com` | robinhoodchain.blockscout.com | ETH | USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
 | Robinhood Chain testnet | 46630 | `https://rpc.testnet.chain.robinhood.com` | explorer.testnet.chain.robinhood.com | ETH | faucet tokens |
 
-Public RPCs are rate-limited and have no WebSocket on Arbitrum and Robinhood Chain;
-production reads go through a provider.
+Public RPCs are rate-limited; Arbitrum's official endpoints have no WebSocket and
+Robinhood Chain publishes no official WebSocket endpoint. Production reads go through
+a provider.
 
 ## Base
 
@@ -36,24 +41,34 @@ production reads go through a provider.
   now branded Coinbase Wallet and documented under the Coinbase Developer Platform.
 - **OnchainKit and MiniKit were archived in September 2026.** New work uses wagmi +
   viem and the Farcaster mini-app SDK; Base publishes migration skills
-  (`npx skills add base/skills`).
+  (`npx skills add base/base-skills`).
 - **x402** is protocol v2 under the x402 Foundation: `PAYMENT-REQUIRED`,
   `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE` headers, CAIP-2 network ids
   (`eip155:8453`), schemes `exact` / `upto` / `batch-settlement`. The public
-  facilitator at `https://x402.org/facilitator` is testnet-only; mainnet uses the CDP
-  facilitator. Air's gate moves to v2 in the Solana session while still accepting v1
-  `X-PAYMENT` clients.
+  facilitator at `https://x402.org/facilitator` is testnet-only (Base Sepolia and
+  Solana devnet); mainnet uses the CDP facilitator. Air's gate stays on the v1 wire
+  that is live on Base mainnet today (`X-PAYMENT`, `exact`, EIP-3009 USDC): the Tempo
+  session adds MPP beside it as a header-keyed branch (`Authorization: Payment`), the
+  Solana session adds a Solana entry to the same v1 `accepts` list, and a v2
+  `PAYMENT-SIGNATURE` branch lands only if the devnet rehearsal shows the facilitator
+  rejects v1 Solana payloads. The facilitator follows the entry's chain: Base mainnet
+  → CDP; Base Sepolia and Solana devnet → the public one; no mainnet entry ever
+  resolves to `x402.org`.
 - Funding: Coinbase withdrawals with network Base; **Coinbase Onramp** session
-  tokens (`POST https://api.developer.coinbase.com/onramp/v1/token`, five-minute
-  single-use token, hosted URL `https://pay.coinbase.com/buy/select-asset?sessionToken=…`)
-  for a hosted buy flow into a Base or Solana address.
+  tokens for a hosted buy flow into a Base or Solana address —
+  `POST https://api.developer.coinbase.com/onramp/v1/token`, server-side with a CDP
+  secret-key JWT, body
+  `{ addresses: [{ address, blockchains: ["base" | "solana"] }], assets: ["USDC"], clientIp }`
+  (`clientIp` is required and is the socket IP), five-minute single-use token, hosted
+  URL `https://pay.coinbase.com/buy/select-asset?sessionToken=…&defaultAsset=USDC&defaultNetwork=base|solana`.
 
 ## Arbitrum
 
 Arbitrum One is a Nitro rollup; Nova is AnyTrust. `block.number` approximates the L1
 block (use `ArbSys` for L2 height), L1→L2 senders are aliased, canonical withdrawals
 take about seven days. Stylus lets you write contracts in Rust. Air needs none of this
-for payments: change `WALLET_CHAIN_ID` and the USDC address and the wallet rail works.
+for payments: change `WALLET_CHAIN_ID` and `WALLET_USDC_ADDRESS` and the wallet send
+lane works.
 
 ## Robinhood Chain
 

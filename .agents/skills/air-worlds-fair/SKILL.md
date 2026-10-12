@@ -35,23 +35,31 @@ Program of record: `docs/worlds-fair/README.md` (analysis) and
 | Solana Mobile / Seeker | `solana-mobile`, `solana-mobile-wallet`, … | `npx skills add solana-mobile/solana-mobile-skills` |
 | Tempo (TIP-20, MPP, SDK, node) | `tempo` | `npx skills add https://github.com/tempoxyz/agent-skills --skill tempo` |
 | Hyperliquid trading / payments / Rust SDK | `hyperliquid-trading`, `hyperliquid-payments`, `hyperliquid-rust-sdk` | `npx skills add infinitefield/hypersdk` |
-| Zcash shielded wallet in the Box | `zcash` (this repo) | — |
+| Zcash shielded wallet in the Box | `zcash` (this repo, `.agents/skills/zcash`) | — |
 
 Repos with no skill but worth reading: `nktkas/hyperliquid` (TypeScript SDK the
 Hyperliquid venue uses), `solana-foundation/create-solana-dapp`,
 `zcash/zcash-devtool` (`doc/walkthrough.md`), `MeteoraAg/dynamic-bonding-curve-sdk`,
 `coinbase/x402`, `base/docs`, `tempoxyz/docs`.
 
-## Non-negotiables (from the spec, cite as `spec.md §W<n>`)
+## Non-negotiables (from `spec.md §2`, cite as `spec.md §WF<n>`; sessions are W0–W6 and never share the prefix)
 
-- W1 Every chain action is stage → owner approval → resolver. No Box-side signing
-  except the Zcash wallet, and that only with a single-use execution nonce from the
-  resolver.
-- W2 Testnet first: Hyperliquid testnet, Tempo Moderato (42431), Solana devnet, Zcash
-  testnet. Mainnet is a flag (`*_LIVE_ENABLED`), never a default.
-- W3 Credentials the user connects (HL API wallet key, CDP key) are sealed in
-  `trade_connections` / `provider_keys`; the Box and browser see a last-4 hint only.
-- W4 Every 402 settlement (x402 or MPP) is receipted before access; every agent-paid
-  charge is capped and receipted.
-- W5 Copy is "estimates, not advice"; previews say "estimated"; nothing says
-  "guaranteed".
+- WF1 Stage → approve → resolver, for every chain. No Box-callable route mutates a venue or chain; the only code that signs runs inside the decision resolver after the conditional `pending` flip. Zcash's Box-side `exec` is bounded by a control-plane wrap secret plus a single-use nonce (2-of-2).
+- WF2 Testnet first; mainnet is a flag (`HL_LIVE_ENABLED`, `TEMPO_LIVE_ENABLED`, `SOLANA_LIVE_ENABLED`, `ZCASH_LIVE_ENABLED`, all default false). The approval card always names the network.
+- WF3 Connected credentials are sealed in the control plane (`trade_connections.secret_sealed`, `user_chain_keys.secret_sealed`); write-only forms, last-4 hint, rotate = re-enter. Keys that are the user's alone (the Zcash identity) never leave the Box. A raw Tempo signer is testnet-only by construction.
+- WF4 Every 402 settlement is receipted before access (`x402_receipts` first-insert-wins on `jti`, then the paid session); every agent-paid charge is a `machine_payment` decision, pending_approval only, and receipted.
+- WF5 One pending money approval per user per lane: `trade_orders_pending_idx`; `wallet_transfers_pending_rail_idx` for non-base chain sends; `machine_payments_pending_idx`; `zcash_sends_pending_idx`. A second request is a 409 naming the pending one.
+- WF6 Exact, bound, expiring previews everywhere: trade preview tokens; server-written rows with `expires_at` whose `decision.ref` is the row id; the resolver re-reads and re-validates before submit.
+- WF7 Caps are the owner's, server-side, per rail (`pay_caps`, `lib/pay/caps.ts`); raising a cap is a `trade_settings` decision with `payload.lane`. Standing machine-payment budgets are out of this program.
+- WF8 Not from an unattended run: `lib/auth/origin.ts requireInteractiveRun` (fail-closed heuristic over `agent_runs`) on every propose route; crons only read, reconcile, expire, notify.
+- WF9 Not advice, not certain: "estimated", never "will"/"guaranteed"; receipts say "uncertain" for `submit_unknown`; formation copy never says "legal advice".
+
+## Program conventions you must follow
+
+- Commit subjects `R-WF-0<n>: …` (the `commit-ids` CI job rejects anything else on a PR).
+- Every new env var is an `OPTIONAL_ENV` row + lazy `env.<name>()` accessor in `apps/web/lib/env.ts`; modules never read `process.env`.
+- Pins: `viem@2.57.4` as a direct `apps/web` dependency (W0), `@nktkas/hyperliquid@0.33.3` (W1), `mppx@0.13.3` (W2), `@solana/kit` 5.5.x + kit-^5 program packages, no `@solana/pay` (W3).
+- Every chain send rides `createTransferRequest` → `run_approval` → `executeTransfer` via `PayRail.submitSend`; there is no `resolvePayment`.
+- `/pay` canonical forms: `/pay <amt> <ASSET> to <addr|@user> on <rail> [memo <text>]`, `/pay request <amt> <ASSET> on <rail> [memo <text>]`, `/pay <rail> balance`, `/pay <rail> address`, `/pay help`; anything else goes to the agent; `/zec …` is sugar for `/pay … zcash`.
+- Docs pages carry a visible `Status:` line under the H1; unshipped rows live under "What we document but do not ship yet".
+- The verified review and its ranked changes: `docs/worlds-fair/recommendations.md`.
