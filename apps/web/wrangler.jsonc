@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "airv2-app",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat", "enable_nodejs_process_v2"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    // The public origin this worker serves; must stay in sync with the
+    // app-switch UPSTREAM targets.
+    "AIR_PUBLIC_ORIGIN": "https://app.wzrd.tech",
+    // Upstream used by the create/freeze carve lanes until those move to a
+    // Node service or CF Container (spec: they need esbuild/ffmpeg/kit fs).
+    "UPSTREAM_VERCEL": "https://airv2.vercel.app"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
