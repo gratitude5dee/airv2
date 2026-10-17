@@ -20,7 +20,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { CaseTiming } from "./timing";
 import {
+  citedDecisionPrefixes,
   createSseParser,
+  draftRefTimeMs,
   loadCases,
   num,
   redact,
@@ -291,6 +293,8 @@ async function readRuns(
 }
 
 interface RawDecision {
+  id: string;
+  ref: string | null;
   kind: string;
   status: string;
   label: string | null;
@@ -300,30 +304,62 @@ interface RawDecision {
 }
 
 /**
- * Decisions created inside the run window. Only the shape is kept — payloads
- * hold draft bodies, contact handles, and refs, so we persist their keys and
- * drop the values (the scorer only needs kind/status).
+ * Decisions the run filed. Two corrections to the plain created_at window:
+ *
+ * - wzrdmail files an `email_draft` decision minutes after the draft itself,
+ *   so a timed-out case's drafts can land in the next case's window; a draft
+ *   whose ULID predates this window belongs to an earlier case and is dropped.
+ * - Staging routes reuse an open gate ("creates or reuses a pending
+ *   `shop_publish` decision"); a pending decision filed earlier that the reply
+ *   cites by id is the gate this run staged, kept with `reused: true`.
+ *
+ * Only the shape is kept — payloads hold draft bodies, contact handles, and
+ * refs, so we persist their keys and drop the values (the scorer only needs
+ * kind/status).
  */
 async function readDecisions(
   cfg: Config,
   windowStart: string,
-  windowEnd: string
+  windowEnd: string,
+  output: string
 ): Promise<DecisionRow[]> {
-  const rows = await supaSelect<RawDecision>(
-    cfg.supa,
-    "decisions",
-    `user_id=eq.${cfg.userId}&created_at=gte.${encodeURIComponent(windowStart)}` +
-      `&created_at=lt.${encodeURIComponent(windowEnd)}` +
-      `&select=kind,status,label,platform,created_at,payload&order=created_at.asc`
+  const cols = "id,ref,kind,status,label,platform,created_at,payload";
+  const startMs = Date.parse(windowStart);
+  const inWindow = (
+    await supaSelect<RawDecision>(
+      cfg.supa,
+      "decisions",
+      `user_id=eq.${cfg.userId}&created_at=gte.${encodeURIComponent(windowStart)}` +
+        `&created_at=lt.${encodeURIComponent(windowEnd)}` +
+        `&select=${cols}&order=created_at.asc`
+    )
+  ).filter((row) => {
+    const draftMs = draftRefTimeMs(row.ref);
+    return draftMs === null || draftMs >= startMs;
+  });
+  const cited = citedDecisionPrefixes(output);
+  const reused = cited.length
+    ? (
+        await supaSelect<RawDecision>(
+          cfg.supa,
+          "decisions",
+          `user_id=eq.${cfg.userId}&status=eq.pending` +
+            `&created_at=lt.${encodeURIComponent(windowStart)}` +
+            `&select=${cols}&order=created_at.asc`
+        )
+      ).filter((row) => cited.some((prefix) => row.id.startsWith(prefix)))
+    : [];
+  return [...inWindow.map((row) => ({ row, reused: false })), ...reused.map((row) => ({ row, reused: true }))].map(
+    ({ row, reused: wasReused }) => ({
+      ...(wasReused ? { reused: true } : {}),
+      kind: row.kind,
+      status: row.status,
+      label: row.label ? redact(row.label) : null,
+      platform: row.platform,
+      created_at: row.created_at,
+      payload_keys: row.payload ? Object.keys(row.payload).sort() : [],
+    })
   );
-  return rows.map((row) => ({
-    kind: row.kind,
-    status: row.status,
-    label: row.label ? redact(row.label) : null,
-    platform: row.platform,
-    created_at: row.created_at,
-    payload_keys: row.payload ? Object.keys(row.payload).sort() : [],
-  }));
 }
 
 async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
@@ -342,6 +378,9 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
     must_do: testCase.must_do,
     must_not_do: testCase.must_not_do,
     ...(testCase.may_clarify ? { may_clarify: true } : {}),
+    ...(testCase.allowed_decision_kinds?.length
+      ? { allowed_decision_kinds: testCase.allowed_decision_kinds }
+      : {}),
     ...(testCase.must_cite?.length ? { must_cite: testCase.must_cite } : {}),
     ...(testCase.group ? { group: testCase.group } : {}),
     window_start: windowStart,
@@ -389,7 +428,7 @@ async function runCase(cfg: Config, testCase: EvalCase): Promise<CaseResult> {
   let readError: string | null = null;
   try {
     windowRuns = await readRuns(cfg, windowStart, windowEnd);
-    decisions = await readDecisions(cfg, windowStart, windowEnd);
+    decisions = await readDecisions(cfg, windowStart, windowEnd, stream.output);
   } catch (error) {
     readError = redact(String(error));
   }

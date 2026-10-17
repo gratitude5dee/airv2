@@ -1,6 +1,6 @@
 ---
 name: meta-ads-confirm
-description: "Meta ads campaigns, budgets, audiences, pixel: staged writes"
+description: "Connect a Meta ad account (login + confirm); campaigns, budgets, audiences, pixel: staged writes"
 version: 1.0.0
 author: air
 license: MIT
