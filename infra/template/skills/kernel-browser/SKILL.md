@@ -1,6 +1,6 @@
 ---
 name: kernel-browser
-description: "Drive the owner's Kernel cloud browser for errands: create a session via air-kernel, relay CDP locally, use the normal browser_* tools"
+description: "Errands and travel on real sites (reorders, returns, order tracking, flights, trip changes): open the owner's Kernel cloud browser via air-kernel, relay CDP locally, use the normal browser_* tools"
 version: 1.0.0
 author: air
 license: MIT

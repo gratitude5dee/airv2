@@ -13,6 +13,13 @@
  *     growth-areas profile, indexed into OpenViking.
  *   - `~/.hermes/connected-tools.md` — left truthful: "Connected: nothing
  *     yet." (the seeded user has no OAuth integrations; nothing is faked).
+ *   - Leftovers from earlier suites are cleared so cases stay independent:
+ *     every enabled cron job is paused (past cases' watchers and sweeps file
+ *     drafts into later cases' windows), and skills the agent authored during
+ *     earlier runs move to `~/.hermes/skills-quarantine/<stamp>/` (a
+ *     run-authored `conditional-reminders` otherwise takes routing from
+ *     `calendar-native`). Kept: the baseline inventory
+ *     (`installed-skills.txt`), every template skill, and Hermes's bundled set.
  *
  * Usage:
  *
@@ -22,6 +29,8 @@
  * Box resolution: EVAL_BOX_ID if set, else the `boxes` row for EVAL_USER_ID.
  * Only ascii-provider boxes are seeded (tenki `tk_…` ids are not supported).
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { requireEnv, supaSelect, type Supa } from "./lib";
 
 const BOX_API = (process.env.BOX_API_BASE ?? "https://ascii.dev/api/box/v1").replace(/\/$/, "");
@@ -40,9 +49,10 @@ async function boxCmd(boxId: string, command: string, timeoutSeconds = 120): Pro
     exitCode?: number | null;
     stdout?: string;
     stderr?: string;
+    message?: string;
   };
   if (!res.ok) {
-    throw new Error(`box command failed (${res.status}): ${(body.stderr ?? "").slice(0, 400)}`);
+    throw new Error(`box command failed (${res.status}): ${(body.message ?? body.stderr ?? "").slice(0, 400)}`);
   }
   if (body.exitCode !== 0) {
     throw new Error(`box command exit ${body.exitCode}: ${(body.stderr ?? "").slice(0, 400)}`);
@@ -163,6 +173,53 @@ const ONAIROS_MD = `# Onairos — Luna
 - Doesn't log fan interactions — Juno's list is always stale.
 `;
 
+
+const SKILLS_DIR = join(new URL(".", import.meta.url).pathname, "../../infra/template/skills");
+
+/** Skill paths a clean eval box carries: the baseline inventory plus every template skill. */
+function keptSkills(): string[] {
+  const baseline = readFileSync(join(new URL(".", import.meta.url).pathname, "installed-skills.txt"), "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return [...baseline, ...readdirSync(SKILLS_DIR)];
+}
+
+const RESET_PY = String.raw`
+import json, os, shutil, subprocess, sys, time
+home = os.path.expanduser("~/.hermes")
+jobs = json.load(open(f"{home}/cron/jobs.json"))
+jobs = jobs.get("jobs", jobs) if isinstance(jobs, dict) else jobs
+for job in jobs:
+    if job.get("enabled"):
+        subprocess.run(["hermes", "cron", "pause", job["id"]], check=False, capture_output=True)
+        print("paused cron", job["id"], job.get("name"))
+keep = set(open(sys.argv[1]).read().split())
+try:
+    keep |= {line.split(":")[0] for line in open(f"{home}/skills/.bundled_manifest")}
+except FileNotFoundError:
+    pass
+root = f"{home}/skills"
+quarantine = f"{home}/skills-quarantine/{time.strftime('%Y%m%dT%H%M%S')}"
+for dirpath, dirnames, filenames in os.walk(root):
+    if "SKILL.md" not in filenames:
+        continue
+    dirnames.clear()
+    rel = os.path.relpath(dirpath, root)
+    if rel in keep or os.path.basename(rel) in keep:
+        continue
+    os.makedirs(os.path.dirname(f"{quarantine}/{rel}"), exist_ok=True)
+    shutil.move(dirpath, f"{quarantine}/{rel}")
+    print("quarantined skill", rel)
+`;
+
+async function resetLeftovers(boxId: string): Promise<void> {
+  await boxWriteFile(boxId, "/tmp/eval-kept-skills.txt", keptSkills().join("\n"));
+  await boxWriteFile(boxId, "/tmp/eval-reset.py", RESET_PY);
+  const out = await boxCmd(boxId, "PATH=$HOME/.local/bin:$PATH python3 /tmp/eval-reset.py /tmp/eval-kept-skills.txt");
+  console.log(`[seed] reset:\n${out.trim() || "(nothing to clear)"}`);
+}
+
 async function main(): Promise<void> {
   const userId = requireEnv("EVAL_USER_ID");
   const supa: Supa = {
@@ -171,6 +228,7 @@ async function main(): Promise<void> {
   };
   const boxId = process.env.EVAL_BOX_ID ?? (await resolveBoxId(supa, userId));
   console.log(`[seed] box ${boxId}`);
+  await resetLeftovers(boxId);
 
   // Calendar — six events through the canonical upsert path. Deterministic
   // `local:seed-*` ids make a re-seed idempotent (upsert, not duplicate).
@@ -202,7 +260,8 @@ async function main(): Promise<void> {
   const indexOut = await boxCmd(
     boxId,
     `ovctl add-resource ${HOME}/.hermes/context/onairos.md --to viking://resources/context/onairos 2>&1 || true`,
-    660
+    // The box API caps timeoutSeconds at 600.
+    600
   );
   console.log(`[seed] onairos.md indexed: ${indexOut.trim().slice(0, 120) || "(queued)"}`);
 

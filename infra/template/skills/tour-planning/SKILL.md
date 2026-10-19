@@ -1,6 +1,6 @@
 ---
 name: tour-planning
-description: "Tours, shows, venues, run-of-show, guest lists, logistics"
+description: "Tours, shows, tour ticket products, venues, run-of-show, guest lists, logistics"
 version: 1.0.0
 author: air
 license: MIT
