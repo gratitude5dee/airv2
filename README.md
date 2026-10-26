@@ -127,6 +127,7 @@ Air is designed around a simple rule: an agent that can access private informati
 - [Platform guide](docs/platform.md): deployment, lifecycle, channels, gateway, sandboxes, and security
 - [Project plan](goal.md): executable milestones
 - [Architecture](ARCHITECTURE.md): system design and rationale
+- [System map](docs/architecture/air-system-map.html): code-verified diagram of every component, eight mechanism figures, and image-model prompts ([PNG](docs/architecture/air-system-map.png), [prompts](docs/architecture/sunburst-prompt.md))
 - [Security decisions](SECURITY-DECISIONS.md): security posture and decisions
 - [Commerce](docs/commerce-zaps.md): storefront listings, approval, and Stripe Connect
 - [Trading plan](docs/trade/plan.md): approval-gated trading rails
