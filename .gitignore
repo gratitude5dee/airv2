@@ -36,3 +36,5 @@ apps/web/public/creator-os/trade-tape.js
 .open-next/
 .wrangler/
 .dev.vars
+# Cloudflare env values (secrets included) — template is apps/web/env.example.md
+apps/web/.env.airv2.md
