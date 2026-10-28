@@ -1,0 +1,80 @@
+# Appendix A — Route impact matrix
+
+> Part of the [Cloudflare migration spec](../cloudflare-migration.md).
+
+"Paid as-is" means the route works on Workers Paid once R-CF-01 (env) and R-CF-02 (entry) land, with no other code change. "Needs" lists the remaining items; R-CF-12 letters refer to its Deltas.
+
+The source lanes come from `classify:*`, which was written for the Free plan; they are re-rated here for Paid:
+- **No longer binding:** CPU (30 s default, up to 300 s), subrequests (10,000) and the number of cron triggers.
+- **Still binding:**
+  - gRPC (R-CF-03/05);
+  - native addons, runtime WASM compile, `child_process` and disk reads (R-CF-09/10, and R-CF-12 (m) for module-load crashes);
+  - `after()` work past 30 s (R-CF-04/06/08);
+  - crons (R-CF-11);
+  - 128 MB memory;
+  - IP and host headers (R-CF-12 (b), R-CF-02).
+
+Reachability of poison packages was recomputed from a fresh static import graph of HEAD: 14 entries reach sharp/heic, and 19 reach esbuild/tailwind. Admin rows come from reading `apps/web/app/api/admin/**` (37 routes). "tk_: no" means Tenki boxes fail until R-CF-05.
+
+| Route group / prefix | Paid as-is | Needs | Notes |
+|---|---|---|---|
+| `/`, `/login`, `/home`, `/approve/[id]`, `/studio/brand`, root layout | yes | — | Returned 200 in PR #522. Shells re-render per request (dummy cache kept). `/home` polls `/api/box/status` every 15 s (3 s in transitions, `app/home/page.tsx:257`) and `/api/decisions` every 60 s (`:387`). |
+| `/[handle]` (`/@username`) | no | R-CF-12 (m) | Static path to heic-convert: `lib/identity/assets.ts:15` → `heif.ts:9`. The page never converts, so the lazy import is enough. |
+| `/.well-known/wzrd-plugin.json`, `/api/plugin/auth/{start,token}` | yes | — | |
+| `public/**` (`/_next/static`, `/creator-os/*`, `/app-icons/*`, `/vendor/*`, `/*.sh`) | partial | R-CF-12 (i) | Served before the Worker on every host, with no middleware and no `next.config.ts` `headers()`. Needs `public/_headers`, and `vendor` must be reserved. |
+| Store: `/mini`, `/mini/store/[slug]`, `/mini/store/[slug]/agent.md`, `/mini/u/[username]`, `/mini/{llms.txt,robots.txt,sitemap.xml}`, `/mini/link`, `/api/store/{index.json,search}` | yes (verify) | R-CF-12 (n) | The PR #522 500s on `/mini` and `/api/store/search` were most likely env. On workerd, `validateEnv` only warns because runtime `NODE_ENV` is unset, so `required()` throws later inside `serviceClient()` while `/` still renders; confirm in (n). Do not enable Workers Cache (its key has no host). |
+| `/mini/{create,login,publish,publish/create}` | yes | R-CF-12 (n) | Client shells. On the main host, `/mini/create` hits the store-detail rewrite (`middleware.ts:133-141`); (n) adds the 308. |
+| `/mini/[app]` loader (GET/POST, every first-party slug) | no | R-CF-12 (b, m), R-CF-09, R-CF-03, R-CF-05, R-CF-06, R-CF-08 | `lib/miniapps/apps/index.ts` statically imports all renderers, so sharp (`identityThumb.ts:20`, `references.ts:7`) and heic crash every slug at load until (m). After that: thumbs, HEIC and the freeze stitch (`freeze.ts:1010,1219`, execFile ffmpeg) need R-CF-09; `after()` renders need R-CF-06/08; cards send over gRPC (R-CF-03). Guest IP at `route.ts:471-473`. |
+| `/mini/[app]/[...path]` | yes | — | Published bundle assets, one R2 GET each. |
+| `/mini/link/[slug]` | partial | R-CF-12 (b) | GET works. The POST checkout throttle (10/min per link and source, `limits.ts:333-354`) keys on `pairAttemptSource`. |
+| `/api/mini/{apps,checkout-launch,grant,install,launch,link,login,session,onairos/*,publish/earnings,publish/icon,publish/template}` | yes | — | `launch` dynamic-imports x402 (`lib/miniapps/gates.ts:232`) once per isolate (cold CPU only). |
+| `/api/mini/publish` | yes | — | A password PATCH runs `scryptSync` at N=16384 (~42 ms, 16 MiB); kept. |
+| `/api/mini/publish/bundle` | risky | R-CF-09 | A 25 MB zip plus up to 100 MB unpacked (`bundleLimits.ts:5-7`) inside a 128 MB isolate. |
+| `/api/mini/publish/status` | partial | R-CF-12 (m), R-CF-10, R-CF-05 | Statically imports esbuild/tailwind today. The draft path is light. Publish does per-file R2 GETs and a CF assets upload. `mirrorVersion` wakes compute when `CREATE_MIRROR_ENABLED` (`lib/create/config.ts:50`). |
+| `/api/mini/agent` | partial | R-CF-05 | Inline cold wake is fine while the client stays connected. `tk_` boxes fail. |
+| `/api/create/{build,compile}`, `/api/internal/create/build` | no | R-CF-10 | Native esbuild and Kit files read from disk (`build.ts:22`, `kit.ts:38`). The build is kept alive in `after()` (`build/route.ts:112`). |
+| `/api/create/icon` | no | R-CF-12 (m), R-CF-09, R-CF-10 | Statically reaches heic and the build graph. The sharp resize is a dynamic import (`lib/create/icon.ts:173`) that fails on call. |
+| `/api/create/{turn,turn/[runId]/stop,files,jobs/[id]/request}`, `/api/internal/create/turn` | no | R-CF-12 (m), R-CF-10, R-CF-05, R-CF-06, R-CF-07 | `turn.ts:63` reads the prompt with `readFileSync`. The internal turn's `after(consumeAndReport)` (`route.ts:172`) consumes a whole Hermes turn. It becomes a `run.finalize` deferral with R-CF-10's `create.turn_done` continuation (§2.5 C7). |
+| `/api/create/{drop,import,push,release,rollback,functions/approve,functions/kill}`, `/api/internal/create/{publish-dev,dev-expire}` | risky | R-CF-10, R-CF-09 | CPU and subrequests fit Paid (≤500 R2 PUTs). The risks are memory (25 MB zip, 100 MB unpacked) and `push` not being idempotent per (link, sha). The WfP lanes stay gated (`lib/functions/deploy.ts:74-80`). |
+| `/api/create/{finalize,progress,status}` | partial | R-CF-12 (m) | The hot path is DB-only; the static `build.ts` import (esbuild/tailwind, load-only, verify) becomes lazy in (m). |
+| `/api/create/plan/deliver`, `/api/internal/create/notify` | no | R-CF-03, R-CF-12 (m) (`plan/deliver`) | Spectrum gRPC send. |
+| `/api/create/events/[runId]` | yes | R-CF-07 | SSE relay. |
+| Other `/api/create/*` (`functions{,/rotate,/secrets}`, `github{,/connect,/setup,/repos}`, `go`, `intake`, `jobs/[id]{,/cancel,/retry,/live-token}`, `preview-link`, `projects`, `qa`, `qr`, `tier`), `/api/internal/create/{facts,tests}` | yes | R-CF-05, R-CF-12 (m) (`tests`) | `github/setup` is the GitHub App Setup URL (R-CF-14). |
+| `/api/chat` | no | R-CF-12 (m), R-CF-09, R-CF-08, R-CF-03 | Reaches heif via `lib/creative/store.ts:22`. `after(…)` at `route.ts:137,202` runs creative jobs of up to 420 s; R-CF-08 moves them to Workflow `creative-job` (§2.5 C9). |
+| `/api/{chat,desktop/chat,bots/[name]/chat}/[runId]/events` | yes | R-CF-07, R-CF-12 (j) | SSE relays, µs of CPU per frame. |
+| `/api/creative/[jobId]/events` | no | R-CF-12 (j, m), R-CF-07 | Statically imports heif. Polls every 1 s for up to 480 s (`route.ts:18-19,57`), and exits on disconnect only with `enable_request_signal`. |
+| `/api/chat/{[runId]/stop,upload}`, `/api/desktop/{chat,link,session,session/refresh}`, `/api/content/plan`, `/api/voice/transcribe`, `/api/assets/[id]` | yes | R-CF-05 (tk_) | |
+| `/api/bots`, `/api/bots/[name]/{avatar,chat,routines}`, `/api/bots/rooms` | partial | R-CF-05, R-CF-12 (m) (`rooms`) | Inline wakes and provisioning polls. `rooms` reaches heif and freeze through `lib/orchestrator/flush.ts`. |
+| `/api/bots/rooms/[id]/send` | partial | R-CF-12 (m), R-CF-06 | Multi-round Hermes SSE inline; a client disconnect cancels it. |
+| `/api/gateway/v1/[...path]` | yes | R-CF-07, R-CF-12 (a) | Boxes call `${APP_ORIGIN}/api/gateway/v1` (`lib/provisioning/provision.ts:909`), so the host must stay `app.wzrd.tech` (R-CF-14). The iMessage quick-ack call from `sharedBridge.ts:203` arrives through `SELF` → `Internal` with the real `app.wzrd.tech` host (§2.5 C1). Metering in `after()` is short. |
+| `/api/assets` (POST), `/api/media/{publish,upload-url}`, `/api/functions/media`, `/api/apps/v1/media-upload-url`, `/api/slots/[id]/publish` | risky | R-CF-09 | Buffers whole objects (50–100 MB) and computes sha256 and copies over them inside 128 MB. The presign legs are light. |
+| Box-backed: `/api/box/{[...path],desktop,stop,wake}`, `/api/computer/{keepawake,screenshot}`, `/api/calendar/**`, `/api/browser{,/fill}`, `/api/vault{,/[id]/reveal,/managers,/restart}`, `/api/skills`, `/api/onairos`, `/api/connectors`, `/api/crm/update`, `/api/functions/{actions,state}`, `/api/apps/v1/{action,state}`, `/api/settings/username`, `/api/me/{memory,memory/deep,agent-context,browser-profile,imessage-history,imessage-history/resolutions}`, `/api/me/traces/export` (`include=transcripts`), `/api/buzz/{intents,result}`, `/api/berd/{envelopes,result}`, `/api/ads/{accounts,groups}` (POST), `/api/ads/groups/[jobId]` | ascii: yes · tk_: no | R-CF-05, R-CF-12 (h, j) | Tenki exec/fs is gRPC. Inline cold wakes fit Paid. The `void` post-wake tasks in `boxes.ts` belong to R-CF-05. The `desktop.ts:16-17` promise caches are fixed in (h). `settings/username` calls same-zone `api.wzrd.tech` (needs the (j) flag). |
+| `/api/box/status`, `/api/computer/history`, `/api/vault/fill`, `/api/kernel/{action/[id],action/[id]/continue,browser}`, `/api/browser/social` | yes | — | |
+| Card senders: `/api/cards/**`, `/api/browser/{otp,purchase}`, `/api/kernel/vault` (POST), `/api/checkout/handoff` (PATCH), `/api/trade`, `/api/email/drafts/review`, `/api/muse/{notify,reply}` | no | R-CF-03 | Spectrum gRPC. Errors are swallowed, so the card is silently never sent. |
+| `/api/kernel/purchase` | partial | R-CF-12 (f), R-CF-03 | `lookup()` returns CNAME targets as addresses, so every CNAME-fronted merchant fails closed until (f). Regex-parsing 1–2 MB of HTML costs tens of ms (fine). The card send needs R-CF-03. |
+| `/api/approvals/[id]` | partial | R-CF-03, R-CF-05 | GET works. POST edits a card and wakes the box. |
+| `/api/approvals/[id]/intent` | yes | R-CF-12 (e) | Stripe PaymentIntents through the fetch client. |
+| `/api/decisions` | partial | R-CF-12 (m), R-CF-03, R-CF-05 | GET works once (m) makes the `build.ts` imports lazy; `/home` polls it every 60 s. POST resolves through cards, Stripe and the box. |
+| `/api/decisions/[id]`, `/api/wallet/**`, `/api/slots{,/[id]}`, `/api/mcp/{composio,masterkey,wzrdconnect}`, `/api/learning/**`, `/api/auth/{login,logout}`, `/api/commerce/shopify`, `/api/miniapps/commerce`, `/api/brand`, `/api/senders`, `/api/analytics/panels`, `/api/checkout/handoff` (GET/POST), `/api/{buzz,berd}/link` | yes | R-CF-12 (h) (`mcp/masterkey`) | `mcp/masterkey` uses the in-flight map at `masterkey/client.ts:29`. |
+| `/api/miniapps/publish` | partial | R-CF-12 (m) | DB-only hot path; the static graph loads `build.ts`. |
+| `/api/entity-refs` | no | R-CF-12 (m), R-CF-09 | Reaches heif via `lib/identity/entityRefs.ts:24` → `assets.ts:15`. HEIC uploads need R-CF-09. |
+| `/api/{buzz,berd}/pair` | no | R-CF-12 (b) | Every caller hashes to one source, so berd and buzz share one 20/h bucket (`limits.ts:62,307-329`). That is a global lockout: certain in proxy mode; verify the direct-CF header case. |
+| `/api/auth/signup` | partial | R-CF-05, R-CF-03 (verify) | Minutes of inline provisioning polls; fine while the client stays connected. |
+| `/api/me`, `/api/me/traces`, `/api/muse/{keys,keys/[id],keys/verify,profile,pulls,settings,otp/start}`, `/api/settings/{home-order,model,plugins,speed,storage}` | yes | — | Tenki is import-only (via `lib/settings/account.ts:13`), and it loads fine on workerd. |
+| `/api/muse/air/[capability]` | partial | R-CF-05, R-CF-07, R-CF-12 (f) | `run` cold-wakes inline. `after(observeMuseRun…, 14)` (`route.ts:39`) calls `ensureBoxAwake` again before up to 14 s of SSE, so on a cold box it can exceed 30 s. R-CF-06 moves it to `run.finalize` (R-CF-07, §2.5 C7). File downloads go through `lookup()` (`lib/muse/capabilities.ts:133-136`). |
+| `/api/muse/{grants,link}` | partial | R-CF-06, R-CF-05, R-CF-12 (j) | `after(writeConnectedToolsFile)` (`grants/route.ts:37`) cold-wakes for more than 30 s. `link` DELETE fetches same-zone `muse.wzrd.tech`. |
+| `/api/muse/{otp/complete,wzrdmail/complete}` | partial | R-CF-05, R-CF-03 | New-user provisioning runs inline. |
+| `/api/ads/{accounts,groups}` (GET), `/api/ads/{analytics,conversions,meta/confirm,metrics,pixels,writes}` | yes | — | |
+| `/api/cron/*` (8: `ad-metrics`, `ads`, `health`, `publish`, `schedules`, `sources`, `sweep`, `trade`) | no | R-CF-11, R-CF-12 (m) (`sweep`, `schedules`), R-CF-03, R-CF-04, R-CF-05 | No trigger on Cloudflare yet. R-CF-11 calls these routes from `scheduled()` through `SELF` → `Internal` with the cron bearer, whatever the hosting target (§2.5 C1, C13). `sweep` and `schedules` reach heif and freeze statically. `publish`, `schedules`, `sweep` and `trade` send over gRPC. Fleet-sync waves advance inside `sweep`. Vercel crons have been down since about Oct 11. So R-CF-11's backlog triage, which the owner approves, runs before the first `cron_host=cloudflare` flip (§2.5 C13, C22). |
+| `/api/inbound/imessage` | no | R-CF-04, R-CF-03, R-CF-12 (a, m), R-CF-09 | Debounced flush in `after()` (`route.ts:463`), gRPC warm-up and fast reaction, and the self-fetch via `initialResponse` (`:445`). heif crashes at load until (m), and iPhone HEIC attachments need R-CF-09. |
+| `/api/inbound/{email,calcom}` | no | R-CF-06, R-CF-05, R-CF-12 (m) (`email`) | `after()` at `email/route.ts:91` and `calcom/route.ts:98` runs Hermes SSE and cold wakes. `email` reaches heif and freeze. |
+| `/api/inbound/github` | partial | R-CF-10, R-CF-06, R-CF-09 | Installation events work. The push sync runs inline (`route.ts:168,248`; zipball ≤50 MB, ≤200 MB unpacked). GitHub drops the connection at about 10 s, which cancels inline work on Workers (verify), so move it to `defer()`. |
+| `/api/inbound/stripe` | yes | R-CF-12 (e) | The node build is bundled, so sync verify works today. (e) moves it to `constructEventAsync` and the fetch client. |
+| Admin, light (23): `/api/admin/{ads,audit,boxes (GET),connectors,costs,create,create/health,create/jobs,deliveries,export,feedback,fleet/channels,fleet/releases,learning,logs,onboarding,ops,publish-pause,settings,timeseries,tokens,traces,users}` | yes | — | Stripe, Spectrum and Tenki are import-only. `traces` has `after(mirrorReceipts)` (`route.ts:84`), dormant without `WANDB_API_KEY`. `fleet/releases` stores the tarball in R2 (`lib/fleet/releases.ts:62`). |
+| `/api/admin/deployments` | partial | R-CF-12 (c, m) | `control_plane` is null on Cloudflare (`route.ts:214-216`) until (c) reads `AIR_BUILD_SHA` (§2.5 C5). Statically imports `lib/create/build` (`route.ts:12`). |
+| `/api/admin/create/apps/[slug]/suspend` | partial | R-CF-12 (m) | Statically reaches build and css (esbuild/tailwind). The CF API calls work. |
+| `/api/admin/create/apps/[slug]/dev` | n/a | — | WfP dev lane, gated off (`lib/functions/deploy.ts:74-80`). |
+| `/api/admin/{boxes/relabel,boxes/reprovision,boxes/stop-idle,provision,mailboxes/ensure,fleet/sync,health,delete}` | ascii: yes · tk_: no | R-CF-05, R-CF-11 (`fleet/sync`) | Inline provisioning and wake polls (≤240 s; `maxDuration` 300) fit Paid while the admin caller holds the connection. `fleet/sync` only starts or pauses jobs; `/api/cron/sweep` advances them. `delete` runs the M8 deletion cascade. Its table lists come from `lib/security/c18.ts`, whose `__dirname` use (`:12-15`) is safe. R-CF-09 adds private thumbs to the cascade. |
+| `/api/admin/boxes/ensure` | partial | R-CF-05, R-CF-03 | Sends the welcome iMessage and onboarding card after provisioning. |
+| `/api/admin/{entity-refs,migrations}` | no | R-CF-12 (m), R-CF-09, R-CF-05, R-CF-06 | heif at module load (`entity-refs` via `lib/creative/store`; `migrations` also reaches freeze). Migration ops are long (`maxDuration` 800). |
+| middleware (every request) | partial | R-CF-02, R-CF-12 (b) | Host comes from `host` (`middleware.ts:56`). That is fine on Custom Domains and for `SELF` calls, which keep the real public host (§2.5 C1). `lib/http/origin.ts` trusts `x-forwarded-host`, which clients can set on Cloudflare; R-CF-02 fixes that with `trustedOriginHost` (`lib/http/edge.ts`, §2.5 C11). Proxy mode needs the trusted origin host and `x-air-client-ip`: R-CF-02 sets the header, and (b) strips client copies and reads it. |
