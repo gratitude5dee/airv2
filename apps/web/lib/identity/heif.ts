@@ -5,8 +5,27 @@
  * signed previews, generation references) stays a plain JPEG. heic-convert
  * decodes via libheif compiled to WASM: no native binding, runs on any
  * server runtime.
+ *
+ * Imported lazily: libheif instantiates WASM at module evaluation, which
+ * edge runtimes (workerd) forbid via new WebAssembly.Module — a static
+ * import would 500 every route in its import graph. The dynamic import
+ * confines the failure to actual HEIC decode calls; runtimes without WASM
+ * compile still reject, scoped to the one upload/command.
  */
-import convert from "heic-convert";
+type Convert = (opts: {
+  buffer: Uint8Array | ArrayBuffer;
+  format: "JPEG" | "PNG";
+  quality?: number;
+}) => Promise<ArrayBuffer>;
+
+let convertPromise: Promise<Convert> | undefined;
+
+function loadConvert(): Promise<Convert> {
+  convertPromise ??= import("heic-convert").then(
+    (m) => (m.default ?? m) as unknown as Convert
+  );
+  return convertPromise;
+}
 
 const HEIF_TYPES = new Set([
   "image/heic",
@@ -44,6 +63,7 @@ export function isHeif(contentType: string, bytes?: Buffer): boolean {
 /** Decode a HEIF buffer and re-encode as JPEG (metadata does not survive
  * the decode; the jpeg still runs through the media guard afterwards). */
 export async function heifToJpeg(bytes: Buffer, quality = 0.9): Promise<Buffer> {
+  const convert = await loadConvert();
   const out = await convert({ buffer: bytes, format: "JPEG", quality });
   return Buffer.from(out);
 }
@@ -53,6 +73,7 @@ export async function heifToJpeg(bytes: Buffer, quality = 0.9): Promise<Buffer> 
  * still). Slower and larger than the JPEG path; use only when the format
  * matters. */
 export async function heifToPng(bytes: Buffer): Promise<Buffer> {
+  const convert = await loadConvert();
   const out = await convert({ buffer: bytes, format: "PNG" });
   return Buffer.from(out);
 }
