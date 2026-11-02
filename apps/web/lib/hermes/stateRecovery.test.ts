@@ -1,4 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { command } from "../box/client";
@@ -12,13 +15,41 @@ afterEach(() => vi.clearAllMocks());
 // command, which Python's sqlite3 module does not expose. Keep them active on
 // developer/production-like hosts with the CLI, and make its absence an
 // explicit capability skip rather than a false product regression in CI.
-const hasSqliteRecoveryCli = spawnSync(
-  "sqlite3",
-  [":memory:", ".recover --ignore-freelist"],
-  {
-  stdio: "ignore",
+// Some CLI builds accept `.recover` yet emit SQL that does not replay cleanly
+// (e.g. Ubuntu-packaged builds whose replay exits nonzero on the FTS5
+// sqlite_sequence DDL while still producing a healthy database), so the probe
+// must verify the full salvage round-trip, not merely that `.recover` exits 0.
+const hasSqliteRecoveryCli = (() => {
+  const dir = mkdtempSync(join(tmpdir(), "sqlite-recovery-probe-"));
+  try {
+    const source = join(dir, "source.db");
+    const recovered = join(dir, "recovered.db");
+    const schema = [
+      "CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT);",
+      "INSERT INTO t(content) VALUES ('probe');",
+      "CREATE VIRTUAL TABLE t_fts USING fts5(content, content=t, content_rowid=id);",
+      "INSERT INTO t_fts(t_fts) VALUES ('rebuild');",
+    ].join(" ");
+    if (spawnSync("sqlite3", [source, schema], { stdio: "ignore" }).status !== 0) {
+      return false;
+    }
+    const recover = spawnSync(
+      "sqlite3",
+      [source, ".recover --ignore-freelist"],
+      { encoding: "buffer", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 32 * 1024 * 1024 }
+    );
+    if (recover.status !== 0 || !recover.stdout?.length) {
+      return false;
+    }
+    const restore = spawnSync("sqlite3", [recovered], {
+      input: recover.stdout,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    return restore.status === 0;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-).status === 0;
+})();
 
 describe("operator recovery authorization", () => {
   function registry(value: unknown) {
