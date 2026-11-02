@@ -4,8 +4,8 @@
  * contact sheet that lets the current one-image edit backend see every
  * chosen viewpoint at once.
  */
-import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadSharp } from "../imaging/sharp";
 import type { CreativeAsset } from "../assets/pipeline";
 import { ingestUploadedMedia } from "../creative/store";
 import {
@@ -204,6 +204,7 @@ export async function composeReferenceSheet(
   ) {
     throw new Error("invalid reference count");
   }
+  const sharp = await loadSharp();
   const cell = 512;
   const columns = photos.length === 1 ? 1 : photos.length <= 4 ? 2 : 3;
   const rows = Math.ceil(photos.length / columns);

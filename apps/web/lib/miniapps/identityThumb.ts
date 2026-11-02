@@ -17,8 +17,8 @@
  * same as an unknown one — no new authorization surface, no path or storage
  * key ever reaches the client.
  */
-import sharp from "sharp";
 import { NextResponse } from "next/server";
+import { loadSharp } from "../imaging/sharp";
 import {
   downloadIdentityAsset,
   listIdentityAssets,
@@ -72,6 +72,7 @@ export async function serveIdentityThumb(
 
   let resized: Buffer;
   try {
+    const sharp = await loadSharp();
     resized = await sharp(bytes)
       .rotate()
       .resize(width, width, { fit: "cover" })
