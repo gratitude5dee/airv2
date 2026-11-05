@@ -100,6 +100,27 @@ export async function setChannelTemplateBox(
   if (error) {
     throw new FleetError(`channel update failed: ${error.message}`, 500);
   }
+  // Keep the ubuntu/hermes env-template pointer in sync: seeded rows win over
+  // the channel fallback in registeredTemplate, so a stale row silently forks
+  // a dead template even after this channel pointer moves.
+  const { error: envError } = await supabase
+    .from("box_environment_templates")
+    .upsert(
+      {
+        channel: name,
+        environment: "ubuntu",
+        harness: "hermes",
+        template_ref: templateBoxId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "channel,environment,harness" }
+    );
+  if (envError) {
+    throw new FleetError(
+      `environment template sync failed: ${envError.message}`,
+      500
+    );
+  }
 }
 
 /**
