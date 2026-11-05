@@ -55,6 +55,7 @@ req = urllib.request.Request(
     data=body,
     headers={
         "Authorization": f"Bearer {os.environ['RELEASE_KEY']}",
+        "X-Admin-Operator": os.environ.get("ADMIN_OPERATOR", "devin"),
         "Content-Type": "application/json",
     },
 )
