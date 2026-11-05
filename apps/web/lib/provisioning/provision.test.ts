@@ -120,7 +120,7 @@ const boxCommand = vi.fn(async (_id: string, cmd: string) => {
     return {
       exitCode: 0,
       stdout:
-        "https://box-8642.on.ascii.dev?_token=aa11\nhttps://box-9119.on.ascii.dev?_token=bb22\n",
+        "https://box-8642.on.boat.dev?_token=aa11\nhttps://box-9119.on.boat.dev?_token=bb22\n",
       stderr: "",
     };
   }
@@ -134,7 +134,7 @@ vi.mock("../box/client", () => ({
     const result = await boxCommand(boxId, `/.ascii/host url ${port}`);
     const line = result.stdout
       .split("\n")
-      .find((candidate) => candidate.includes(`-${port}.on.ascii.dev`));
+      .find((candidate) => candidate.includes(`-${port}.on.boat.dev`));
     const [url = "", token = ""] = (line ?? "").split("?_token=");
     return { url, token };
   },
@@ -548,7 +548,7 @@ describe("provisionUser harnesses", () => {
     );
     expect(upsertsFor("boxes")?.[0]).toMatchObject({
       harness: "hermes",
-      dashboard_url: "https://box-9119.on.ascii.dev",
+      dashboard_url: "https://box-9119.on.boat.dev",
     });
     expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
@@ -608,7 +608,7 @@ describe("provisionUser harnesses", () => {
     expect(upsertsFor("boxes")?.[0]).toMatchObject({
       harness: "exo",
       environment: "ubuntu",
-      hosted_url: "https://box-8642.on.ascii.dev",
+      hosted_url: "https://box-8642.on.boat.dev",
       dashboard_url: null,
       dashboard_token: null,
     });

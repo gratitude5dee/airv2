@@ -26,8 +26,6 @@ export const REQUIRED_ENV = [
   "ADMIN_API_KEY",
   "AGENTMAIL_API_KEY",
   "AGENTMAIL_WEBHOOK_SECRET",
-  "BOX_API_KEY",
-  "BOX_TEMPLATE_ID",
   "COMPOSIO_API_KEY",
   "COMMAND_LANE_KEY",
   "MASTERKEY_PARTNER_SECRET",
@@ -50,6 +48,9 @@ export const REQUIRED_ENV = [
  * ANY member — e.g. STT_API_KEY and OPENROUTER_API_KEY both fall back to
  * MODEL_PROVIDER_API_KEY, so requiring each member would over-ask. */
 export const REQUIRED_GROUPS: readonly (readonly [string, ...string[]])[] = [
+  // Box→boat rename: either spelling satisfies the accessor.
+  ["BOX_API_KEY", "BOAT_API_KEY"],
+  ["BOX_TEMPLATE_ID", "BOAT_TEMPLATE_ID"],
   ["MODEL_PROVIDER_API_KEY", "OPENROUTER_API_KEY", "STT_API_KEY"],
   ["MODEL_PROVIDER_BASE_URL", "OPENROUTER_BASE_URL", "STT_BASE_URL"],
 ];
@@ -64,6 +65,8 @@ export const OPTIONAL_ENV = [
   "APPS_ORIGIN_SUFFIX",
   "APP_ORIGIN",
   "APP_ORIGIN_SIGNING_KEY",
+  "BOAT_API_BASE",
+  "BOAT_DASHBOARD_AUTH_KEY",
   "BOX_API_BASE",
   "BOX_DASHBOARD_AUTH_KEY",
   "BOX_READY_TIMEOUT_MS",
@@ -285,11 +288,18 @@ export function validateEnv(
 }
 
 export const env = {
-  boxApiKey: (): string => required("BOX_API_KEY"),
+  // Box is now boat (boat.dev); the BOAT_* spellings are canonical and the
+  // legacy BOX_* vars stay accepted so existing secrets keep working.
+  boxApiKey: (): string =>
+    process.env["BOAT_API_KEY"] ?? required("BOX_API_KEY"),
   boxApiBase: (): string =>
-    optional("BOX_API_BASE", "https://ascii.dev/api/box/v1"),
-  boxTemplateId: (): string => required("BOX_TEMPLATE_ID"),
-  // How long fork/resume waits for an ascii.dev box to report ready/idle.
+    optional(
+      "BOAT_API_BASE",
+      optional("BOX_API_BASE", "https://boat.dev/api/v1"),
+    ),
+  boxTemplateId: (): string =>
+    process.env["BOAT_TEMPLATE_ID"] ?? required("BOX_TEMPLATE_ID"),
+  // How long fork/resume waits for a boat sandbox to report ready/idle.
   // Forks of an archived template restore from cold storage and have taken
   // over four minutes; a deployment can raise this up to its route budget.
   boxReadyTimeoutMs: (): number => {
@@ -520,7 +530,9 @@ export const env = {
   // unset, provisioning skips persisting the credential and the dashboard
   // proxy paths return 503.
   boxDashboardAuthKey: (): string | null =>
-    process.env["BOX_DASHBOARD_AUTH_KEY"] ?? null,
+    process.env["BOAT_DASHBOARD_AUTH_KEY"] ??
+    process.env["BOX_DASHBOARD_AUTH_KEY"] ??
+    null,
   // Compute migrations (Box <-> Tenki). Disabled by default: the schema and
   // gating ship dark, and prepare/cutover refuse until enabled.
   migrationEnabled: (): boolean =>

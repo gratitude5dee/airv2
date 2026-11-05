@@ -24,14 +24,14 @@
  */
 import { requireEnv, supaSelect, type Supa } from "./lib";
 
-const BOX_API = (process.env.BOX_API_BASE ?? "https://ascii.dev/api/box/v1").replace(/\/$/, "");
+const BOX_API = (process.env.BOX_API_BASE ?? "https://boat.dev/api/v1").replace(/\/$/, "");
 const BOX_KEY = requireEnv("BOX_API_KEY");
 
 // ---------------------------------------------------------------- box REST
 
 /** Run a shell command on the box through the ascii control plane. */
 async function boxCmd(boxId: string, command: string, timeoutSeconds = 120): Promise<string> {
-  const res = await fetch(`${BOX_API}/boxes/${boxId}/commands`, {
+  const res = await fetch(`${BOX_API}/sandboxes/${boxId}/commands`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${BOX_KEY}` },
     body: JSON.stringify({ command, timeoutSeconds }),
@@ -51,7 +51,7 @@ async function boxCmd(boxId: string, command: string, timeoutSeconds = 120): Pro
 }
 
 async function boxWriteFile(boxId: string, path: string, content: string): Promise<void> {
-  const res = await fetch(`${BOX_API}/boxes/${boxId}/files`, {
+  const res = await fetch(`${BOX_API}/sandboxes/${boxId}/files`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${BOX_KEY}` },
     body: JSON.stringify({ path, content }),

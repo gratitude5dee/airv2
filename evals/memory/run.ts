@@ -158,7 +158,7 @@ async function findOnBox(
     `rows=c.find(q, limit=${RESULTS_LIMIT})`,
     "print(json.dumps([r.get('uri') for r in (rows if isinstance(rows,list) else rows.get('results',[]))]))",
   ].join("; ");
-  const res = await fetch(`${cfg.boxApiBase}/boxes/${boxId}/commands`, {
+  const res = await fetch(`${cfg.boxApiBase}/sandboxes/${boxId}/commands`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${cfg.boxApiKey}`,

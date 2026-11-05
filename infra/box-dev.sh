@@ -20,7 +20,7 @@
 # Keep BOX_API_KEY on your machine. Never put it in the box's env.
 set -euo pipefail
 
-BASE="${BOX_API_BASE:-https://ascii.dev/api/box/v1}"
+BASE="${BOX_API_BASE:-https://boat.dev/api/v1}"
 BOX="${BOX_DEV_ID:?set BOX_DEV_ID to the box id}"
 KEY="${BOX_DEV_SSH_KEY:-$HOME/.ssh/codex_box_ed25519}"
 # Seconds of headroom the TTL is pushed to on every keepalive tick. The box
@@ -28,10 +28,10 @@ KEY="${BOX_DEV_SSH_KEY:-$HOME/.ssh/codex_box_ed25519}"
 TTL="${BOX_DEV_IDLE_TTL:-3600}"
 auth=(-H "Authorization: Bearer ${BOX_API_KEY:?set BOX_API_KEY}" -H "Content-Type: application/json")
 
-get() { curl -sS "${auth[@]}" "$BASE/boxes/$BOX"; }
-field() { python3 -c 'import sys,json;print(json.load(sys.stdin)["box"].get(sys.argv[1]) or "")' "$1"; }
+get() { curl -sS "${auth[@]}" "$BASE/sandboxes/$BOX"; }
+field() { python3 -c 'import sys,json;print(json.load(sys.stdin)["sandbox"].get(sys.argv[1]) or "")' "$1"; }
 
-extend() { curl -sS -X PATCH "${auth[@]}" "$BASE/boxes/$BOX" -d "{\"ttlSeconds\":$TTL}" >/dev/null; }
+extend() { curl -sS -X PATCH "${auth[@]}" "$BASE/sandboxes/$BOX" -d "{\"ttlSeconds\":$TTL}" >/dev/null; }
 
 # Is a local process holding an SSH connection to the box right now? macOS has
 # lsof, Linux boxes may only have ss; netstat prints host.port, not host:port.
@@ -61,13 +61,13 @@ case "${1:-status}" in
   up)
     state=$(get | field state)
     case "$state" in
-      archived|archiving|stopped) curl -sS -X POST "${auth[@]}" "$BASE/boxes/$BOX/resume" -d "{\"ttlSeconds\":$TTL}" >/dev/null ;;
+      archived|archiving|stopped) curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$BOX/resume" -d "{\"ttlSeconds\":$TTL}" >/dev/null ;;
     esac
     wait_ready
     extend
     # authorized_keys rides the snapshot, but re-posting is idempotent and
     # covers a box restored from an older snapshot.
-    curl -sS -X POST "${auth[@]}" "$BASE/boxes/$BOX/sshkey" \
+    curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$BOX/sshkey" \
       -d "$(python3 -c 'import json,sys;print(json.dumps({"key":open(sys.argv[1]).read().strip()}))' "$KEY.pub")" >/dev/null
     echo "user@$(get | field ip)"
     ;;
@@ -82,13 +82,13 @@ case "${1:-status}" in
     ;;
   down)
     # Never force: a refused stop means the snapshot is failing (C6).
-    curl -sS -X POST "${auth[@]}" "$BASE/boxes/$BOX/stop" >/dev/null
+    curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$BOX/stop" >/dev/null
     for _ in $(seq 1 60); do
       state=$(get | field state)
       [ "$state" = "archived" ] && break
       sleep 5
     done
     echo "$state" ;;
-  status) get | python3 -c 'import sys,json;b=json.load(sys.stdin)["box"];print(b["state"], b.get("ip") or "-", "archiveAfter="+str(b.get("archiveAfter")), "snapshot="+str(b.get("lastSnapshotStatus")))' ;;
+  status) get | python3 -c 'import sys,json;b=json.load(sys.stdin)["sandbox"];print(b["state"], b.get("ip") or "-", "archiveAfter="+str(b.get("archiveAfter")), "snapshot="+str(b.get("lastSnapshotStatus")))' ;;
   *) echo "unknown command: $1" >&2; exit 2 ;;
 esac

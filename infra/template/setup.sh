@@ -148,7 +148,8 @@ YAML
 # Enumerate gateway.config.Platform ∪ plugins/platforms/*/ and append
 # `enabled: false` for every adapter except api_server. Build FAILS if
 # generation fails (set -e) or produces an implausibly small set.
-TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# TEMPLATE_DIR is fixed at the top — re-deriving it here breaks after the
+# cd into hermes-agent when the script is invoked as `bash setup.sh`.
 "$HERMES_VENV/bin/python" "$TEMPLATE_DIR/generate_platforms.py" \
   --hermes-repo "$HOME_DIR/hermes-agent" \
   --config "$HOME_DIR/.hermes/config.yaml"

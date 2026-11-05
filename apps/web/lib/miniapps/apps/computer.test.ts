@@ -44,7 +44,7 @@ describe("computer mini-app live embed", () => {
     expect(html).not.toContain("data-stream-origin");
     expect(html).not.toContain("?embed=1");
     const csp = res.headers.get("Content-Security-Policy") ?? "";
-    expect(csp).toContain("frame-src 'self' https://*.on.ascii.dev");
+    expect(csp).toContain("frame-src 'self' https://*.on.boat.dev https://*.on.ascii.dev");
     // The embedded viewer needs autoplay (video won't start in an iframe
     // without it). Rendering the shell no longer mints a second desktop URL.
     expect(html).toContain('allow="autoplay; fullscreen');
