@@ -67,7 +67,7 @@ export type DesktopStreamResult =
 
 /**
  * Wake the user's own box (never fork a new one) and request a fresh
- * desktop stream URL via POST /boxes/{id}/desktop. Fetched fresh per view —
+ * desktop stream URL via POST /sandboxes/{id}/desktop. Fetched fresh per view —
  * never persisted — because the token component rotates with the box
  * lifecycle. `vnc` requests the HTTPS-tunneled noVNC viewer for restrictive
  * networks; it must open as a top-level page, not embedded.

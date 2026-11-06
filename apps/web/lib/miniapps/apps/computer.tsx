@@ -158,7 +158,7 @@ export const computer: MiniAppModule = {
     if (embed) {
       // The iframe src is same-origin, but CSP re-checks the redirect
       // destination, so the desktop host must be allowed under frame-src.
-      csp += "; frame-src 'self' https://*.on.ascii.dev";
+      csp += "; frame-src 'self' https://*.on.boat.dev https://*.on.ascii.dev";
     }
     response.headers.set("Content-Security-Policy", csp);
     return response;

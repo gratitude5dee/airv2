@@ -1,7 +1,7 @@
 /**
  * Web session tokens (M6). HS256 JWT signed with SESSION_SECRET, carried in
  * an httpOnly cookie. The browser never sees hosted_token, API_SERVER_KEY,
- * or any *.on.ascii.dev URL (C3/C16) — this cookie maps to user_id only.
+ * or any hosted *.on.boat.dev/*.on.ascii.dev URL (C3/C16) — this cookie maps to user_id only.
  *
  * R-SEC-07: every issued token names a `sessions` row (`sid`). The JWT is
  * still self-verifying for shape and expiry, but a session is live only

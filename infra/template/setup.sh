@@ -148,7 +148,8 @@ YAML
 # Enumerate gateway.config.Platform ∪ plugins/platforms/*/ and append
 # `enabled: false` for every adapter except api_server. Build FAILS if
 # generation fails (set -e) or produces an implausibly small set.
-TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# TEMPLATE_DIR is fixed at the top — re-deriving it here breaks after the
+# cd into hermes-agent when the script is invoked as `bash setup.sh`.
 "$HERMES_VENV/bin/python" "$TEMPLATE_DIR/generate_platforms.py" \
   --hermes-repo "$HOME_DIR/hermes-agent" \
   --config "$HOME_DIR/.hermes/config.yaml"
@@ -434,7 +435,7 @@ echo "HERMES_WEB_DIST=$HOME_DIR/.hermes/web_dist" >> "$HOME_DIR/.hermes/.env"
 # Plugin API routes mount once at dashboard startup; a rescan will not pick up
 # a new plugin_api.py — a plugin version bump means a template rebuild plus a
 # documented re-fork or restart window (docs/creative-plugin.md).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$TEMPLATE_DIR"
 mkdir -p "$HOME_DIR/.hermes/plugins"
 rm -rf "$HOME_DIR/.hermes/plugins/creative"
 cp -r "$SCRIPT_DIR/plugins/creative" "$HOME_DIR/.hermes/plugins/creative"
@@ -576,7 +577,7 @@ EOF
 # Every unit the box runs is also started here: a Tenki template is a memory
 # snapshot of this VM, so a fork never boots and only what is already running
 # is running in the box.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$TEMPLATE_DIR"
 sudo cp "$SCRIPT_DIR"/hermes-gateway.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-dashboard.service /etc/systemd/system/
 sudo cp "$SCRIPT_DIR"/hermes-host.service /etc/systemd/system/

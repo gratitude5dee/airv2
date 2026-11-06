@@ -13,7 +13,7 @@ import {
 } from "./history";
 
 export interface HermesBoxTarget {
-  /** e.g. https://<sub>-8642.on.ascii.dev — SECRET-adjacent, server-side only */
+  /** e.g. https://<sub>-8642.on.boat.dev — SECRET-adjacent, server-side only */
   hostedUrl: string;
   hostedToken: string;
   apiServerKey: string;

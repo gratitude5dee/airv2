@@ -55,6 +55,9 @@ req = urllib.request.Request(
     data=body,
     headers={
         "Authorization": f"Bearer {os.environ['RELEASE_KEY']}",
+        "X-Admin-Operator": os.environ.get("ADMIN_OPERATOR", "devin"),
+        # Cloudflare Bot Fight blocks the default Python-urllib UA (error 1010).
+        "User-Agent": "airv2-release/1.0",
         "Content-Type": "application/json",
     },
 )

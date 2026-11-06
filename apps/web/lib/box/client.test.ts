@@ -151,7 +151,7 @@ describe("provider dispatch", () => {
     );
     await getBox("bx_1");
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/boxes/bx_1");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/sandboxes/bx_1");
   });
 
   it("maps an ascii command the provider killed at timeout to exit 124", async () => {
@@ -182,20 +182,20 @@ describe("provider dispatch", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("hostRoute on ascii runs the host command and parses the tokened URL", async () => {
+  it("hostRoute on boat runs the host command and parses the tokened URL", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           exitCode: 0,
           stdout:
-            "https://abc-9119.on.ascii.dev?_token=ff00\nhttps://abc-8642.on.ascii.dev?_token=aa11\n",
+            "https://abc-9119.on.boat.dev?_token=ff00\nhttps://abc-8642.on.boat.dev?_token=aa11\n",
           stderr: "",
         }),
         { status: 200, headers: { "content-type": "application/json" } }
       )
     );
     const route = await hostRoute("bx_1", 8642);
-    expect(route).toEqual({ url: "https://abc-8642.on.ascii.dev", token: "aa11" });
+    expect(route).toEqual({ url: "https://abc-8642.on.boat.dev", token: "aa11" });
     const body = JSON.parse(
       String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)
     ) as { command: string };
@@ -207,13 +207,19 @@ describe("provider dispatch", () => {
 
   it("parseAsciiHostedUrl fails loudly when the port is absent", () => {
     expect(() =>
-      parseAsciiHostedUrl("https://abc-9119.on.ascii.dev?_token=ff00\n", 8642)
+      parseAsciiHostedUrl("https://abc-9119.on.boat.dev?_token=ff00\n", 8642)
     ).toThrow(BoxApiError);
+  });
+
+  it("parseAsciiHostedUrl still accepts the legacy on.ascii.dev spelling", () => {
+    expect(
+      parseAsciiHostedUrl("https://abc-8642.on.ascii.dev?_token=aa11", 8642)
+    ).toEqual({ url: "https://abc-8642.on.ascii.dev", token: "aa11" });
   });
 });
 
-function boxResponse(box: Record<string, unknown>): Response {
-  return new Response(JSON.stringify({ box }), {
+function boxResponse(sandbox: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ sandbox }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
@@ -248,14 +254,14 @@ describe("getBox", () => {
 describe("deleteBox", () => {
   it("confirms the delete by echoing the target id in the header the API requires", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true, type: "box.deleting" }), {
+      new Response(JSON.stringify({ ok: true, type: "sandbox.deleting" }), {
         status: 200,
         headers: { "content-type": "application/json" },
       })
     );
     await deleteBox("bx_old");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toMatch(/\/boxes\/bx_old$/);
+    expect(url).toMatch(/\/sandboxes\/bx_old$/);
     expect(init.method).toBe("DELETE");
     expect(new Headers(init.headers).get("X-Ascii-Confirm-Delete")).toBe(
       "bx_old"

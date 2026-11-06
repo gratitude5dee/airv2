@@ -14,10 +14,10 @@
  *     POST /api/jobs/{id}/run|pause|resume
  *
  *   Box provider API (BOX_API_BASE):
- *     GET /boxes/{id} → {ok, box:{id,state:"ready"}}
- *     POST /boxes/{id}/commands {command,timeoutSeconds} → {exitCode,stdout,stderr}
- *     PUT /boxes/{id}/files {path,content}
- *     POST /boxes/{id}/resume|stop|desktop
+ *     GET /sandboxes/{id} → {ok, sandbox:{id,state:"ready"}}
+ *     POST /sandboxes/{id}/commands {command,timeoutSeconds} → {exitCode,stdout,stderr}
+ *     PUT /sandboxes/{id}/files {path,content}
+ *     POST /sandboxes/{id}/resume|stop|desktop
  *
  *   Model provider (MODEL_PROVIDER_BASE_URL → this stub):
  *     POST /v1/chat/completions → OpenAI-shaped completion
@@ -376,14 +376,14 @@ async function handleBoxProvider(
   res: ServerResponse,
   pathname: string
 ): Promise<boolean> {
-  const match = /^\/boxes\/([^/]+)(\/(commands|files|resume|stop|desktop|fork))?$/.exec(
+  const match = /^\/(?:sandboxes|boxes)\/([^/]+)(\/(commands|files|resume|stop|desktop|fork))?$/.exec(
     pathname
   );
   if (!match) return false;
   const boxId = match[1]!;
   const action = match[3] ?? "";
   if (request.method === "GET" && !action) {
-    json(res, 200, { ok: true, id: boxId, box: { id: boxId, state: "ready" } });
+    json(res, 200, { ok: true, id: boxId, sandbox: { id: boxId, state: "ready" } });
     return true;
   }
   if (request.method === "POST" && action === "commands") {
@@ -396,7 +396,7 @@ async function handleBoxProvider(
     if (command.includes("host url")) {
       json(res, 200, {
         exitCode: 0,
-        stdout: `https://stub-8642.on.ascii.dev?_token=stub-token\n`,
+        stdout: `https://stub-8642.on.boat.dev?_token=stub-token\n`,
         stderr: "",
       });
       return true;
@@ -413,7 +413,7 @@ async function handleBoxProvider(
     json(res, 200, {
       ok: true,
       id: boxId,
-      box: { id: boxId, state: action === "resume" ? "ready" : "stopped" },
+      sandbox: { id: boxId, state: action === "resume" ? "ready" : "stopped" },
     });
     return true;
   }
@@ -422,12 +422,12 @@ async function handleBoxProvider(
     return true;
   }
   if (request.method === "POST" && action === "fork") {
-    json(res, 200, { ok: true, id: "bx_fork_stub", box: { id: "bx_fork_stub", state: "ready" } });
+    json(res, 200, { ok: true, id: "bx_fork_stub", sandbox: { id: "bx_fork_stub", state: "ready" } });
     return true;
   }
   if (request.method === "PATCH" && !action) {
     await readBody(request);
-    json(res, 200, { ok: true, id: boxId, box: { id: boxId, state: "ready" } });
+    json(res, 200, { ok: true, id: boxId, sandbox: { id: boxId, state: "ready" } });
     return true;
   }
   if (request.method === "DELETE" && !action) {

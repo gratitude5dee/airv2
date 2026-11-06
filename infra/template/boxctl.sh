@@ -5,27 +5,27 @@
 #           cmd | stop | resume | fork
 # Never pass force to stop (C6). Never put BOX_API_KEY in a box's env (C1).
 set -euo pipefail
-BASE="${BOX_API_BASE:-https://ascii.dev/api/box/v1}"
+BASE="${BOX_API_BASE:-https://boat.dev/api/v1}"
 auth=(-H "Authorization: Bearer ${BOX_API_KEY}" -H "Content-Type: application/json")
 
 case "$1" in
   create) # create [name] [body-json] — bare box, no account secrets, no auto-stop
     body="${3:-{\"type\":\"default\",\"ttlSeconds\":null,\"noEnv\":true}}"
-    created=$(curl -sS -X POST "${auth[@]}" "$BASE/boxes" -d "$body")
+    created=$(curl -sS -X POST "${auth[@]}" "$BASE/sandboxes" -d "$body")
     echo "$created"
     if [ -n "${2:-}" ]; then
-      id=$(printf '%s' "$created" | python3 -c 'import sys,json;print(json.load(sys.stdin)["box"]["id"])')
-      curl -sS -X PATCH "${auth[@]}" "$BASE/boxes/$id" -d "{\"name\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$2")}" >/dev/null
+      id=$(printf '%s' "$created" | python3 -c 'import sys,json;print(json.load(sys.stdin)["sandbox"]["id"])')
+      curl -sS -X PATCH "${auth[@]}" "$BASE/sandboxes/$id" -d "{\"name\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$2")}" >/dev/null
       echo "$id"
     fi ;;
-  get)   curl -sS "${auth[@]}" "$BASE/boxes/$2" ;;
-  ip)    curl -sS "${auth[@]}" "$BASE/boxes/$2" | python3 -c 'import sys,json;print(json.load(sys.stdin)["box"]["ip"] or "")' ;;
+  get)   curl -sS "${auth[@]}" "$BASE/sandboxes/$2" ;;
+  ip)    curl -sS "${auth[@]}" "$BASE/sandboxes/$2" | python3 -c 'import sys,json;print(json.load(sys.stdin)["sandbox"]["ip"] or "")' ;;
   sshkey) # sshkey <boxId> <pubKeyPath> — authorize a public key for user@<box ip>
-    curl -sS -X POST "${auth[@]}" "$BASE/boxes/$2/sshkey" \
+    curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$2/sshkey" \
       -d "$(python3 -c 'import json,sys;print(json.dumps({"key":open(sys.argv[1]).read().strip()}))' "$3")" ;;
   wait)  # wait for ready/idle
     for _ in $(seq 1 120); do
-      state=$(curl -sS "${auth[@]}" "$BASE/boxes/$2" | python3 -c 'import sys,json;print(json.load(sys.stdin)["box"]["state"])')
+      state=$(curl -sS "${auth[@]}" "$BASE/sandboxes/$2" | python3 -c 'import sys,json;print(json.load(sys.stdin)["sandbox"]["state"])')
       echo "state=$state" >&2
       case "$state" in ready|idle) echo "$state"; exit 0 ;; error) echo error; exit 1 ;; esac
       sleep 5
@@ -33,7 +33,7 @@ case "$1" in
   cmd)   # cmd <boxId> <command> [timeoutSeconds]
     python3 - "$2" "$3" "${4:-60}" <<'PY'
 import json, os, sys, urllib.request
-base = os.environ.get("BOX_API_BASE", "https://ascii.dev/api/box/v1")
+base = os.environ.get("BOX_API_BASE", "https://boat.dev/api/v1")
 box_id, command, timeout = sys.argv[1], sys.argv[2], int(sys.argv[3])
 req = urllib.request.Request(
     f"{base}/boxes/{box_id}/commands",
@@ -50,8 +50,8 @@ if body.get("stderr"):
 sys.exit(0 if body.get("exitCode") == 0 else 1)
 PY
     ;;
-  stop)   curl -sS -X POST "${auth[@]}" "$BASE/boxes/$2/stop" ;;
-  resume) curl -sS -X POST "${auth[@]}" "$BASE/boxes/$2/resume" ;;
-  fork)   curl -sS -X POST "${auth[@]}" "$BASE/boxes/$2/fork" -d "${3:-{\"noEnv\":true}}" ;;
+  stop)   curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$2/stop" ;;
+  resume) curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$2/resume" ;;
+  fork)   curl -sS -X POST "${auth[@]}" "$BASE/sandboxes/$2/fork" -d "${3:-{\"noEnv\":true}}" ;;
   *) echo "unknown command: $1" >&2; exit 2 ;;
 esac

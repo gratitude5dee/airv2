@@ -1,13 +1,15 @@
 /**
- * Typed wrapper over the Box (ascii.dev) API. All Box calls in the control
- * plane go through this module — no direct fetch from route handlers.
+ * Typed wrapper over the boat API (boat.dev — formerly Box/ascii.dev). All
+ * sandbox calls in the control plane go through this module — no direct
+ * fetch from route handlers. Wire spelling is `/sandboxes/*` with `sandbox`
+ * JSON keys; our internal vocabulary (box ids, BoxProvider) is unchanged.
  *
  * Every user fork passes `noEnv: true` (C1) plus a per-box env carrying at
  * minimum TENANT_ID and GATEWAY_TOKEN (goal.md §5). Never `stop` with
  * `force: true` (C6).
  *
  * Provider dispatch: ids prefixed `tk_` (and template refs `tenki:`) route to
- * the Tenki Sandbox adapter in ./tenki.ts; everything else is ascii.dev. Both
+ * the Tenki Sandbox adapter in ./tenki.ts; everything else is boat. Both
  * implement the shared BoxProvider interface from ./types.ts — the same one
  * lib/namespace's adapter implements — so callers never branch on provider.
  * Provisioning (fork) and provider extras (renameBox, hostRoute options) stay
@@ -50,7 +52,7 @@ export function providerOf(idOrTemplateRef: string): BoxProviderKind {
     : "ascii";
 }
 
-/** Response of POST /boxes/{id}/desktop (docs.ascii.dev/box/desktop-streaming).
+/** Response of POST /sandboxes/{id}/desktop (docs.boat.dev).
  * `desktopUrl` is a secret-bearing desktop stream URL. Server-side only —
  * never persist, never return to a client in JSON (lib/box/desktop.ts). */
 const DesktopEnvelopeSchema = z.object({
@@ -59,11 +61,11 @@ const DesktopEnvelopeSchema = z.object({
   desktopUrl: z.string().optional(),
 });
 
-/** Every /boxes/* mutation returns this envelope. */
+/** Every /sandboxes/* mutation returns this envelope. */
 const BoxEnvelopeSchema = z.object({
   ok: z.boolean().optional(),
   id: z.string().optional(),
-  box: BoxSchema,
+  sandbox: BoxSchema,
 });
 
 /**
@@ -169,7 +171,7 @@ export async function fork(options: ForkOptions): Promise<Box> {
     return (await import("./tenki")).fork(options);
   }
   const envelope = await boxFetch(
-    `/boxes/${options.templateId}/fork`,
+    `/sandboxes/${options.templateId}/fork`,
     BoxEnvelopeSchema,
     {
       method: "POST",
@@ -180,11 +182,11 @@ export async function fork(options: ForkOptions): Promise<Box> {
           options.ttlSeconds !== undefined
             ? options.ttlSeconds
             : BOX_TTL_SECONDS,
-        ...(options.size ? { size: options.size } : {}),
+        ...(options.size ? { type: options.size } : {}),
       }),
     }
   );
-  return envelope.box;
+  return envelope.sandbox;
 }
 
 const AsciiCommandResultSchema = z.object({
@@ -196,11 +198,11 @@ const AsciiCommandResultSchema = z.object({
 
 const asciiImpl = {
   async renameBox(boxId: string, name: string): Promise<Box> {
-    const envelope = await boxFetch(`/boxes/${boxId}`, BoxEnvelopeSchema, {
+    const envelope = await boxFetch(`/sandboxes/${boxId}`, BoxEnvelopeSchema, {
       method: "PATCH",
       body: JSON.stringify({ name }),
     });
-    return envelope.box;
+    return envelope.sandbox;
   },
 
   async getBox(
@@ -208,43 +210,47 @@ const asciiImpl = {
     options?: { timeoutMs?: number }
   ): Promise<Box> {
     const envelope = await boxFetch(
-      `/boxes/${boxId}`,
+      `/sandboxes/${boxId}`,
       BoxEnvelopeSchema,
       options?.timeoutMs !== undefined
         ? { timeoutMs: options.timeoutMs }
         : undefined
     );
-    return envelope.box;
+    return envelope.sandbox;
   },
 
   async resume(
     boxId: string,
     options?: { timeoutMs?: number }
   ): Promise<Box> {
-    const envelope = await boxFetch(`/boxes/${boxId}/resume`, BoxEnvelopeSchema, {
-      method: "POST",
-      body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
-      ...(options?.timeoutMs !== undefined
-        ? { timeoutMs: options.timeoutMs }
-        : {}),
-    });
-    return envelope.box;
+    const envelope = await boxFetch(
+      `/sandboxes/${boxId}/resume`,
+      BoxEnvelopeSchema,
+      {
+        method: "POST",
+        body: JSON.stringify({ ttlSeconds: BOX_TTL_SECONDS }),
+        ...(options?.timeoutMs !== undefined
+          ? { timeoutMs: options.timeoutMs }
+          : {}),
+      }
+    );
+    return envelope.sandbox;
   },
 
   async stop(boxId: string): Promise<Box> {
-    const envelope = await boxFetch(`/boxes/${boxId}/stop`, BoxEnvelopeSchema, {
+    const envelope = await boxFetch(`/sandboxes/${boxId}/stop`, BoxEnvelopeSchema, {
       method: "POST",
     });
-    return envelope.box;
+    return envelope.sandbox;
   },
 
   /**
-   * Deleting a box deletes its snapshots with it (goal.md M8). The API
+   * Deleting a sandbox deletes its snapshots with it (goal.md M8). The API
    * refuses (409 delete_confirmation_required) unless the target id is
-   * echoed in X-Ascii-Confirm-Delete.
+   * echoed in X-Ascii-Confirm-Delete (header name unchanged by the rename).
    */
   async deleteBox(boxId: string): Promise<void> {
-    await boxFetch(`/boxes/${boxId}`, z.unknown(), {
+    await boxFetch(`/sandboxes/${boxId}`, z.unknown(), {
       method: "DELETE",
       headers: { "X-Ascii-Confirm-Delete": boxId },
     });
@@ -256,7 +262,7 @@ const asciiImpl = {
   ): Promise<string | undefined> {
     const query = options?.vnc ? "?vnc=1" : "?theme=light";
     const envelope = await boxFetch(
-      `/boxes/${boxId}/desktop${query}`,
+      `/sandboxes/${boxId}/desktop${query}`,
       DesktopEnvelopeSchema,
       {
         method: "POST",
@@ -277,7 +283,7 @@ const asciiImpl = {
     // The box-side command runs up to timeoutSeconds; give the HTTP round
     // trip that budget plus margin.
     const result = await boxFetch(
-      `/boxes/${boxId}/commands`,
+      `/sandboxes/${boxId}/commands`,
       AsciiCommandResultSchema,
       {
         method: "POST",
@@ -285,7 +291,7 @@ const asciiImpl = {
         timeoutMs: (timeoutSeconds + 60) * 1000,
       }
     );
-    // A command ascii.dev killed at timeoutSeconds reports exitCode null
+    // A command boat killed at timeoutSeconds reports exitCode null
     // (timedOut true); surface it like a shell `timeout` (124) so callers
     // see one shape across providers instead of a response-parse failure.
     if (result.exitCode === null) {
@@ -311,7 +317,7 @@ const asciiImpl = {
     path: string,
     content: string
   ): Promise<void> {
-    await boxFetch(`/boxes/${boxId}/files`, z.unknown(), {
+    await boxFetch(`/sandboxes/${boxId}/files`, z.unknown(), {
       method: "PUT",
       body: JSON.stringify({ path, content }),
     });
@@ -371,7 +377,7 @@ function providerFor(idOrTemplateRef: string): BoxProvider<string> {
   return providers[providerOf(idOrTemplateRef)];
 }
 
-/** Set the box's display name in the ascii dashboard (max 120 chars). */
+/** Set the sandbox's display name in the boat dashboard (max 120 chars). */
 export async function renameBox(boxId: string, name: string): Promise<Box> {
   if (providerOf(boxId) === "tenki") return tenki.renameBox(boxId, name);
   return asciiImpl.renameBox(boxId, name);
@@ -390,16 +396,16 @@ export async function stop(boxId: string): Promise<Box> {
 }
 
 /**
- * Deleting a box deletes its snapshots with it (goal.md M8). The API refuses
+ * Deleting a sandbox deletes its snapshots with it (goal.md M8). The API refuses
  * (409 delete_confirmation_required) unless the target id is echoed in
- * X-Ascii-Confirm-Delete.
+ * X-Ascii-Confirm-Delete (header name unchanged by the rename).
  */
 export async function deleteBox(boxId: string): Promise<void> {
   return providerFor(boxId).deleteBox(boxId);
 }
 
 /**
- * Ask Box for a fresh authenticated desktop stream URL. Default is the
+ * Ask boat for a fresh authenticated desktop stream URL. Default is the
  * Moonlight (WebRTC) viewer; pass vnc for the HTTPS-tunneled noVNC viewer
  * (more tolerant of restrictive networks, must open as a top-level page).
  */
@@ -444,9 +450,10 @@ export async function command(
   return providerFor(boxId).command(boxId, cmd, timeoutSeconds);
 }
 
-/** `https://<sub>-<port>.on.ascii.dev?_token=<token>` lines from `.ascii/host`. */
+/** `https://<sub>-<port>.on.{boat,ascii}.dev?_token=<token>` lines from `.ascii/host`.
+ * boat hosted URLs answer under both spellings; fresh sandboxes emit on.boat.dev. */
 const ASCII_HOSTED_URL_PATTERN =
-  /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.ascii\.dev)\?_token=([A-Za-z0-9._-]+)$/;
+  /^(https:\/\/[a-z0-9-]+-(\d+)\.on\.(?:boat|ascii)\.dev)\?_token=([A-Za-z0-9._-]+)$/;
 
 export function parseAsciiHostedUrl(
   stdout: string,
@@ -480,9 +487,10 @@ export function asciiHostCommand(port: number): string {
 }
 
 /**
- * Publish (or re-read) the hosted route for a port. On ascii this runs the
- * box-side `.ascii/host` client, whose token rotates across stop/resume; on
- * Tenki it is a provider API call and the URL is stable across wakes.
+ * Publish (or re-read) the hosted route for a port. On boat this runs the
+ * sandbox-side `.ascii/host` client (path unchanged by the rename), whose
+ * token rotates across stop/resume; on Tenki it is a provider API call and
+ * the URL is stable across wakes.
  */
 export async function hostRoute(
   boxId: string,
@@ -527,7 +535,7 @@ export async function waitForHomeSteady(
   }
 }
 
-/** `cat` in the C locale so ENOENT has one spelling regardless of the Box's LANG. */
+/** `cat` in the C locale so ENOENT has one spelling regardless of the sandbox's LANG. */
 export function readFileCommand(path: string): string {
   return `LC_ALL=C cat ${shellQuote(path)}`;
 }
