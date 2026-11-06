@@ -931,8 +931,10 @@ async function configureHermes(
 
   // Forks inherit a template-time OpenViking config with placeholder keys.
   // Configure and check memory using the just-written per-instance credentials.
+  // The 540s budget covers a cold fork's lazy hydration + model load (~4min)
+  // plus the conf-change restart `ovctl ensure` performs here.
   if (kindFor(environment) === "box") {
-    const memory = await runCommand(target, "ovctl ensure", 180);
+    const memory = await runCommand(target, "ovctl ensure", 560);
     if (memory.exitCode !== 0) {
       throw new Error("Deep memory initialization failed");
     }
