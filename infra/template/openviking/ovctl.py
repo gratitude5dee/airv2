@@ -404,7 +404,9 @@ def cmd_ensure(configure_only: bool = False) -> int:
         )
     import time
 
-    for _ in range(60):
+    # Cold forks page their venv + local embed model out of the snapshot
+    # lazily; the first healthy /health can take ~4min on a fresh fork.
+    for _ in range(240):
         if healthy():
             print(json.dumps({"ok": True, "conf_changed": changed}))
             return 0
