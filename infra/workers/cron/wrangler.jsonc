@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../apps/web/node_modules/wrangler/config-schema.json",
+  "name": "airv2-cron",
+  "main": "index.js",
+  "compatibility_date": "2026-11-02",
+  "triggers": {
+    // mirrors apps/web/vercel.json crons; the three per-minute jobs share
+    // one trigger and fan out in the scheduled() handler
+    "crons": [
+      "* * * * *",
+      "*/5 * * * *",
+      "*/10 * * * *",
+      "15 * * * *",
+      "0 */6 * * *",
+      "30 * * * *",
+    ],
+  },
+}
