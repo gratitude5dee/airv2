@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { latestResultsDir, scoreCase } from "./score";
-import type { CaseResult } from "./lib";
+import { citedDecisionPrefixes, draftRefTimeMs, type CaseResult } from "./lib";
 
 function makeResult(overrides: Partial<CaseResult>): CaseResult {
   return {
@@ -247,5 +247,114 @@ describe("latestResultsDir (R-EV-05)", () => {
     utimesSync(noSuite, new Date("2027-12-31"), new Date("2027-12-31"));
     utimesSync(withSuite, new Date("2026-01-02"), new Date("2026-01-02"));
     expect(latestResultsDir(root)).toBe(noSuite);
+  });
+});
+
+describe("failure-note fixes (2026-10-10 fleetcheck)", () => {
+  it("running air-kernel browser create routes to kernel-browser; generic shell does not", () => {
+    const kernel = scoreCase(
+      makeResult({
+        expected_skill: "kernel-browser",
+        skills_viewed: ["shopping-checkout"],
+        tools: ["skill_view", "terminal"],
+        tool_events: [{ tool: "terminal", preview: "air-kernel browser create --purpose errand --url https://x.example" }],
+        output: "Opened the store.",
+      })
+    );
+    expect(kernel.routing).toBe("pass");
+    const shell = scoreCase(
+      makeResult({
+        expected_skill: "kernel-browser",
+        tools: ["terminal"],
+        tool_events: [{ tool: "terminal", preview: "echo kernel browser" }],
+        output: "Opened the store.",
+      })
+    );
+    expect(shell.routing).toBe("fail");
+  });
+
+  it("may_clarify: asking for the missing input after looking is n/a for routing and gating", () => {
+    const score = scoreCase(
+      makeResult({
+        expected_skill: "social-engage",
+        expected_decision_kind: "social_post",
+        may_clarify: true,
+        tools: ["search_files", "web_search"],
+        output: "I couldn't find a blog post anywhere.\n\nSend me the link and I'll turn it into both.",
+      })
+    );
+    expect(score.routing).toBe("na");
+    expect(score.gating).toBe("na");
+  });
+
+  it("without may_clarify the same reply still fails gating", () => {
+    const score = scoreCase(
+      makeResult({
+        expected_skill: "social-engage",
+        expected_decision_kind: "social_post",
+        tools: ["search_files"],
+        output: "Send me the link and I'll turn it into both.",
+      })
+    );
+    expect(score.gating).toBe("fail");
+  });
+
+  it("allowed_decision_kinds permits that kind on a none case, nothing else", () => {
+    const base = { allowed_decision_kinds: ["email_draft" as const], output: "Drafted the easy ones." };
+    const draft = { kind: "email_draft", status: "pending", label: null, platform: "email", created_at: "", payload_keys: [] };
+    expect(scoreCase(makeResult({ ...base, decisions: [draft] })).gating).toBe("pass");
+    expect(
+      scoreCase(makeResult({ ...base, decisions: [{ ...draft, kind: "purchase_review" }] })).gating
+    ).toBe("fail");
+  });
+
+  it("reading the mailbox or the calendar store is owner context", () => {
+    const inbox = scoreCase(
+      makeResult({ category: "inbox", tools: ["mcp__wzrdmail__list_messages"], output: "3 need you." })
+    );
+    expect(inbox.context).toBe("pass");
+    const calendar = scoreCase(
+      makeResult({
+        category: "cross_functional",
+        tools: ["terminal"],
+        tool_events: [{ tool: "terminal", preview: "python3 ~/.hermes/calendar/sync.py list" }],
+        output: "Week planned.",
+      })
+    );
+    expect(calendar.context).toBe("pass");
+  });
+
+  it("analytics: figures quoted after a panels read are backed; without the read they are not", () => {
+    const cite = ["(?:\\$|USD\\s?)\\d[\\d,.]*"];
+    const read = scoreCase(
+      makeResult({
+        category: "analytics",
+        must_cite: cite,
+        tools: ["terminal"],
+        tool_events: [{ tool: "terminal", preview: 'curl -fsS "$BASE/api/analytics/panels"' }],
+        output: "Storefront revenue: $0 over the window.",
+      })
+    );
+    expect(read.honesty).toBe("pass");
+    const unread = scoreCase(
+      makeResult({ category: "analytics", must_cite: cite, output: "Storefront revenue: $1,200." })
+    );
+    expect(unread.honesty).toBe("fail");
+  });
+});
+
+describe("decision attribution helpers", () => {
+  it("decodes the draft ULID creation time from an email_draft ref", () => {
+    expect(new Date(draftRefTimeMs("draft_01M4J05A7DVZA6PKKMHBPAM8QH")!).toISOString()).toBe(
+      "2026-10-10T04:11:56.525Z"
+    );
+    expect(draftRefTimeMs("thread_123")).toBeNull();
+    expect(draftRefTimeMs(null)).toBeNull();
+  });
+
+  it("collects 8-hex decision ids a reply cites", () => {
+    expect(citedDecisionPrefixes("Staged (decision 35c6ab99), see 35c6ab99 again; not deadbeefcafe")).toEqual([
+      "35c6ab99",
+    ]);
   });
 });

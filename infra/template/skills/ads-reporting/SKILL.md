@@ -1,6 +1,6 @@
 ---
 name: ads-reporting
-description: "Ad results, ROAS, CPC, daily ad report: Meta Ads insights"
+description: "Ad results, ROAS, CPC, daily ad report: Meta Ads insights (connecting an account: meta-ads-confirm)"
 version: 1.0.0
 author: air
 license: MIT
