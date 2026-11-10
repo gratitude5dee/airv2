@@ -437,19 +437,48 @@ export async function generateCompiledRequest(
           timedOut: true,
         });
       }
-      const response = await fetchQueueJson(
-        env.gmiRequestQueueUrl(),
-        {
-          method: "POST",
-          headers: queueHeaders(options?.apiKey),
-          body: JSON.stringify({
-            model: request.model,
-            payload: request.payload,
-          }),
-        },
-        submitBudgetMs,
-        "submit",
-      );
+      const submitBody = JSON.stringify({
+        model: request.model,
+        payload: request.payload,
+      });
+      let response: unknown;
+      try {
+        response = await fetchQueueJson(
+          env.gmiRequestQueueUrl(),
+          {
+            method: "POST",
+            headers: queueHeaders(options?.apiKey),
+            body: submitBody,
+          },
+          submitBudgetMs,
+          "submit",
+        );
+      } catch (error) {
+        // Transport-level failure ("could not be reached") — no status, no
+        // timeout, almost certainly never accepted upstream. One resubmit
+        // is safe enough to keep C23's no-auto-resubmit spirit while
+        // absorbing the intermittent worker→GMI resets that surfaced as
+        // submit_unknown in the draw studio.
+        if (
+          !(error instanceof GmiRequestError) ||
+          error.timedOut ||
+          error.status !== undefined ||
+          Date.now() + 1_500 >= deadline
+        ) {
+          throw error;
+        }
+        await wait(800);
+        response = await fetchQueueJson(
+          env.gmiRequestQueueUrl(),
+          {
+            method: "POST",
+            headers: queueHeaders(options?.apiKey),
+            body: submitBody,
+          },
+          deadline - Date.now(),
+          "submit",
+        );
+      }
 
       const status = statusFor(response);
       const requestId = requestIdFor(response);

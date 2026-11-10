@@ -391,7 +391,9 @@ export function createThreeStage(host: HTMLDivElement): ThreeStage {
       render();
     },
     zoom(scale) {
-      view.dist = clamp(view.dist / scale, 3.2, 10);
+      // 1.6 gets tight enough to frame a path against the photo's own
+      // detail; 14 keeps the whole 14-unit grid on stage for overviews.
+      view.dist = clamp(view.dist / scale, 1.6, 14);
       applyView();
       render();
     },

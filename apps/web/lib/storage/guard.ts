@@ -20,6 +20,10 @@ export class MediaGuardError extends Error {
 export const ALLOWED_MEDIA_TYPES: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
+  // HEIC lands raw when the WASM decode can't run (workerd): fal decodes
+  // server-side and iOS Safari previews it. EXIF stays attached — the
+  // strip paths only know jpeg/png.
+  "image/heic": "heic",
   "image/gif": "gif",
   "image/webp": "webp",
   "video/mp4": "mp4",
