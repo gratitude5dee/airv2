@@ -9,6 +9,7 @@
  * verbatim (REQUIRED_GMI_MODEL_PARAMETERS in preflight.ts).
  */
 import { env } from "../env";
+import { log } from "../log";
 import { asRecord as toRecord } from "../records";
 import { CreativeUnconfiguredError } from "./groq";
 import { assertSafeGeneratedMediaUrl, generatedMediaHosts } from "./media-url";
@@ -640,6 +641,17 @@ const fetchQueueJson = async (
         timedOut: true,
       });
     }
+    log.warn("gmi queue fetch threw", {
+      stage,
+      host: (() => {
+        try {
+          return new URL(url).host;
+        } catch {
+          return "unparseable";
+        }
+      })(),
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error),
+    });
     throw new GmiRequestError("GMI request could not be reached", { stage });
   } finally {
     clearTimeout(timeout);
