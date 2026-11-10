@@ -287,11 +287,22 @@ export async function storeFreezeUpload(
   let type = mimeType;
   if (isHeif(mimeType, bytes)) {
     const converted = await heifToPng(bytes).catch(() => undefined);
-    if (!converted) return null;
-    body = converted;
-    type = "image/png";
+    if (converted) {
+      body = converted;
+      type = "image/png";
+    } else {
+      // workerd can't run the libheif WASM — stage the raw HEIC rather
+      // than dropping the upload (the old behavior left the studio with
+      // no source still). fal decodes it server-side for the render and
+      // iOS Safari previews it in the stage. Same tradeoff as /zap.
+      log.warn("heif decode unavailable; staging raw heic", {
+        user_id: userId,
+      });
+      type = "image/heic";
+    }
   }
-  if (!["image/jpeg", "image/png", "image/webp"].includes(type)) return null;
+  if (!["image/jpeg", "image/png", "image/webp", "image/heic"].includes(type))
+    return null;
   try {
     // MA8 boundary: EXIF/GPS comes off owner bytes here — the still is what
     // ships to fal for the render. The 12 MB cap applies to inbound bytes
