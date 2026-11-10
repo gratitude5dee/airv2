@@ -16,6 +16,18 @@ const ALIASES: Readonly<Record<string, string>> = {
   tasks: "todo",
 };
 
+/**
+ * Slugs with their own flush lanes (`maybeRunDrawLane`/`maybeRunFreezeLane`/
+ * `maybeRunTwinLane` in the orchestrator). The generic card path must not
+ * answer them — it mints a link with resourceId "default", which can never
+ * bind a session, so the app opens on its ended page.
+ */
+const LANE_COMMAND_SLUGS: ReadonlySet<string> = new Set([
+  "draw",
+  "freeze",
+  "twin",
+]);
+
 /** Sent instead of a card when a non-owner sender would have received one. */
 export const OWNER_ONLY_CARD_LINE = "only the owner can open mini-apps.";
 
@@ -95,6 +107,12 @@ export async function maybeSendMiniAppLink(
 ): Promise<boolean> {
   const slug = parseMiniAppCommand(input);
   if (!slug) return false;
+
+  // /draw, /freeze and /twin own dedicated flush lanes that must create the
+  // session the card binds to. Letting the generic card path eat the command
+  // mints a session-less link (resourceId "default") and strands the app on
+  // its ended page.
+  if (LANE_COMMAND_SLUGS.has(slug)) return false;
 
   // V11 §5.2 `/create`: the Create surface is a store page, not a registry
   // app — owner-only like every card, no cooldown (the owner asked for it).

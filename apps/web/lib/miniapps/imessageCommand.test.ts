@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseCreateCommand, parseCreateIntent, parseMiniAppCommand } from "./imessageCommand";
+import {
+  maybeSendMiniAppLink,
+  parseCreateCommand,
+  parseCreateIntent,
+  parseMiniAppCommand,
+} from "./imessageCommand";
 
 describe("parseMiniAppCommand", () => {
   it("accepts an exact slash command and normalizes aliases", () => {
@@ -90,4 +95,22 @@ describe("parseCreateIntent", () => {
     });
     expect(parseCreateIntent("what should we build next?")).toBeNull();
   });
+});
+
+describe("maybeSendMiniAppLink", () => {
+  it.each(["draw", "freeze", "twin"])(
+    "leaves /%s for its dedicated flush lane — a generic card can never bind a session",
+    async (slug) => {
+      // The slug check runs before any registry/sender I/O, so bare stubs
+      // prove the command was not consumed by the generic card path.
+      await expect(
+        maybeSendMiniAppLink(
+          {} as never,
+          {} as never,
+          {} as never,
+          `/${slug}`,
+        ),
+      ).resolves.toBe(false);
+    },
+  );
 });
