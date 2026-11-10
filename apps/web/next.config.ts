@@ -1,5 +1,41 @@
 import type { NextConfig } from "next";
+import fs from "node:fs";
 import path from "node:path";
+
+/**
+ * `@photon-ai/advanced-imessage/grpc` lazy-loads `@grpc/grpc-js` (node:http2)
+ * which workerd lacks — every Spectrum send threw on the worker. The gateway
+ * accepts gRPC-Web (framed protobuf over plain fetch), so the webpack build
+ * swaps the `/grpc` specifier for lib/spectrum/grpc-web.ts, which reuses the
+ * package's own proto coder chunks (runtime-agnostic) via these aliases.
+ */
+const advancedImessageDist = path.join(
+  __dirname,
+  "../../node_modules/@photon-ai/advanced-imessage/dist"
+);
+function chunkExporting(marker: string): string {
+  const hit = fs
+    .readdirSync(advancedImessageDist)
+    .find(
+      (f) =>
+        f.startsWith("chunk-") &&
+        f.endsWith(".js") &&
+        fs.readFileSync(path.join(advancedImessageDist, f), "utf8").includes(marker)
+    );
+  if (!hit) {
+    throw new Error(
+      `next.config: no @photon-ai/advanced-imessage chunk exports ${marker}; ` +
+        `re-check the package layout after upgrade`
+    );
+  }
+  return path.join(advancedImessageDist, hit);
+}
+const photonGrpcShared = chunkExporting(
+  'fullName: "photon.imessage.v1.EventService"'
+);
+const photonGrpcCodecs = chunkExporting(
+  'fullName: "photon.imessage.v1.MessageService"'
+);
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -65,6 +101,13 @@ const nextConfig: NextConfig = {
       "@x402/evm": false,
       "@x402/svm": false,
       "@x402/extensions": false,
+      // gRPC → gRPC-Web transport swap for workerd (see note above).
+      "@photon-ai/advanced-imessage/grpc$": path.join(
+        __dirname,
+        "lib/spectrum/grpc-web.ts"
+      ),
+      "photon-grpc-shared$": photonGrpcShared,
+      "photon-grpc-codecs$": photonGrpcCodecs,
     };
     return config;
   },

@@ -21,6 +21,7 @@ const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
+  heic: "image/heic",
   webp: "image/webp",
   gif: "image/gif",
   mp4: "video/mp4",

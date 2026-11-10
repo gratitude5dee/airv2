@@ -166,6 +166,28 @@ export async function getFreezeSession(
   return session;
 }
 
+/**
+ * Most recent live session for the owner, used when the opened link's
+ * resource misses (a `resourceId: "default"` session admitted by the store
+ * gate, or a card whose session is gone). Read-only: the query filters to
+ * unexpired active rows so no expiry write is needed.
+ */
+export async function getLatestActiveFreezeSession(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<FreezeSession | undefined> {
+  const { data } = await supabase
+    .from("freeze_sessions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as FreezeSession | null) ?? undefined;
+}
+
 export function requireActiveFreezeSession(
   session: FreezeSession
 ): FreezeSession {
