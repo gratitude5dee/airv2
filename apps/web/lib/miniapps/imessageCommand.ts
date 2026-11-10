@@ -26,6 +26,8 @@ const LANE_COMMAND_SLUGS: ReadonlySet<string> = new Set([
   "draw",
   "freeze",
   "twin",
+  // /swap is a creative-lane command (fal recast), not a card app.
+  "swap",
 ]);
 
 /** Sent instead of a card when a non-owner sender would have received one. */

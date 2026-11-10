@@ -33,9 +33,13 @@ import {
   aspectRatioFromText,
   compilerForMode,
   directCreativePlan,
+  directSwapPlan,
   directZapPlan,
   durationFromText,
   ROUTER_MODEL,
+  SWAP_NEEDS_IMAGE_LINE,
+  SWAP_NEEDS_VIDEO_LINE,
+  SWAP_PRESET_VIDEOS,
 } from "./router";
 import { maybeRunCreativeLane } from "./imessage";
 import { underDailyLimit } from "./jobs";
@@ -111,8 +115,20 @@ describe("parseExplicitGenerationCommand", () => {
       ambiguous: true,
     });
     expect(AMBIGUOUS_COMMAND_LINE).toBe(
-      "use one command: /imagine, /animate, or /zap",
+      "use one command: /imagine, /animate, /zap, or /swap",
     );
+  });
+
+  it("parses /swap mid-sentence like the other commands", () => {
+    expect(
+      parseExplicitGenerationCommand("/swap characters in migos video"),
+    ).toEqual({
+      cleanedText: "characters in migos video",
+      mode: "swap",
+    });
+    expect(parseExplicitGenerationCommand("/zap or /swap it")).toEqual({
+      ambiguous: true,
+    });
   });
 });
 
@@ -547,6 +563,126 @@ describe("directZapPlan", () => {
   it("falls back to a generic brief when the command has no words", () => {
     expect(directZapPlan(zapTurn("   ")).expanded_prompt).toBe(
       "Create a short kinetic video from the user's creative idea, with one clear motion and a strong visual hook.",
+    );
+  });
+});
+
+describe("directSwapPlan", () => {
+  const swapTurn = (
+    cleanedText: string,
+    mediaInputs: CreativeTurn["mediaInputs"] = [],
+  ) => ({
+    mode: "swap" as const,
+    cleanedText,
+    text: `/swap ${cleanedText}`,
+    mediaInputs,
+  });
+
+  it("asks for a photo when none is attached — before resolving a video", () => {
+    expect(directSwapPlan(swapTurn("migos video"))).toEqual({
+      problem: SWAP_NEEDS_IMAGE_LINE,
+    });
+    expect(
+      directSwapPlan(swapTurn("migos video", [
+        { kind: "video", url: "https://x.test/v.mp4" },
+      ])),
+    ).toEqual({ problem: SWAP_NEEDS_IMAGE_LINE });
+  });
+
+  it("asks for a video source when none resolves", () => {
+    expect(
+      directSwapPlan(swapTurn("swap me in", [
+        { kind: "image", url: "https://x.test/me.jpg" },
+      ])),
+    ).toEqual({ problem: SWAP_NEEDS_VIDEO_LINE });
+  });
+
+  it("prefers an attached clip, then a pasted URL, then a named preset", () => {
+    const photo = { kind: "image" as const, url: "https://x.test/me.jpg" };
+
+    const attached = directSwapPlan(swapTurn("into this", [
+      photo,
+      { kind: "video", url: "https://x.test/clip.mp4" },
+    ]));
+    expect("plan" in attached && attached.plan.swap?.video_url).toBe(
+      "https://x.test/clip.mp4",
+    );
+
+    const pasted = directSwapPlan(
+      swapTurn("into https://cdn.test/movie.mp4 please", [photo]),
+    );
+    expect("plan" in pasted && pasted.plan.swap?.video_url).toBe(
+      "https://cdn.test/movie.mp4",
+    );
+    // The link itself is dropped from the recast prompt.
+    expect("plan" in pasted && pasted.plan.expanded_prompt).toBe(
+      "into please",
+    );
+
+    const preset = directSwapPlan(swapTurn("characters in migos video", [photo]));
+    expect("plan" in preset && preset.plan.swap?.video_url).toBe(
+      SWAP_PRESET_VIDEOS["migos"],
+    );
+  });
+
+  it("pins the recast endpoint on the plan and rides the zap lane", () => {
+    const built = directSwapPlan(swapTurn("characters in migos video", [
+      { kind: "image", url: "https://x.test/me.jpg" },
+    ]));
+    if (!("plan" in built)) throw new Error("expected a plan");
+    expect(built.plan.mode).toBe("zap");
+    expect(built.plan.chat_reply).toBe("swapping the characters");
+    expect(built.plan.delivery_line).toBe("here is your recast");
+    expect(built.plan.swap?.resolution).toBe("768P");
+  });
+
+  it("reads a 1080 cue off the text", () => {
+    const built = directSwapPlan(swapTurn("migos video in 1080p", [
+      { kind: "image", url: "https://x.test/me.jpg" },
+    ]));
+    expect("plan" in built && built.plan.swap?.resolution).toBe("1080P");
+  });
+});
+
+describe("/swap on the recast endpoint", () => {
+  const photo = (i: number) => ({ kind: "image" as const, url: `https://x.test/${i}.jpg` });
+  const swapPlan = (overrides: Partial<RouterPlan> = {}): RouterPlan => ({
+    ...plan({ mode: "zap" }),
+    expanded_prompt: "swap the person in Image 1 in",
+    swap: { video_url: "https://x.test/source.mp4", resolution: "768P" },
+    ...overrides,
+  });
+
+  it("sends the source video plus the photos as replacement people", () => {
+    const request = buildFalZapRequest(
+      swapPlan(),
+      turn({ mediaInputs: [photo(0), photo(1)] }),
+    );
+    expect(request).toEqual({
+      kind: "video",
+      model: "minimax/h3-max/recast",
+      input: {
+        video_url: "https://x.test/source.mp4",
+        reference_image_urls: ["https://x.test/0.jpg", "https://x.test/1.jpg"],
+        prompt: "swap the person in Image 1 in",
+        resolution: "768P",
+        enable_safety_checker: true,
+      },
+    });
+  });
+
+  it("caps the reference people at four and drops an empty prompt", () => {
+    const request = buildFalZapRequest(
+      swapPlan({ expanded_prompt: "   " }),
+      turn({ mediaInputs: [photo(0), photo(1), photo(2), photo(3), photo(4)] }),
+    );
+    expect(request.input["reference_image_urls"]).toHaveLength(4);
+    expect(request.input["prompt"]).toBeUndefined();
+  });
+
+  it("never submits a swap without a reference photo", () => {
+    expect(() => buildFalZapRequest(swapPlan(), turn())).toThrow(
+      FalRequestError,
     );
   });
 });

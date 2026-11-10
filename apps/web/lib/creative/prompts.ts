@@ -10,6 +10,7 @@ export const PROMPT_VERSIONS = {
   imagine: "generation.imagine.v2",
   vision: "vision.describe.v2",
   zap: "generation.zap.v7",
+  swap: "generation.swap.v1",
 } as const;
 
 const SAFETY = `## Safety

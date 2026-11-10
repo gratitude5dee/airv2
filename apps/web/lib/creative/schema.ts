@@ -50,6 +50,17 @@ export interface FreezeRequest {
   seed?: number | undefined;
 }
 
+/** Extra input a caller-built plan can pin for the fal recast endpoint
+ * (the /swap command): the source video to recast people into, plus the
+ * render knobs the endpoint reads. Router output never carries it — like
+ * `freeze`, parseRouterPlan reconstructs the plan explicitly — so only a
+ * direct plan sets this. */
+export interface SwapRequest {
+  video_url: string;
+  resolution: "768P" | "1080P";
+  seed?: number | undefined;
+}
+
 export interface RouterPlan {
   chat_reply: string;
   delivery_line: string;
@@ -58,6 +69,7 @@ export interface RouterPlan {
   needs_input: boolean;
   params: GenerationParams;
   freeze?: FreezeRequest | undefined;
+  swap?: SwapRequest | undefined;
 }
 
 export const ROUTER_JSON_SCHEMA = {
