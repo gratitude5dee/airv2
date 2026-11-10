@@ -308,8 +308,10 @@ export function buildFalZapRequest(
     };
   }
 
-  // The ratio follows the first frame here, so aspect_ratio is not sent. A
-  // second reference becomes the last frame (first-to-last keyframing).
+  // The ratio follows the first frame unless the prompt names one — the
+  // endpoint reframes to an explicit aspect_ratio (verified live: fal
+  // accepts it on submit). A second reference becomes the last frame
+  // (first-to-last keyframing).
   const lastFrame = images[1];
   return {
     kind: "video",
@@ -318,6 +320,9 @@ export function buildFalZapRequest(
       ...shared,
       image_url: firstFrame.url,
       ...(lastFrame ? { end_image_url: lastFrame.url } : {}),
+      ...(plan.params.aspect_ratio === "auto"
+        ? {}
+        : { aspect_ratio: plan.params.aspect_ratio }),
     },
   };
 }

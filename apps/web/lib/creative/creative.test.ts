@@ -281,6 +281,20 @@ describe("buildFalZapRequest", () => {
     expect(request.input["duration"]).toBe(5);
   });
 
+  it("honours an explicit aspect ratio on image-to-video", () => {
+    const request = buildFalZapRequest(
+      plan({
+        mode: "zap",
+        params: { ...plan().params, aspect_ratio: "9:16" },
+      }),
+      turn({
+        mediaInputs: [{ kind: "image", url: "https://x.test/a.png" }],
+      }),
+    );
+    expect(request.model).toBe("minimax/h3-max-turbo/image-to-video");
+    expect(request.input["aspect_ratio"]).toBe("9:16");
+  });
+
   it("moves a video reference to H3 Max reference-to-video with labelled lists", () => {
     const request = buildFalZapRequest(
       plan({ mode: "zap", expanded_prompt: "make it rain" }),
