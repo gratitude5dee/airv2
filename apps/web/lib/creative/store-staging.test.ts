@@ -11,7 +11,7 @@ import { FakeSupabase } from "../testing/fakeSupabase";
 import { expectLog } from "../testing/expectLog";
 import { heifToJpeg } from "../identity/heif";
 import { extractAudioTrack } from "./container";
-import { stageCreativeInput, stageCreativeInputs } from "./store";
+import { jpegifyHeicReferences, stageCreativeInput, stageCreativeInputs } from "./store";
 
 vi.mock("../identity/heif", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../identity/heif")>()),
@@ -288,5 +288,95 @@ describe("stageCreativeInput clips", () => {
 
     expect(staged).toBeUndefined();
     expect(uploads()).toHaveLength(0);
+  });
+});
+
+describe("jpegifyHeicReferences", () => {
+  beforeEach(() => {
+    db.reset();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  const refs = () => [
+    {
+      kind: "image",
+      url: "https://x.supabase.co/sign/me.heic?token=h",
+      mimeType: "image/heic",
+    },
+    { kind: "image", url: "https://x.supabase.co/sign/other.jpg?token=j" },
+  ];
+
+  it("transcodes a HEIC image ref through the edge fn and restages it", async () => {
+    vi.stubEnv("HEIC_TRANSCODE_URL", "https://edge.test/heic-transcode");
+    vi.stubEnv("GMI_RELAY_TOKEN", "relay-token");
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(Buffer.from("jpeg-bytes"), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const out = await jpegifyHeicReferences(supabase, "u1", refs());
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [endpoint, init] = fetchMock.mock.calls[0]!;
+    expect(endpoint).toBe("https://edge.test/heic-transcode");
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>)["x-relay-token"]).toBe(
+      "relay-token",
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      url: "https://x.supabase.co/sign/me.heic?token=h",
+    });
+    expect(out[0]?.mimeType).toBe("image/jpeg");
+    expect(out[0]?.url).toContain(".jpg");
+    expect(out[0]?.url).not.toBe(refs()[0]?.url);
+    // The jpeg ref is untouched — one upload, the transcoded bytes.
+    expect(out[1]).toEqual(refs()[1]);
+    expect(uploads()).toHaveLength(1);
+    expect(uploads()[0]?.contentType).toBe("image/jpeg");
+  });
+
+  it("is a no-op when the transcode endpoint is unconfigured", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const out = await jpegifyHeicReferences(supabase, "u1", refs());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(out).toEqual(refs());
+    expect(uploads()).toHaveLength(0);
+  });
+
+  it("passes the HEIC through untouched when transcode rejects it", async () => {
+    vi.stubEnv("HEIC_TRANSCODE_URL", "https://edge.test/heic-transcode");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response("nope", { status: 415 })),
+    );
+
+    const out = await jpegifyHeicReferences(supabase, "u1", refs());
+
+    expect(out).toEqual(refs());
+    expect(uploads()).toHaveLength(0);
+    expectLog("heic transcode rejected reference", { level: "warn" });
+  });
+
+  it("passes the HEIC through untouched when transcode is unreachable", async () => {
+    vi.stubEnv("HEIC_TRANSCODE_URL", "https://edge.test/heic-transcode");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockRejectedValue(new Error("connect refused")),
+    );
+
+    const out = await jpegifyHeicReferences(supabase, "u1", refs());
+
+    expect(out).toEqual(refs());
+    expect(uploads()).toHaveLength(0);
+    expectLog("heic transcode unreachable; passing heic through", {
+      level: "warn",
+    });
   });
 });

@@ -19,6 +19,7 @@ import {
   type CreativeAsset,
   type Delivery,
 } from "../assets/pipeline";
+import { env } from "../env";
 import { heifToJpeg, isHeif } from "../identity/heif";
 import { log } from "../log";
 import { audioOnlyMimeType, extractAudioTrack } from "./container";
@@ -334,4 +335,65 @@ export async function removeStagedInputs(
     .from(ASSETS_BUCKET)
     .remove([...storageKeys])
     .catch(() => undefined);
+}
+
+const HEIC_REFERENCE_SUFFIX = /\.hei[cf](?:[?#].*)?$/i;
+
+/**
+ * /swap's recast model refuses HEIC reference bytes (UnidentifiedImageError)
+ * and workerd can't decode them either — so a HEIC image ref takes one extra
+ * hop through the Deno heic-transcode edge fn, then its JPEG gets staged like
+ * any other provider input. A transcode outage returns the original ref
+ * rather than failing the request: fal gets the same answer it gave before
+ * this hook existed, not a new failure mode.
+ */
+export async function jpegifyHeicReferences<T extends { url: string; mimeType?: string; kind: string }>(
+  supabase: SupabaseClient,
+  userId: string,
+  mediaInputs: readonly T[],
+): Promise<T[]> {
+  const endpoint = env.heicTranscodeUrl();
+  if (!endpoint) return [...mediaInputs];
+  const token = env.gmiRelayToken();
+  return await Promise.all(
+    mediaInputs.map(async (media) => {
+      const isHeic =
+        media.kind === "image" &&
+        (media.mimeType === "image/heic" ||
+          media.mimeType === "image/heif" ||
+          HEIC_REFERENCE_SUFFIX.test(media.url));
+      if (!isHeic) return media;
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(token ? { "x-relay-token": token } : {}),
+          },
+          body: JSON.stringify({ url: media.url }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!response.ok) {
+          log.warn("heic transcode rejected reference", {
+            user_id: userId,
+            status: response.status,
+          });
+          return media;
+        }
+        const staged = await stageCreativeInput(
+          supabase,
+          userId,
+          Buffer.from(await response.arrayBuffer()),
+          "image/jpeg",
+        );
+        if (!staged) return media;
+        return { ...media, url: staged.url, mimeType: "image/jpeg" };
+      } catch {
+        log.warn("heic transcode unreachable; passing heic through", {
+          user_id: userId,
+        });
+        return media;
+      }
+    }),
+  );
 }

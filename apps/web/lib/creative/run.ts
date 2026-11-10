@@ -47,7 +47,7 @@ import {
   type CreativeCommandTurn,
 } from "./router";
 import type { RouterPlan } from "./schema";
-import { ingestGeneratedMedia, mintJobDelivery } from "./store";
+import { ingestGeneratedMedia, jpegifyHeicReferences, mintJobDelivery } from "./store";
 
 export const REFUSAL_LINE =
   "can't make that one. want to try a different angle?";
@@ -203,7 +203,11 @@ export async function executeCreativeJob(
 
   const creativeTurn: CreativeTurn = {
     text: turn.text,
-    mediaInputs: turn.mediaInputs,
+    // Recast rejects HEIC reference bytes outright; route them through the
+    // transcode edge fn and re-stage as JPEG before the plan consumes them.
+    mediaInputs: turn.mode === "swap"
+      ? await jpegifyHeicReferences(supabase, userId, turn.mediaInputs)
+      : turn.mediaInputs,
   };
   const onLifecycle = async (event: GmiLifecycleEvent): Promise<void> => {
     if (event.stage === "submitted") {
@@ -261,6 +265,13 @@ export async function executeCreativeJob(
       // the ambiguity; never automatically resubmit.
       return await fail("submit_unknown", SUBMIT_UNKNOWN_LINE, error);
     } else {
+      // The user sees the generic line; the job row carries no failure
+      // detail column, so the real cause only lives in the worker logs.
+      log.warn("creative generation failed", {
+        user_id: userId,
+        mode: turn.mode,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return await fail("failed", FAILED_LINE);
     }
   }

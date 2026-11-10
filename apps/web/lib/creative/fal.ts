@@ -448,12 +448,38 @@ async function withWavAudio(
  * One un-retried submit POST. A definitive rejection (any HTTP response
  * without a request ID) is a FalRequestError; a transport error or timeout,
  * where fal may have accepted the work, is a FalSubmitUnknownError.
+ *
+ * Endpoint ids with extra path segments can queue under their app root —
+ * `minimax/h3-max/recast` accepts its POST but answers status/result/cancel
+ * only under `minimax/h3-max/requests/...` (the deeper path 405s). fal
+ * reports the live namespace in the submit body's status_url; honor it
+ * instead of reconstructing queue paths from the model id.
  */
+export interface FalSubmittedRequest {
+  requestId: string;
+  /** Queue namespace for status/result reads; defaults to the model id. */
+  queueModel: string;
+}
+
+const queueModelFromStatusUrl = (
+  model: string,
+  statusUrl: unknown,
+): string => {
+  if (typeof statusUrl !== "string") return model;
+  const marker = statusUrl.indexOf("/requests/");
+  if (marker === -1) return model;
+  // Only the path fragment is taken — the SDK still addresses queue.fal.run,
+  // so a hostile status_url could never redirect reads to another host.
+  const withoutHost = statusUrl.slice(0, marker).replace(/^https?:\/\/[^/]+/, "");
+  const modelPath = withoutHost.replace(/^\/+|\/+$/g, "");
+  return modelPath.length > 0 ? modelPath : model;
+};
+
 const submitZapRequest = async (
   request: FalGenerationRequest,
   submit: typeof fetch,
   deadline: number,
-): Promise<string> => {
+): Promise<FalSubmittedRequest> => {
   const credentials = falKeyOrThrow();
   // Lifecycle persistence may have consumed the budget since the permit
   // check; an expired budget must never dispatch a paid POST, and a locally
@@ -482,11 +508,15 @@ const submitZapRequest = async (
     throw new FalRequestError(`fal rejected the request (${response.status})`);
   }
   const body: unknown = await response.json().catch(() => undefined);
-  const requestId = asRecord(body)?.["request_id"];
+  const record = asRecord(body);
+  const requestId = record?.["request_id"];
   if (typeof requestId !== "string" || requestId.length === 0) {
     throw new FalSubmitUnknownError("fal accepted without a request_id");
   }
-  return requestId;
+  return {
+    requestId,
+    queueModel: queueModelFromStatusUrl(request.model, record?.["status_url"]),
+  };
 };
 
 const wait = async (milliseconds: number): Promise<void> =>
@@ -660,7 +690,11 @@ const runZapRequest = async (
   };
   await emit({ stage: "submitting", kind: "video", model: request.model });
 
-  const requestId = await submitZapRequest(request, submit, deadline);
+  const { requestId, queueModel } = await submitZapRequest(
+    request,
+    submit,
+    deadline,
+  );
   await emit({
     stage: "submitted",
     kind: "video",
@@ -673,7 +707,7 @@ const runZapRequest = async (
     for (;;) {
       const status = await raceDeadline(
         deadline,
-        queue.status(request.model, {
+        queue.status(queueModel, {
           requestId,
           abortSignal: budgetSignal(deadline),
         }),
@@ -704,11 +738,11 @@ const runZapRequest = async (
     }
     // One last result lookup before declaring the enqueued render's outcome
     // unknown — the poll failure may be transient while the job finished.
-    const data = await resultOrThrow(queue, request.model, requestId, deadline);
+    const data = await resultOrThrow(queue, queueModel, requestId, deadline);
     return await finishZapRequest(data, request, requestId, emit);
   }
 
-  const data = await resultOrThrow(queue, request.model, requestId, deadline);
+  const data = await resultOrThrow(queue, queueModel, requestId, deadline);
   return await finishZapRequest(data, request, requestId, emit);
 };
 
@@ -720,7 +754,17 @@ const finishZapRequest = async (
 ): Promise<GeneratedMedia> => {
   const url = videoUrlOf(data);
   if (!url) {
-    throw new FalRequestError("fal succeeded without a video URL");
+    // A completed queue envelope can still carry fal's validation errors
+    // (a `detail` list of {loc, msg}); surface the first message so the
+    // failure names what fal actually rejected instead of a generic miss.
+    const detail = asRecord(data)?.["detail"];
+    const first = Array.isArray(detail) ? asRecord(detail[0]) : undefined;
+    const msg = first?.["msg"];
+    throw new FalRequestError(
+      typeof msg === "string" && msg.length > 0
+        ? `fal result has no video: ${msg}`
+        : "fal succeeded without a video URL",
+    );
   }
   const media: GeneratedMedia = {
     kind: "video",
