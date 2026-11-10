@@ -685,6 +685,90 @@ describe("/swap on the recast endpoint", () => {
       FalRequestError,
     );
   });
+
+  const submitWith = (body: Record<string, unknown>) =>
+    vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+  it("reads queue ops off the submit's status_url, not the model id", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    // Recast queues under its app root: the deep endpoint id answers
+    // status/result with 405, so the live namespace must come from fal.
+    const submit = submitWith({
+      request_id: "req-9",
+      status_url: "https://queue.fal.run/minimax/h3-max/requests/req-9/status",
+      response_url: "https://queue.fal.run/minimax/h3-max/requests/req-9",
+      cancel_url: "https://queue.fal.run/minimax/h3-max/requests/req-9/cancel",
+    });
+    const status = vi.fn().mockResolvedValue({ status: "COMPLETED" });
+    const result = vi
+      .fn()
+      .mockResolvedValue({ data: { video: { url: "https://v3b.fal.media/files/out.mp4" } } });
+    const media = await generateZapVideo(
+      swapPlan(),
+      turn({ mediaInputs: [photo(0)] }),
+      10_000,
+      { submit, queue: { status, result } },
+    );
+    expect(media.kind).toBe("video");
+    expect(status).toHaveBeenCalledWith(
+      "minimax/h3-max",
+      expect.objectContaining({ requestId: "req-9" }),
+    );
+    expect(result).toHaveBeenCalledWith(
+      "minimax/h3-max",
+      expect.objectContaining({ requestId: "req-9" }),
+    );
+  });
+
+  it("falls back to the model id when the submit reports no status_url", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = submitWith({ request_id: "req-9" });
+    const status = vi.fn().mockResolvedValue({ status: "COMPLETED" });
+    const result = vi
+      .fn()
+      .mockResolvedValue({ data: { video: { url: "https://v3b.fal.media/files/out.mp4" } } });
+    await generateZapVideo(
+      swapPlan(),
+      turn({ mediaInputs: [photo(0)] }),
+      10_000,
+      { submit, queue: { status, result } },
+    );
+    expect(status).toHaveBeenCalledWith(
+      "minimax/h3-max/recast",
+      expect.objectContaining({ requestId: "req-9" }),
+    );
+  });
+
+  it("surfaces fal's detail message when a completed envelope carries no video", async () => {
+    vi.stubEnv("FAL_KEY", "test-key");
+    const submit = submitWith({ request_id: "req-9" });
+    const queue = {
+      status: vi.fn().mockResolvedValue({ status: "COMPLETED" }),
+      result: vi.fn().mockResolvedValue({
+        data: {
+          detail: [
+            {
+              loc: ["body", "reference_image_urls", 0],
+              msg: "The provided image has an unsupported format.",
+            },
+          ],
+        },
+      }),
+    };
+    await expect(
+      generateZapVideo(
+        swapPlan(),
+        turn({ mediaInputs: [photo(0)] }),
+        10_000,
+        { submit, queue },
+      ),
+    ).rejects.toThrow(/unsupported format/);
+  });
 });
 
 describe("directCreativePlan", () => {

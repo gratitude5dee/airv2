@@ -118,6 +118,7 @@ export const OPTIONAL_ENV = [
   "GMI_REQUEST_QUEUE_URL",
   "GMI_ROUTINE_FAST",
   "GROQ_API_KEY",
+  "HEIC_TRANSCODE_URL",
   "HEYGEN_API_KEY",
   "HEYGEN_API_URL",
   "IMESSAGE_APP_NAME",
@@ -702,6 +703,10 @@ export const env = {
   // Set when the queue URL points at the gmi-relay edge function: the relay
   // demands this shared token so it isn't an open proxy to the GMI console.
   gmiRelayToken: (): string | null => process.env["GMI_RELAY_TOKEN"] ?? null,
+  // Deno edge fn next to gmi-relay: workerd can't decode HEIF, so provider
+  // inputs that arrive as HEIC are transcoded through it when configured.
+  heicTranscodeUrl: (): string | null =>
+    process.env["HEIC_TRANSCODE_URL"] ?? null,
   gmiMediaHosts: (): string[] =>
     optional("GMI_MEDIA_HOSTS", "")
       .split(",")
