@@ -591,10 +591,12 @@ const queueHeaders = (apiKeyOverride?: string): Record<string, string> => {
   }
   // The platform organization header only applies to the platform key.
   const organizationId = apiKeyOverride ? null : env.gmiOrganizationId();
+  const relayToken = env.gmiRelayToken();
   return {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
     ...(organizationId ? { "X-Organization-ID": organizationId } : {}),
+    ...(relayToken ? { "x-relay-token": relayToken } : {}),
   };
 };
 

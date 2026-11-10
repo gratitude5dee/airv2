@@ -697,6 +697,9 @@ export const env = {
       "GMI_REQUEST_QUEUE_URL",
       "https://console.gmicloud.ai/api/v1/ie/requestqueue/apikey/requests",
     ),
+  // Set when the queue URL points at the gmi-relay edge function: the relay
+  // demands this shared token so it isn't an open proxy to the GMI console.
+  gmiRelayToken: (): string | null => process.env["GMI_RELAY_TOKEN"] ?? null,
   gmiMediaHosts: (): string[] =>
     optional("GMI_MEDIA_HOSTS", "")
       .split(",")
