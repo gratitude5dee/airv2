@@ -466,7 +466,7 @@ describe("provisionUser environments", () => {
       provider_box_id: "tk_sess-1",
       baseline_version: null,
     });
-    expect(boxCommand).toHaveBeenCalledWith("tk_sess-1", "ovctl ensure", 180);
+    expect(boxCommand).toHaveBeenCalledWith("tk_sess-1", "ovctl ensure", 560);
     expectLog(/masterkey\ preinstall\ failed/, { level: "error" });
   });
 
