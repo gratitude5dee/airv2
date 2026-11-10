@@ -41,6 +41,7 @@ import { PROMPT_VERSIONS, ZAP_ENTITY_GUIDE } from "./prompts";
 import {
   CreativeRouterUnavailableError,
   directCreativePlan,
+  directSwapPlan,
   directZapPlan,
   routeExplicitCommand,
   type CreativeCommandTurn,
@@ -161,21 +162,32 @@ export async function executeCreativeJob(
     return await fail("failed", FAILED_LINE);
   }
 
-  // A personal GMI key is meaningless on the fal lane, so /zap always renders
-  // on the platform key and always books a platform cost event.
-  const onFal = turn.mode === "zap";
+  // A personal GMI key is meaningless on the fal lane, so /zap and /swap
+  // always render on the platform key and always book a platform cost event.
+  const onFal = turn.mode === "zap" || turn.mode === "swap";
 
   let plan: RouterPlan;
   let prefs: Awaited<ReturnType<typeof loadCreativePrefs>> | undefined;
   let personalGmiKey: string | null = null;
   if (onFal) {
-    const problem = zapReferenceProblem(turn);
-    if (problem) {
-      return await fail("refused", problem);
+    // /swap resolves its own inputs — a missing photo or video source is a
+    // written ask, never a submitted request. The recast prompt is
+    // positional ("left to right"), so no Groq compile ever runs for it.
+    if (turn.mode === "swap") {
+      const built = directSwapPlan(turn);
+      if ("problem" in built) {
+        return await fail("refused", built.problem);
+      }
+      plan = built.plan;
+    } else {
+      const problem = zapReferenceProblem(turn);
+      if (problem) {
+        return await fail("refused", problem);
+      }
+      // A caller-built plan (/freeze's camera-trajectory render) skips the
+      // default zap plan the same way the GMI lanes do.
+      plan = options?.plan ?? (await zapPlanFor(turn));
     }
-    // A caller-built plan (/freeze's camera-trajectory render) skips the
-    // default zap plan the same way the GMI lanes do.
-    plan = options?.plan ?? (await zapPlanFor(turn));
   } else {
     // The user's lane model choices (Settings) and, when saved, their
     // personal GMI key. Both degrade to platform defaults on any failure.

@@ -47,6 +47,11 @@ export const FAL_ZAP_REFERENCE_TO_VIDEO = "minimax/h3-max/reference-to-video";
  * camera_trajectory keyframe list instead of prompt-described motion. */
 export const FAL_FREEZE_IMAGE_TO_VIDEO =
   "minimax/h3-max/multi-angle/image-to-video";
+/** /swap's character recast — replaces the people in a source video with
+ * the people in the reference photos, preserving motion, camera, and
+ * soundtrack. Its reference slots are person photos only, capped at 4. */
+export const FAL_SWAP_RECAST = "minimax/h3-max/recast";
+const MAX_SWAP_IMAGES = 4;
 
 /** reference-to-video caps per modality (the schema's maxItems). */
 const MAX_REFERENCE_IMAGES = 9;
@@ -244,6 +249,32 @@ export function buildFalZapRequest(
         camera_trajectory: freeze.camera_trajectory.map((keyframe) => ({
           ...keyframe,
         })),
+      },
+    };
+  }
+
+  // /swap: a caller-built plan (like `freeze` — the router never emits it)
+  // pins the source video on `plan.swap`; attached images become the
+  // replacement people, left to right, capped at the endpoint's four.
+  // Duration and aspect stay with the source video — recast preserves both.
+  const swap = plan.swap;
+  if (swap) {
+    const people = urls(images, MAX_SWAP_IMAGES);
+    if (people.length === 0) {
+      throw new FalRequestError("swap render needs a reference photo");
+    }
+    return {
+      kind: "video",
+      model: FAL_SWAP_RECAST,
+      input: {
+        video_url: swap.video_url,
+        reference_image_urls: people,
+        ...(plan.expanded_prompt.trim()
+          ? { prompt: plan.expanded_prompt }
+          : {}),
+        resolution: swap.resolution,
+        enable_safety_checker: true,
+        ...(swap.seed === undefined ? {} : { seed: swap.seed }),
       },
     };
   }
@@ -550,9 +581,11 @@ export async function generateZapVideo(
 ): Promise<GeneratedMedia> {
   const deadline = Date.now() + timeoutMs;
   // Conversion runs outside the permit: it is fal's ffmpeg, not a render.
+  // /swap never reads attached audio (recast keeps the source soundtrack),
+  // so there is nothing to convert for it.
   const request = buildFalZapRequest(
     plan,
-    await withWavAudio(turn, deadline, options?.transcode),
+    plan.swap ? turn : await withWavAudio(turn, deadline, options?.transcode),
   );
   return await runFalVideoRequestUntil(request, deadline, options);
 }

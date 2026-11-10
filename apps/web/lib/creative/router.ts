@@ -67,6 +67,8 @@ const fallbackPromptForCommand = (
       return `Create a continuous cinematic video from ${subject}, with one clear motion and ambient sound.`;
     case "zap":
       return `Create a short kinetic video from ${subject}, with one clear motion and a strong visual hook.`;
+    case "swap":
+      return `Recast the people in the source video with ${subject}, preserving the original motion, camera, and soundtrack.`;
   }
 };
 
@@ -101,6 +103,11 @@ export const deterministicGenerationLines = (
               : "creating your video",
         delivery_line: "here is your video",
       };
+    case "swap":
+      return {
+        chat_reply: "swapping the characters",
+        delivery_line: "here is your recast",
+      };
   }
 };
 
@@ -121,7 +128,10 @@ export function enforceExplicitCommandIntent(
   const lines = deterministicGenerationLines(turn.mode, turn.mediaInputs);
   return {
     ...plan,
-    mode: turn.mode,
+    // /swap renders on the fal video lane — a router plan's mode is the
+    // provider lane, so it rides "zap" (the recast endpoint is pinned on
+    // plan.swap, never emitted by the router).
+    mode: turn.mode === "swap" ? "zap" : turn.mode,
     needs_input: false,
     ...lines,
     expanded_prompt:
@@ -181,7 +191,7 @@ export function directCreativePlan(turn: CreativeCommandTurn): RouterPlan {
   const words = turn.cleanedText.trim();
   const isVideo = turn.mode !== "imagine";
   return {
-    mode: turn.mode,
+    mode: turn.mode === "swap" ? "zap" : turn.mode,
     needs_input: false,
     ...deterministicGenerationLines(turn.mode, turn.mediaInputs),
     expanded_prompt:
@@ -222,6 +232,81 @@ export function directZapPlan(turn: CreativeCommandTurn): RouterPlan {
       generate_audio: true,
       quality: "auto",
       use_input_image_as: hasImage ? "first_frame" : "none",
+    },
+  };
+}
+
+/**
+ * Named preset videos /swap can recast into, keyed by the word the user
+ * writes ("migos video"). Presets are provider-hosted URLs, so nothing is
+ * staged or paid for to use one.
+ */
+export const SWAP_PRESET_VIDEOS: Readonly<Record<string, string>> = {
+  migos:
+    "https://v3b.fal.media/files/b/0aac927e/GqGNP73nNJmHCCPfwP34K_hotel%20lobby.mp4",
+};
+
+export const SWAP_NEEDS_IMAGE_LINE =
+  "send a photo of who to swap in — one photo per person.";
+export const SWAP_NEEDS_VIDEO_LINE =
+  "send a clip, a video link, or a preset name (like \"migos\") to swap into.";
+
+const VIDEO_URL_IN_TEXT = /https?:\/\/\S+/i;
+const HIGH_RES_CUES = /\b(?:1080p?|hd|full\s*hd|high\s*res(?:olution)?)\b/i;
+
+/** The source video for a /swap turn: attached clip, then a pasted URL, then a preset name. */
+const swapVideoUrlFor = (turn: CreativeCommandTurn): string | undefined => {
+  const attached = turn.mediaInputs.find((media) => media.kind === "video");
+  if (attached) return attached.url;
+  const pasted = VIDEO_URL_IN_TEXT.exec(turn.cleanedText)?.[0];
+  if (pasted) return pasted;
+  const words = turn.cleanedText.toLowerCase();
+  return Object.entries(SWAP_PRESET_VIDEOS).find(([name]) =>
+    new RegExp(`\\b${name}\\b`, "i").test(words),
+  )?.[1];
+};
+
+/**
+ * The /swap plan — a fal video-lane plan (mode "zap") with the recast
+ * endpoint pinned on `swap`. The video source resolves deterministically:
+ * attached clip beats a pasted URL beats a named preset. When no source
+ * resolves, the written problem is returned instead of a plan so the lane
+ * can ask for it before anything is submitted.
+ */
+export function directSwapPlan(
+  turn: CreativeCommandTurn,
+): { plan: RouterPlan } | { problem: string } {
+  if (!turn.mediaInputs.some((media) => media.kind === "image")) {
+    return { problem: SWAP_NEEDS_IMAGE_LINE };
+  }
+  const videoUrl = swapVideoUrlFor(turn);
+  if (!videoUrl) {
+    return { problem: SWAP_NEEDS_VIDEO_LINE };
+  }
+  // The prompt is the user's direction minus the pasted URL itself —
+  // "swap characters in migos video" stays whole; a raw link adds nothing.
+  const words = turn.cleanedText
+    .replace(VIDEO_URL_IN_TEXT, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return {
+    plan: {
+      mode: "zap",
+      needs_input: false,
+      ...deterministicGenerationLines("swap", turn.mediaInputs),
+      expanded_prompt:
+        words || fallbackPromptForCommand({ ...turn, cleanedText: words }, null),
+      params: {
+        aspect_ratio: "auto",
+        duration: null,
+        generate_audio: true,
+        quality: "auto",
+        use_input_image_as: "reference",
+      },
+      swap: {
+        video_url: videoUrl,
+        resolution: HIGH_RES_CUES.test(turn.cleanedText) ? "1080P" : "768P",
+      },
     },
   };
 }
@@ -287,8 +372,8 @@ export async function routeExplicitCommand(
         {
           role: "system",
           content: modelGuide
-            ? `${GENERATION_SYSTEMS[turn.mode]}\n\n## Target model guide\nOptimize expanded_prompt for the rendering model:\n${modelGuide}`
-            : GENERATION_SYSTEMS[turn.mode],
+            ? `${GENERATION_SYSTEMS[turn.mode === "swap" ? "zap" : turn.mode]}\n\n## Target model guide\nOptimize expanded_prompt for the rendering model:\n${modelGuide}`
+            : GENERATION_SYSTEMS[turn.mode === "swap" ? "zap" : turn.mode],
         },
         {
           role: "user",
