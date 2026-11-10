@@ -20,12 +20,15 @@ import {
   type Delivery,
 } from "../assets/pipeline";
 import { heifToJpeg, isHeif } from "../identity/heif";
+import { log } from "../log";
 import { audioOnlyMimeType, extractAudioTrack } from "./container";
 import type { FetchedGeneratedMedia } from "./media-url";
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/gif": "gif",
-  "image/heic": "jpg",
+  // HEIC bytes are kept as .heic now: workerd cannot run the JPEG
+  // transcode, and providers decode the staged object server-side.
+  "image/heic": "heic",
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
@@ -232,11 +235,15 @@ export async function signedDeliveryForJob(
  * provider (edit source / first frame / reference). The object lives under
  * the user's prefix so account deletion removes it with the rest.
  *
- * iPhone attachments arrive as HEIC, which no generation provider accepts as
- * an input image, so they are decoded to JPEG here — before the object and
- * its signed URL exist — and staged as image/jpeg. Audio that arrives in a
- * video-labelled container (an .m4a relayed as video/mp4) is staged as audio
- * so it reaches the provider as a soundtrack rather than a motion reference.
+ * iPhone attachments arrive as HEIC, so they are decoded to JPEG here —
+ * before the object and its signed URL exist — and staged as image/jpeg.
+ * The decoder is libheif WASM, which workerd cannot instantiate; when it
+ * fails the raw HEIC is staged instead — providers fetch the signed URL
+ * server-side and decode HEIC themselves (verified on minimax
+ * h3-max-turbo). Dropping the input would silently turn image-to-video
+ * into text-to-video. Audio that arrives in a video-labelled container
+ * (an .m4a relayed as video/mp4) is staged as audio so it reaches the
+ * provider as a soundtrack rather than a motion reference.
  */
 export async function stageCreativeInput(
   supabase: SupabaseClient,
@@ -251,7 +258,9 @@ export async function stageCreativeInput(
       staged = await heifToJpeg(staged);
       stagedType = "image/jpeg";
     } catch {
-      return undefined;
+      log.warn("heif decode unavailable; staging raw heic", {
+        user_id: userId,
+      });
     }
   }
   stagedType = audioOnlyMimeType(stagedType, staged) ?? stagedType;

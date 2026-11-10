@@ -37,6 +37,7 @@ import {
   freezeStatus,
   FreezeError,
   getFreezeSession,
+  getLatestActiveFreezeSession,
   type FreezeSession,
   MAX_FREEZE_UPLOAD_BYTES,
   admitFreezeRender,
@@ -187,14 +188,45 @@ const errLine = (error: unknown): { code: string; line: string } => {
   return { code: "FREEZE_ERROR", line: "that didn't work — try again?" };
 };
 
+/**
+ * Resolve the opened session, rebounding to the owner's latest live one when
+ * the linked resource misses — the store-admission lane admits owners with
+ * `resourceId: "default"`, which can never name a session row.
+ */
+async function resolveFreezeSession(
+  ctx: MiniAppContext
+): Promise<FreezeSession | undefined> {
+  const direct = await getFreezeSession(
+    ctx.supabase,
+    ctx.session.userId,
+    ctx.session.resourceId
+  );
+  if (direct && direct.status === "active") return direct;
+  const latest = await getLatestActiveFreezeSession(
+    ctx.supabase,
+    ctx.session.userId
+  );
+  if (!latest) {
+    log.warn("freeze render ended", {
+      user_id: ctx.session.userId,
+      resource_id: ctx.session.resourceId,
+      had_session: Boolean(direct),
+      status: direct?.status ?? null,
+    });
+    return undefined;
+  }
+  log.info("freeze render rebound to latest session", {
+    user_id: ctx.session.userId,
+    resource_id: ctx.session.resourceId,
+    session_id: latest.id,
+  });
+  return latest;
+}
+
 export const freeze: MiniAppModule = {
   async render(ctx: MiniAppContext): Promise<NextResponse> {
-    const session = await getFreezeSession(
-      ctx.supabase,
-      ctx.session.userId,
-      ctx.session.resourceId
-    );
-    if (!session || session.status !== "active") {
+    const session = await resolveFreezeSession(ctx);
+    if (!session) {
       return renderEnded(ctx.session.via === "card");
     }
     return renderStudio(ctx, await studioPayload(ctx, session, -1));
@@ -202,11 +234,7 @@ export const freeze: MiniAppModule = {
 
   async action(ctx: MiniAppContext, form: FormData): Promise<NextResponse> {
     const action = String(form.get("action") ?? "");
-    const session = await getFreezeSession(
-      ctx.supabase,
-      ctx.session.userId,
-      ctx.session.resourceId
-    );
+    const session = await resolveFreezeSession(ctx);
     if (!session) return json({ error: "SESSION_GONE" }, 404);
     if (session.status !== "active" && action !== "status") {
       const { code, line } = errLine(

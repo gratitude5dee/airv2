@@ -1,11 +1,14 @@
 /**
- * iPhone attachments reach the creative lanes as HEIC, which no provider
- * accepts as an input image. Staging must hand the provider a JPEG object
- * whose signed URL ends in .jpg, and must refuse rather than stage HEIC
- * bytes behind a JPEG content type when the decode fails.
+ * iPhone attachments reach the creative lanes as HEIC. Staging hands the
+ * provider a JPEG object whose signed URL ends in .jpg when the WASM
+ * transcode runs, and falls back to staging the raw HEIC object when it
+ * cannot (workerd) — providers decode HEIC server-side from the signed
+ * URL, so dropping the bytes would silently degrade image-to-video into
+ * text-to-video.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeSupabase } from "../testing/fakeSupabase";
+import { expectLog } from "../testing/expectLog";
 import { heifToJpeg } from "../identity/heif";
 import { extractAudioTrack } from "./container";
 import { stageCreativeInput, stageCreativeInputs } from "./store";
@@ -81,18 +84,25 @@ describe("stageCreativeInput HEIC handling", () => {
     expect(heifToJpeg).toHaveBeenCalledOnce();
   });
 
-  it("stages nothing when the HEIC decode fails", async () => {
+  it("stages the raw HEIC when the decode fails", async () => {
     vi.mocked(heifToJpeg).mockRejectedValue(new Error("libheif said no"));
+    const heic = heicBytes();
 
     const staged = await stageCreativeInput(
       supabase,
       "u1",
-      heicBytes(),
+      heic,
       "image/heic",
     );
 
-    expect(staged).toBeUndefined();
-    expect(uploads()).toHaveLength(0);
+    expect(staged?.kind).toBe("image");
+    expect(staged?.mimeType).toBe("image/heic");
+    expect(staged?.storageKey.endsWith(".heic")).toBe(true);
+    expect(staged?.url).toContain(".heic");
+    expect(uploads()).toHaveLength(1);
+    expect(uploads()[0]?.contentType).toBe("image/heic");
+    expect(uploads()[0]?.bytes.equals(heic)).toBe(true);
+    expectLog("heif decode unavailable; staging raw heic", { level: "warn" });
   });
 
   it("leaves a plain JPEG untouched", async () => {

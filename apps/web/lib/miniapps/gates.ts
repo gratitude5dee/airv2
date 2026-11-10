@@ -87,20 +87,23 @@ export function sessionFromCookie(
   // A real Messages webview has its own cookie jar, so only one of these
   // exists there. When both do (same browser opened both link types), the
   // full session wins — a browser can always render the full experience.
-  const raw =
-    request.cookies.get(cookieName(app))?.value ??
-    request.cookies.get(cookieName(app, "card"))?.value;
-  if (!raw) return null;
-  const claims = verifyToken(raw, app);
-  if (!claims) return null;
-  return {
-    userId: claims.userId,
-    resourceId: claims.resourceId,
-    role: claims.role ?? "owner",
-    grantId: claims.grantId,
-    via: resolveVia(claims.via, request.headers.get("user-agent")),
-    originVia: claims.via,
-  };
+  // Each cookie is verified independently: an expired or corrupt first
+  // cookie must not shadow a valid card cookie.
+  for (const name of [cookieName(app), cookieName(app, "card")]) {
+    const raw = request.cookies.get(name)?.value;
+    if (!raw) continue;
+    const claims = verifyToken(raw, app);
+    if (!claims) continue;
+    return {
+      userId: claims.userId,
+      resourceId: claims.resourceId,
+      role: claims.role ?? "owner",
+      grantId: claims.grantId,
+      via: resolveVia(claims.via, request.headers.get("user-agent")),
+      originVia: claims.via,
+    };
+  }
+  return null;
 }
 
 /* ---------------------------------------------------------------- gate 1 */
