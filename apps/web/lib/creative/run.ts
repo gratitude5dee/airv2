@@ -12,6 +12,7 @@
  * identical.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "../log";
 import type { CreativeAsset } from "../assets/pipeline";
 import {
   DEFAULT_GENERATION_TIMEOUT_MS,
@@ -124,9 +125,24 @@ export async function executeCreativeJob(
 ): Promise<CreativeRunResult> {
   const fail = async (
     status: "failed" | "refused" | "submit_unknown",
-    line: string
+    line: string,
+    cause?: unknown
   ): Promise<CreativeRunResult> => {
-    await updateCreativeJob(supabase, jobId, { status, error: line });
+    const detail =
+      cause instanceof Error
+        ? `${cause.name}: ${cause.message}`.slice(0, 400)
+        : undefined;
+    await updateCreativeJob(supabase, jobId, {
+      status,
+      error: detail ? `${line} :: ${detail}` : line,
+    });
+    if (detail) {
+      log.warn("creative job failed", {
+        job_id: jobId,
+        status,
+        detail,
+      });
+    }
     return { status, line };
   };
 
@@ -231,7 +247,7 @@ export async function executeCreativeJob(
     } else if (isAmbiguousSubmission(error) || isFalUnknownOutcome(error)) {
       // The provider may or may not have accepted the work (C23). Persist
       // the ambiguity; never automatically resubmit.
-      return await fail("submit_unknown", SUBMIT_UNKNOWN_LINE);
+      return await fail("submit_unknown", SUBMIT_UNKNOWN_LINE, error);
     } else {
       return await fail("failed", FAILED_LINE);
     }
