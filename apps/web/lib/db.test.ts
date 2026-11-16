@@ -69,7 +69,7 @@ const UNCHECKED_WRITE_BASELINE: Record<string, number> = {
   "app/api/admin/ads/route.ts": 1,
   "app/api/admin/delete/route.ts": 4,
   "app/api/auth/login/route.ts": 3,
-  "app/api/auth/signup/route.ts": 2,
+  "app/api/auth/signup/route.ts": 1,
   "app/api/bots/[name]/avatar/route.ts": 1,
   "app/api/bots/rooms/route.ts": 1,
   "app/api/box/stop/route.ts": 2,
