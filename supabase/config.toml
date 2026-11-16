@@ -1,0 +1,9 @@
+# Edge functions airv2-app (Cloudflare workerd) calls for work workerd cannot
+# do itself. Deploy: `supabase functions deploy <name> --project-ref <ref>`.
+# Both check x-relay-token against the GMI_RELAY_KEY function secret, so the
+# platform JWT check is off.
+[functions.gmi-relay]
+verify_jwt = false
+
+[functions.heic-transcode]
+verify_jwt = false
