@@ -1,6 +1,6 @@
 ---
 name: openviking-memory
-description: Remember/recall preferences, facts, past context (memory)
+description: Remember, recall, forget the owner's preferences, facts, past context (memory)
 ---
 
 # OpenViking Memory
@@ -30,6 +30,9 @@ without memory.
 1. Decide whether the request warrants memory. Retrieve for executable or
    multi-step work, anything touching a system you may have seen before, and
    recovery from failures. Skip retrieval for small talk and one-off trivia.
+   A question about what the owner told you ("what size did I say", "do you
+   remember") always retrieves first: answer from the `find` results, and
+   say plainly when nothing comes back.
 2. Build one concise query from the task goal, domain objects, intended
    operation, and constraints. After a failure, include the failed operation
    and the stable part of the error message.
@@ -73,6 +76,15 @@ What to persist: stable preferences and conventions, environment facts,
 decisions with their rationale, and reusable procedures or fixes. What not to
 persist: secrets and credentials, transient state, speculation, or bulk
 transcript dumps — store conclusions, not scrollback.
+
+## Forget: when the owner retracts a fact
+
+"Stop remembering X", "I'm off X now", "forget that": `find` the memories
+that state X, `forget` each matching URI, then `find` again and confirm the
+fact is gone before replying. When the owner states a replacement ("I'm off
+soda now"), `remember` the new fact too. A profile line injected into the
+conversation is not the store — check the store before saying there is
+nothing to remove.
 
 ## Example
 
