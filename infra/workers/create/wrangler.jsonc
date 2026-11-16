@@ -7,12 +7,14 @@
 //   CREATE_BRIDGE_SECRET   CF1 HMAC shared with the Vercel adapter
 //   CANDIDATE_SECRET       mints/verifies x-air-candidate (CF4), shared with air-dev
 //   LIVE_TOKEN_SECRET      verifies the mini-app's first WS message
-//   CONTROL_PLANE_ORIGIN   the adapter base (https://air.wzrd.tech)
+//   CONTROL_PLANE_ORIGIN   the adapter base (https://app.wzrd.tech)
 {
   "name": "air-create",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
-  "compatibility_flags": ["nodejs_compat"],
+  // global_fetch_strictly_public: without it a fetch() to app.wzrd.tech (a Workers
+  // route on this same zone) skips the route and goes to the zone origin.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "routes": [{ "pattern": "create.wzrd.tech", "custom_domain": true }],
   "workflows": [
     { "name": "create-job", "binding": "CREATE_JOB", "class_name": "CreateJob" },

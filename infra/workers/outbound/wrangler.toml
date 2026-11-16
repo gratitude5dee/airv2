@@ -10,6 +10,9 @@
 name = "air-outbound"
 main = "index.mjs"
 compatibility_date = "2025-06-01"
+# Without global_fetch_strictly_public a fetch() to app.wzrd.tech (a Workers
+# route on this same zone) skips the route and goes to the zone origin.
+compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = false
 
 [vars]
