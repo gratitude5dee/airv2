@@ -7,12 +7,16 @@
 //   POST /v1/image/resize?width=&height=&fit=&format=&quality=         -> image bytes
 //   POST /v1/video/probe                            body: media bytes  -> JSON
 //   POST /v1/video/freeze-stitch?clipIn=&clipOut=&freezeAt=   (seconds)
-//        body: multipart `source` + `camera` clips                     -> video/mp4
+//        body: multipart `source` + `camera` clips, or JSON
+//        {"sourceUrl","cameraUrl"} fetched from MEDIA_FETCH_HOSTS      -> video/mp4
 import { execFile } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import heicConvert from "heic-convert";
 import sharp from "sharp";
@@ -23,6 +27,15 @@ const MAX_BODY_BYTES = 200 * 1024 * 1024;
 // A freeze source clip may be 250 MiB (MAX_FREEZE_CLIP_BYTES in apps/web); the
 // camera clip and multipart framing ride on top.
 const MAX_STITCH_BODY_BYTES = 320 * 1024 * 1024;
+const MAX_SOURCE_CLIP_BYTES = 250 * 1024 * 1024;
+const MAX_CAMERA_CLIP_BYTES = 100 * 1024 * 1024;
+// Exact hostnames clips may be fetched from; empty means URL inputs are off.
+const FETCH_HOSTS = new Set(
+  (process.env.MEDIA_FETCH_HOSTS ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean),
+);
 const FITS = new Set(["cover", "contain", "fill", "inside", "outside"]);
 const FORMATS = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
@@ -156,23 +169,74 @@ async function clipPart(form, name) {
   return Buffer.from(await part.arrayBuffer());
 }
 
-async function freezeStitch(body, params, contentType) {
-  const clipIn = seconds(params, "clipIn");
-  const freezeAt = seconds(params, "freezeAt");
-  let clipOut = seconds(params, "clipOut");
+async function download(rawUrl, name, file, limit) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new HttpError(400, `${name}Url is required`);
+  }
+  if (url.protocol !== "https:" || !FETCH_HOSTS.has(url.hostname)) {
+    throw new HttpError(400, `${name}Url host is not allowed`);
+  }
+  let res;
+  try {
+    // Redirects are refused so an allowed host cannot point the fetch elsewhere.
+    res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(120_000) });
+  } catch (error) {
+    throw new HttpError(502, `${name} download failed: ${error.cause?.message ?? error.message}`);
+  }
+  if (!res.ok || !res.body) throw new HttpError(502, `${name} download failed: HTTP ${res.status}`);
+  let size = 0;
+  const cap = new Transform({
+    transform(chunk, _encoding, done) {
+      size += chunk.length;
+      done(size > limit ? new HttpError(413, `${name} clip is too large`) : null, chunk);
+    },
+  });
+  try {
+    await pipeline(Readable.fromWeb(res.body), cap, createWriteStream(file));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(502, `${name} download failed: ${error.message}`);
+  }
+  if (size === 0) throw new HttpError(502, `${name} download was empty`);
+}
+
+async function stageClips(body, contentType, srcPath, camPath) {
+  if ((contentType ?? "").toLowerCase().startsWith("application/json")) {
+    let input;
+    try {
+      input = JSON.parse(body.toString("utf8"));
+    } catch {
+      throw new HttpError(400, "body must be JSON");
+    }
+    await Promise.all([
+      download(input?.sourceUrl, "source", srcPath, MAX_SOURCE_CLIP_BYTES),
+      download(input?.cameraUrl, "camera", camPath, MAX_CAMERA_CLIP_BYTES),
+    ]);
+    return;
+  }
   let form;
   try {
     form = await new Response(body, { headers: { "content-type": contentType ?? "" } }).formData();
   } catch {
-    throw new HttpError(400, "body must be multipart/form-data");
+    throw new HttpError(400, "body must be multipart/form-data or JSON");
   }
   const [source, camera] = await Promise.all([clipPart(form, "source"), clipPart(form, "camera")]);
+  await Promise.all([writeFile(srcPath, source), writeFile(camPath, camera)]);
+}
+
+async function freezeStitch(body, params, contentType) {
+  const clipIn = seconds(params, "clipIn");
+  const freezeAt = seconds(params, "freezeAt");
+  let clipOut = seconds(params, "clipOut");
 
   return withTempDir("stitch-", async (dir) => {
     const srcPath = path.join(dir, "src");
     const camPath = path.join(dir, "cam");
     const outPath = path.join(dir, "out.mp4");
-    await Promise.all([writeFile(srcPath, source), writeFile(camPath, camera)]);
+    await stageClips(body, contentType, srcPath, camPath);
     const [src, cam] = await Promise.all([ffprobe(srcPath), ffprobe(camPath)]).catch((error) => {
       throw unreadable(error);
     });

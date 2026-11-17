@@ -5,11 +5,17 @@ export interface Env {
   MEDIA: DurableObjectNamespace<MediaContainer>;
   MEDIA_SERVICE_TOKEN?: string;
   MEDIA_INSTANCES?: string;
+  MEDIA_FETCH_HOSTS?: string;
 }
 
 export class MediaContainer extends Container<Env> {
   override defaultPort = 8080;
   override sleepAfter = "5m";
+
+  constructor(ctx: DurableObjectState<{}>, env: Env) {
+    super(ctx, env);
+    this.envVars = { MEDIA_FETCH_HOSTS: env.MEDIA_FETCH_HOSTS ?? "" };
+  }
 }
 
 const json = (body: unknown, status: number): Response =>

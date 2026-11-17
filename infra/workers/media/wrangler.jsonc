@@ -23,6 +23,10 @@
     "bindings": [{ "name": "MEDIA", "class_name": "MediaContainer" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MediaContainer"] }],
-  "vars": { "MEDIA_INSTANCES": "2" },
+  "vars": {
+    "MEDIA_INSTANCES": "2",
+    // Hosts the container may fetch clips from (comma-separated, exact match).
+    "MEDIA_FETCH_HOSTS": "imkbxdsxfgmkylbgaygv.supabase.co",
+  },
   "observability": { "enabled": true },
 }
