@@ -83,7 +83,7 @@ async function resize(body, params) {
   const fit = params.get("fit") ?? "cover";
   if (!FITS.has(fit)) throw new HttpError(400, "unsupported fit");
   const format = outputFormat(params.get("format"), "jpeg");
-  const q = Math.round(quality(params.get("quality"), 0.85) * 100);
+  const q = Math.max(1, Math.round(quality(params.get("quality"), 0.85) * 100));
   try {
     const pipeline = sharp(body).rotate().resize({ width, height, fit, withoutEnlargement: true });
     const bytes = await (format === "png" ? pipeline.png() : pipeline[format]({ quality: q })).toBuffer();
