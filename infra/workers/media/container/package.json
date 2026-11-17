@@ -1,0 +1,10 @@
+{
+  "name": "air-media-container",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "heic-convert": "2.1.0",
+    "sharp": "0.35.5"
+  }
+}

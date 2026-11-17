@@ -1,0 +1,32 @@
+// Air Media: the work workerd cannot do (libheif, sharp, ffmpeg) runs in a
+// Cloudflare Container behind this Worker. airv2-app calls it over HTTPS
+// with a bearer token; the Worker authenticates and forwards to a container
+// instance.
+//
+// Secrets (`wrangler secret put`, never here):
+//   MEDIA_SERVICE_TOKEN   bearer shared with airv2-app
+{
+  "name": "air-media",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "containers": [
+    {
+      "class_name": "MediaContainer",
+      "image": "./container/Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 4,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MEDIA", "class_name": "MediaContainer" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MediaContainer"] }],
+  "vars": {
+    "MEDIA_INSTANCES": "2",
+    // Hosts the container may fetch clips from (comma-separated, exact match).
+    "MEDIA_FETCH_HOSTS": "imkbxdsxfgmkylbgaygv.supabase.co",
+  },
+  "observability": { "enabled": true },
+}
