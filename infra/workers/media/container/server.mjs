@@ -144,8 +144,9 @@ async function probe(body) {
 }
 
 function seconds(params, name) {
-  const n = Number(params.get(name) ?? "");
-  if (params.get(name) === null || !Number.isFinite(n) || n < 0) throw new HttpError(400, `${name} must be seconds >= 0`);
+  const raw = params.get(name)?.trim();
+  const n = raw ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(n) || n < 0) throw new HttpError(400, `${name} must be seconds >= 0`);
   return n;
 }
 
