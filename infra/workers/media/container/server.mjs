@@ -20,6 +20,9 @@ import { buildFreezeEditGraph } from "./freeze-graph.mjs";
 
 const execFileAsync = promisify(execFile);
 const MAX_BODY_BYTES = 200 * 1024 * 1024;
+// A freeze source clip may be 250 MiB (MAX_FREEZE_CLIP_BYTES in apps/web); the
+// camera clip and multipart framing ride on top.
+const MAX_STITCH_BODY_BYTES = 320 * 1024 * 1024;
 const FITS = new Set(["cover", "contain", "fill", "inside", "outside"]);
 const FORMATS = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
@@ -30,12 +33,12 @@ class HttpError extends Error {
   }
 }
 
-async function readBody(req) {
+async function readBody(req, limit) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, "body too large");
+    if (size > limit) throw new HttpError(413, "body too large");
     chunks.push(chunk);
   }
   if (size === 0) throw new HttpError(400, "empty body");
@@ -234,7 +237,8 @@ const server = createServer(async (req, res) => {
     const handler = ROUTES[url.pathname];
     if (!handler) throw new HttpError(404, "not found");
     if (req.method !== "POST") throw new HttpError(405, "POST only");
-    const out = await handler(await readBody(req), url.searchParams, req.headers["content-type"]);
+    const limit = handler === freezeStitch ? MAX_STITCH_BODY_BYTES : MAX_BODY_BYTES;
+    const out = await handler(await readBody(req, limit), url.searchParams, req.headers["content-type"]);
     send(res, 200, out.type, out.bytes);
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
