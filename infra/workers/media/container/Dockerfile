@@ -5,7 +5,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-COPY server.mjs ./
+COPY server.mjs freeze-graph.mjs ./
 ENV NODE_ENV=production PORT=8080
 EXPOSE 8080
 USER node

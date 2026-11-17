@@ -6,14 +6,17 @@
 //   POST /v1/heic?format=jpeg|png&quality=0..1      body: HEIF bytes   -> image bytes
 //   POST /v1/image/resize?width=&height=&fit=&format=&quality=         -> image bytes
 //   POST /v1/video/probe                            body: media bytes  -> JSON
+//   POST /v1/video/freeze-stitch?clipIn=&clipOut=&freezeAt=   (seconds)
+//        body: multipart `source` + `camera` clips                     -> video/mp4
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import heicConvert from "heic-convert";
 import sharp from "sharp";
+import { buildFreezeEditGraph } from "./freeze-graph.mjs";
 
 const execFileAsync = promisify(execFile);
 const MAX_BODY_BYTES = 200 * 1024 * 1024;
@@ -93,40 +96,131 @@ async function resize(body, params) {
   }
 }
 
-async function probe(body) {
-  const dir = await mkdtemp(path.join(tmpdir(), "probe-"));
-  try {
-    const file = path.join(dir, "input");
-    await writeFile(file, body);
-    const { stdout } = await execFileAsync(
-      "ffprobe",
-      ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file],
-      { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
-    );
-    const parsed = JSON.parse(stdout);
-    const streams = (parsed.streams ?? []).map((s) => ({
+async function ffprobe(file) {
+  const { stdout } = await execFileAsync(
+    "ffprobe",
+    ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file],
+    { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const parsed = JSON.parse(stdout);
+  return {
+    durationSeconds: parsed.format?.duration === undefined ? undefined : Number(parsed.format.duration),
+    formatName: parsed.format?.format_name,
+    streams: (parsed.streams ?? []).map((s) => ({
       type: s.codec_type,
       codec: s.codec_name,
       width: s.width,
       height: s.height,
       frameRate: s.avg_frame_rate,
       durationSeconds: s.duration === undefined ? undefined : Number(s.duration),
-    }));
-    const body_ = {
-      durationSeconds: parsed.format?.duration === undefined ? undefined : Number(parsed.format.duration),
-      formatName: parsed.format?.format_name,
-      sizeBytes: body.length,
-      streams,
-    };
-    return { type: "application/json", bytes: Buffer.from(JSON.stringify(body_)) };
-  } catch (error) {
-    throw new HttpError(415, `not a readable media file: ${String(error.stderr ?? error.message).trim().slice(0, 300)}`);
+    })),
+  };
+}
+
+const unreadable = (error) =>
+  new HttpError(415, `not a readable media file: ${String(error.stderr ?? error.message).trim().slice(0, 300)}`);
+
+async function withTempDir(prefix, fn) {
+  const dir = await mkdtemp(path.join(tmpdir(), prefix));
+  try {
+    return await fn(dir);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 }
 
-const ROUTES = { "/v1/heic": heic, "/v1/image/resize": resize, "/v1/video/probe": probe };
+async function probe(body) {
+  return withTempDir("probe-", async (dir) => {
+    const file = path.join(dir, "input");
+    await writeFile(file, body);
+    const info = await ffprobe(file).catch((error) => {
+      throw unreadable(error);
+    });
+    return { type: "application/json", bytes: Buffer.from(JSON.stringify({ ...info, sizeBytes: body.length })) };
+  });
+}
+
+function seconds(params, name) {
+  const n = Number(params.get(name) ?? "");
+  if (params.get(name) === null || !Number.isFinite(n) || n < 0) throw new HttpError(400, `${name} must be seconds >= 0`);
+  return n;
+}
+
+async function clipPart(form, name) {
+  const part = form.get(name);
+  if (!part || typeof part === "string" || part.size === 0) throw new HttpError(400, `${name} clip is required`);
+  return Buffer.from(await part.arrayBuffer());
+}
+
+async function freezeStitch(body, params, contentType) {
+  const clipIn = seconds(params, "clipIn");
+  const freezeAt = seconds(params, "freezeAt");
+  let clipOut = seconds(params, "clipOut");
+  let form;
+  try {
+    form = await new Response(body, { headers: { "content-type": contentType ?? "" } }).formData();
+  } catch {
+    throw new HttpError(400, "body must be multipart/form-data");
+  }
+  const [source, camera] = await Promise.all([clipPart(form, "source"), clipPart(form, "camera")]);
+
+  return withTempDir("stitch-", async (dir) => {
+    const srcPath = path.join(dir, "src");
+    const camPath = path.join(dir, "cam");
+    const outPath = path.join(dir, "out.mp4");
+    await Promise.all([writeFile(srcPath, source), writeFile(camPath, camera)]);
+    const [src, cam] = await Promise.all([ffprobe(srcPath), ffprobe(camPath)]).catch((error) => {
+      throw unreadable(error);
+    });
+    const srcVideo = src.streams.find((s) => s.type === "video");
+    const camVideo = cam.streams.find((s) => s.type === "video");
+    if (!srcVideo) throw new HttpError(415, "source has no video stream");
+    if (!camVideo?.width || !camVideo.height || !(cam.durationSeconds > 0)) {
+      throw new HttpError(415, "camera has no readable video stream");
+    }
+    // A file shorter than the remembered window just runs out.
+    if (src.durationSeconds > 0) clipOut = Math.min(clipOut, src.durationSeconds);
+    if (clipOut - clipIn < 0.1) throw new HttpError(422, "clip window is shorter than 0.1s");
+
+    const hasAudioStream = (info) => info.streams.some((s) => s.type === "audio");
+    const { graph, hasAudio } = buildFreezeEditGraph(
+      camVideo.width,
+      camVideo.height,
+      { clipIn, clipOut, freezeAt },
+      cam.durationSeconds,
+      hasAudioStream(src),
+      hasAudioStream(cam),
+    );
+    try {
+      await execFileAsync(
+        "ffmpeg",
+        [
+          "-y", "-hide_banner", "-loglevel", "error",
+          "-i", srcPath,
+          "-i", camPath,
+          "-filter_complex", graph,
+          "-map", "[v]",
+          ...(hasAudio ? ["-map", "[a]", "-c:a", "aac", "-b:a", "128k"] : []),
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+          "-movflags", "+faststart",
+          outPath,
+        ],
+        { timeout: 300_000, maxBuffer: 8 * 1024 * 1024 },
+      );
+    } catch (error) {
+      console.error("freeze stitch failed", String(error.stderr ?? error.message).slice(0, 2000));
+      throw new HttpError(422, `stitch failed: ${String(error.stderr ?? error.message).trim().slice(0, 300)}`);
+    }
+    return { type: "video/mp4", bytes: await readFile(outPath) };
+  });
+}
+
+const ROUTES = {
+  "/v1/heic": heic,
+  "/v1/image/resize": resize,
+  "/v1/video/probe": probe,
+  "/v1/video/freeze-stitch": freezeStitch,
+};
 
 function send(res, status, type, bytes) {
   res.writeHead(status, { "content-type": type, "content-length": bytes.length });
@@ -140,7 +234,7 @@ const server = createServer(async (req, res) => {
     const handler = ROUTES[url.pathname];
     if (!handler) throw new HttpError(404, "not found");
     if (req.method !== "POST") throw new HttpError(405, "POST only");
-    const out = await handler(await readBody(req), url.searchParams);
+    const out = await handler(await readBody(req), url.searchParams, req.headers["content-type"]);
     send(res, 200, out.type, out.bytes);
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
